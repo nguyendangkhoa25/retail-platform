@@ -5,6 +5,8 @@ import com.barbershop.model.dto.ProductDTO;
 import com.barbershop.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,7 +17,7 @@ import java.util.List;
  * Database routing is handled automatically by TenantContext and RoutingDataSource
  */
 @RestController
-@RequestMapping("/api/products")
+@RequestMapping("/products")
 @RequiredArgsConstructor
 @Slf4j
 public class ProductController {
@@ -38,29 +40,39 @@ public class ProductController {
 
     /**
      * GET /api/products
-     * Get all active products
+     * Get all products with optional pagination, status filtering, and search
+     *
+     * Query Parameters:
+     * - page: Page number (0-based, default: 0)
+     * - size: Page size (default: 20)
+     * - sort: Sort field (default: id,asc)
+     * - status: Filter by status - "active" or "inactive" (optional)
+     * - search: Search term to search in name and description (optional)
+     *
+     * Examples:
+     * - GET /api/products?page=0&size=10
+     * - GET /api/products?page=0&size=10&status=active
+     * - GET /api/products?page=0&size=10&search=massage
+     * - GET /api/products?page=0&size=10&status=active&search=massage
      */
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProductDTO>>> getActiveProducts() {
-        log.info("Request: Get active products");
-        List<ProductDTO> products = productService.getActiveProducts();
-        log.info("Retrieved {} active products", products.size());
-        return ResponseEntity.ok(
-            ApiResponse.success(products, "Active products retrieved successfully")
-        );
-    }
+    public ResponseEntity<ApiResponse<Page<ProductDTO>>> getAllProducts(
+            @RequestParam(value = "search", required = false) String searchTerm,
+            @RequestParam(value = "status", required = false) String status,
+            Pageable pageable) {
+        log.info("Request: Get all products - search: {}, status: {}, page: {}, size: {}",
+                searchTerm, status, pageable.getPageNumber(), pageable.getPageSize());
 
-    /**
-     * GET /api/products/all
-     * Get all products (including inactive)
-     */
-    @GetMapping("/all")
-    public ResponseEntity<ApiResponse<List<ProductDTO>>> getAllProducts() {
-        log.info("Request: Get all products");
-        List<ProductDTO> products = productService.getAllProducts();
-        log.info("Retrieved {} products", products.size());
+        // Convert status string to boolean (null, true for "active", false for "inactive")
+        Boolean statusFilter = null;
+        if (status != null && !status.trim().isEmpty()) {
+            statusFilter = status.equalsIgnoreCase("active");
+        }
+
+        Page<ProductDTO> productsPage = productService.getAllProductsWithFilters(searchTerm, statusFilter, pageable);
+        log.info("Retrieved {} products from page {}", productsPage.getContent().size(), pageable.getPageNumber());
         return ResponseEntity.ok(
-            ApiResponse.success(products, "All products retrieved successfully")
+            ApiResponse.success(productsPage, "Products retrieved successfully")
         );
     }
 
@@ -99,7 +111,7 @@ public class ProductController {
      * PUT /api/products/{productId}/deactivate
      * Deactivate a product
      */
-    @PutMapping("/{productId}/deactivate")
+    @PatchMapping("/{productId}/deactivate")
     public ResponseEntity<ApiResponse<ProductDTO>> deactivateProduct(
             @PathVariable Long productId) {
         log.info("Request: Deactivate product: {}", productId);
@@ -114,7 +126,7 @@ public class ProductController {
      * PUT /api/products/{productId}/activate
      * Activate a product
      */
-    @PutMapping("/{productId}/activate")
+    @PatchMapping("/{productId}/activate")
     public ResponseEntity<ApiResponse<ProductDTO>> activateProduct(
             @PathVariable Long productId) {
         log.info("Request: Activate product: {}", productId);
