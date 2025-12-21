@@ -25,7 +25,7 @@ public class EmployeeController {
     /**
      * POST /api/employees
      * Create a new employee
-     *
+     * <p>
      * Request Body:
      * - name: Employee name (required)
      * - phone: Phone number (required, unique)
@@ -34,7 +34,7 @@ public class EmployeeController {
      * - hireDate: Date of hire (optional, defaults to today)
      * - description: Employee description (optional)
      * - baseSalary: Base salary (optional, defaults to 0)
-     *
+     * <p>
      * Examples:
      * - POST /api/employees
      *   {
@@ -57,7 +57,7 @@ public class EmployeeController {
     /**
      * GET /api/employees
      * Get all employees with optional pagination, status filtering, search, and sorting
-     *
+     * <p>
      * Query Parameters:
      * - page: Page number (0-based, default: 0)
      * - size: Page size (default: 20)
@@ -65,7 +65,7 @@ public class EmployeeController {
      * - status: Filter by status - "ACTIVE", "INACTIVE", or "ON_LEAVE" (optional)
      * - sortBy: Sort by field name (e.g., "id", "name", "baseSalary", "hireDate") (optional, default: "id")
      * - sortDirection: Sort direction "ASC" or "DESC" (optional, default: "DESC")
-     *
+     * <p>
      * Examples:
      * - GET /api/employees?page=0&size=20
      * - GET /api/employees?page=0&size=20&search=john
@@ -88,10 +88,10 @@ public class EmployeeController {
     /**
      * GET /api/employees/{id}
      * Get employee details by ID
-     *
+     * <p>
      * Path Parameters:
      * - id: Employee ID (required)
-     *
+     * <p>
      * Examples:
      * - GET /api/employees/1
      */
@@ -105,10 +105,10 @@ public class EmployeeController {
     /**
      * PUT /api/employees/{id}
      * Update an existing employee
-     *
+     * <p>
      * Path Parameters:
      * - id: Employee ID (required)
-     *
+     * <p>
      * Request Body:
      * - name: Employee name (optional)
      * - email: Email address (optional, unique)
@@ -116,7 +116,7 @@ public class EmployeeController {
      * - status: Employee status - "ACTIVE", "INACTIVE", or "ON_LEAVE" (optional)
      * - description: Employee description (optional)
      * - baseSalary: Base salary (optional)
-     *
+     * <p>
      * Examples:
      * - PUT /api/employees/1
      *   {
@@ -137,10 +137,10 @@ public class EmployeeController {
     /**
      * DELETE /api/employees/{id}
      * Delete (soft delete) an employee
-     *
+     * <p>
      * Path Parameters:
      * - id: Employee ID (required)
-     *
+     * <p>
      * Examples:
      * - DELETE /api/employees/1
      */
@@ -154,16 +154,16 @@ public class EmployeeController {
     /**
      * GET /api/employees/{id}/earnings
      * Get employee earnings summary
-     *
+     * <p>
      * Path Parameters:
      * - id: Employee ID (required)
-     *
+     * <p>
      * Returns:
      * - employeeId: Employee ID
      * - employeeName: Employee name
      * - totalEarned: Total earnings from completed orders
      * - completedOrderCount: Number of completed orders
-     *
+     * <p>
      * Examples:
      * - GET /api/employees/1/earnings
      */

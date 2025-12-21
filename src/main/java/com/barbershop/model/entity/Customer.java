@@ -32,7 +32,27 @@ public class Customer extends BaseEntity {
     @Column(length = 500)
     private String notes;
 
-    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
+    // Social IDs
+    @Column(name = "zalo_id")
+    private String zaloId;
+
+    @Column(name = "facebook_id")
+    private String facebookId;
+
+    // Customer Habits
+    @Column(name = "preferred_services", length = 500)
+    private String preferredServices;
+
+    @Column(name = "allergies_or_sensitivities", length = 500)
+    private String allergiesOrSensitivities;
+
+    @Column(name = "hair_type")
+    private String hairType;
+
+    @Column(name = "special_requests", length = 500)
+    private String specialRequests;
+
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Order> orders = new ArrayList<>();
 }
 

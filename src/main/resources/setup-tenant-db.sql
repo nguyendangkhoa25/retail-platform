@@ -51,10 +51,18 @@ CREATE TABLE IF NOT EXISTS customers (
     phone VARCHAR(20) NOT NULL UNIQUE,
     email VARCHAR(100) UNIQUE,
     notes TEXT,
+    zalo_id VARCHAR(100),
+    facebook_id VARCHAR(100),
+    preferred_services VARCHAR(500),
+    allergies_or_sensitivities VARCHAR(500),
+    hair_type VARCHAR(100),
+    special_requests VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at TIMESTAMP NULL,
     INDEX idx_phone (phone),
+    INDEX idx_deleted (deleted),
     INDEX idx_deleted_at (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=68202600001;
 
