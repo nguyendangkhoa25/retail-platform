@@ -1,6 +1,7 @@
 package com.barbershop.controller;
 
 import com.barbershop.model.dto.ApiResponse;
+import com.barbershop.model.dto.PublicShopInfoDTO;
 import com.barbershop.model.dto.ShopInfoDTO;
 import com.barbershop.service.ShopInfoService;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +25,7 @@ public class ShopInfoController {
      * GET /api/shop-info
      * Get current shop information for the tenant
      * If shop info doesn't exist, creates default shop info
-     *
+     * <p>
      * Returns:
      * - id: Shop info ID
      * - shopName: Shop name
@@ -40,7 +41,7 @@ public class ShopInfoController {
      * - website: Shop website URL
      * - createdAt: Creation timestamp
      * - updatedAt: Last update timestamp
-     *
+     * <p>
      * Examples:
      * - GET /api/shop-info
      */
@@ -56,7 +57,7 @@ public class ShopInfoController {
      * PUT /api/shop-info
      * Update shop information
      * Shop owner can modify shop details and default tax rate
-     *
+     * <p>
      * Request Body (all fields optional):
      * - shopName: Shop name (required for update)
      * - address: Shop address
@@ -69,22 +70,22 @@ public class ShopInfoController {
      * - email: Shop email address
      * - taxId: Company tax ID / registration number
      * - website: Shop website URL
-     *
+     * <p>
      * Examples:
      * - PUT /api/shop-info
-     *   {
-     *     "shopName": "Premium Barber Shop",
-     *     "address": "123 Main Street, City",
-     *     "companyName": "Premium Barber Co., Ltd",
-     *     "defaultTaxRate": 10,
-     *     "eInvoiceUsername": "user@example.com",
-     *     "eInvoicePassword": "encrypted_password",
-     *     "eInvoiceKey": "api_key_here",
-     *     "phone": "0123456789",
-     *     "email": "info@barbershop.com",
-     *     "taxId": "1234567890",
-     *     "website": "www.barbershop.com"
-     *   }
+     * {
+     * "shopName": "Premium Barber Shop",
+     * "address": "123 Main Street, City",
+     * "companyName": "Premium Barber Co., Ltd",
+     * "defaultTaxRate": 10,
+     * "eInvoiceUsername": "user@example.com",
+     * "eInvoicePassword": "encrypted_password",
+     * "eInvoiceKey": "api_key_here",
+     * "phone": "0123456789",
+     * "email": "info@barbershop.com",
+     * "taxId": "1234567890",
+     * "website": "www.barbershop.com"
+     * }
      */
     @PutMapping
     public ResponseEntity<ApiResponse<ShopInfoDTO>> updateShopInfo(
@@ -100,10 +101,10 @@ public class ShopInfoController {
      * GET /api/shop-info/default-tax-rate
      * Get the default tax rate for the shop
      * Useful for setting default tax when creating products/services
-     *
+     * <p>
      * Returns:
      * - double: Default tax rate (0.0-100.0)
-     *
+     * <p>
      * Examples:
      * - GET /api/shop-info/default-tax-rate
      */
@@ -113,6 +114,38 @@ public class ShopInfoController {
         Double taxRate = shopInfoService.getDefaultTaxRate();
         log.info("Response: Default tax rate: {}", taxRate);
         return ResponseEntity.ok(ApiResponse.success(taxRate, "Default tax rate retrieved successfully"));
+    }
+
+    /**
+     * GET /api/shop-info/public
+     * Get public shop information without sensitive E-Invoice credentials
+     * Safe for public API exposure (e.g., customer-facing pages)
+     * <p>
+     * Returns:
+     * - id: Shop info ID
+     * - shopName: Shop name
+     * - address: Shop address
+     * - companyName: Company name
+     * - defaultTaxRate: Default tax rate in percentage (0-100)
+     * - phone: Shop phone number
+     * - email: Shop email address
+     * - taxId: Company tax ID / registration number
+     * - website: Shop website URL
+     * - createdAt: Creation timestamp
+     * - updatedAt: Last update timestamp
+     * <p>
+     * NOTE: E-Invoice credentials (eInvoiceUsername, eInvoicePassword, eInvoiceKey) are NOT included
+     * <p>
+     * Examples:
+     * - GET /api/shop-info/public
+     */
+    @GetMapping("/public")
+    public ResponseEntity<ApiResponse<PublicShopInfoDTO>> getPublicShopInfo() {
+        log.info("Endpoint: GET /shop-info/public - Get public shop information");
+        PublicShopInfoDTO publicShopInfo = shopInfoService.getPublicShopInfo();
+        log.info("Response: Public shop info retrieved - id: {}, shopName: {}",
+                publicShopInfo.getId(), publicShopInfo.getShopName());
+        return ResponseEntity.ok(ApiResponse.success(publicShopInfo, "Public shop information retrieved successfully"));
     }
 }
 

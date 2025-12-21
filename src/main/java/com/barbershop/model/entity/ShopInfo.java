@@ -1,6 +1,8 @@
 package com.barbershop.model.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
@@ -55,7 +57,5 @@ public class ShopInfo extends BaseEntity {
     // Website
     @Column(length = 200)
     private String website;
-
-
 }
 

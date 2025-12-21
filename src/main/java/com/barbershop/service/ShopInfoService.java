@@ -119,8 +119,8 @@ public class ShopInfoService {
     }
 
     /**
+    /**
      * Get default tax rate
-     *
      * @return Default tax rate
      */
     public Double getDefaultTaxRate() {
@@ -130,6 +130,25 @@ public class ShopInfoService {
                 .orElse(0.0);
         log.info("Default tax rate: {}", taxRate);
         return taxRate;
+    }
+
+    /**
+     * Get public shop info without sensitive E-Invoice credentials
+     * Safe for public API exposure
+     * @return PublicShopInfoDTO without invoice credentials
+     */
+    public com.barbershop.model.dto.PublicShopInfoDTO getPublicShopInfo() {
+        log.info("Request: Get public shop info");
+
+        ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
+                .orElseGet(() -> {
+                    log.info("Shop info not found, creating new shop info with database defaults");
+                    ShopInfo newShopInfo = new ShopInfo();
+                    return shopInfoRepository.save(newShopInfo);
+                });
+
+        log.info("Retrieved public shop info - id: {}, shopName: {}", shopInfo.getId(), shopInfo.getShopName());
+        return mapToPublicDTO(shopInfo);
     }
 
     /**
@@ -152,7 +171,29 @@ public class ShopInfoService {
                 .phone(shopInfo.getPhone())
                 .email(shopInfo.getEmail())
                 .taxCode(shopInfo.getTaxCode())
-                .invoiceVendor(shopInfo.getInvoiceVendor())
+                .website(shopInfo.getWebsite())
+                .createdAt(shopInfo.getCreatedAt())
+                .updatedAt(shopInfo.getUpdatedAt())
+                .build();
+    }
+
+    /**
+     * Map ShopInfo entity to Public DTO (without sensitive E-Invoice credentials)
+     * Safe for public API exposure
+     * @param shopInfo ShopInfo entity
+     * @return PublicShopInfoDTO without invoice credentials
+     */
+    public com.barbershop.model.dto.PublicShopInfoDTO mapToPublicDTO(ShopInfo shopInfo) {
+        log.debug("Converting ShopInfo to Public DTO - id: {}, shopName: {}", shopInfo.getId(), shopInfo.getShopName());
+        return com.barbershop.model.dto.PublicShopInfoDTO.builder()
+                .id(shopInfo.getId())
+                .shopName(shopInfo.getShopName())
+                .address(shopInfo.getAddress())
+                .companyName(shopInfo.getCompanyName())
+                .defaultTaxRate(shopInfo.getDefaultTaxRate())
+                .phone(shopInfo.getPhone())
+                .email(shopInfo.getEmail())
+                .taxCode(shopInfo.getTaxCode())
                 .website(shopInfo.getWebsite())
                 .createdAt(shopInfo.getCreatedAt())
                 .updatedAt(shopInfo.getUpdatedAt())
