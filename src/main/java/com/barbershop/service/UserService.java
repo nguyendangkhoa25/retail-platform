@@ -1,8 +1,6 @@
 package com.barbershop.service;
 
-import com.barbershop.model.dto.CreateUserRequest;
-import com.barbershop.model.dto.RoleDTO;
-import com.barbershop.model.dto.UserDTO;
+import com.barbershop.model.dto.*;
 import com.barbershop.model.entity.Employee;
 import com.barbershop.model.entity.Role;
 import com.barbershop.model.entity.User;
@@ -15,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashSet;
 import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -62,6 +62,7 @@ public class UserService {
                 .accountNonLocked(true)
                 .credentialsNonExpired(true)
                 .accountNonExpired(true)
+                .requireAction("CHANGE_PASSWORD")
                 .build();
 
         // Assign roles if provided
@@ -84,20 +85,20 @@ public class UserService {
         User createdUser = userRepository.save(user);
         log.info("User created successfully: {} with id: {}", createdUser.getUsername(), createdUser.getId());
 
-        // Assign username to employee if provided
+        // Assign user to employee if provided
         if (request.getEmployeeId() != null) {
             Employee employee = employeeRepository.findByIdActive(request.getEmployeeId())
                     .orElseThrow(() -> new NoSuchElementException("Employee not found: " + request.getEmployeeId()));
 
-            // Check if another user already has this username assigned to this employee
-            if (employee.getUsername() != null && !employee.getUsername().equals(createdUser.getUsername())) {
-                log.warn("Employee {} already has username: {}, overwriting with: {}",
-                        employee.getId(), employee.getUsername(), createdUser.getUsername());
+            // Check if another user is already assigned to this employee
+            if (employee.getUser() != null && !employee.getUser().getId().equals(createdUser.getId())) {
+                log.warn("Employee {} already has user assigned: {}, overwriting with: {}",
+                        employee.getId(), employee.getUser().getId(), createdUser.getId());
             }
 
-            employee.setUsername(createdUser.getUsername());
+            employee.setUser(createdUser);
             employeeRepository.save(employee);
-            log.info("Username {} assigned to employee {}", createdUser.getUsername(), employee.getId());
+            log.info("User {} assigned to employee {}", createdUser.getId(), employee.getId());
         }
 
         return mapToDTO(createdUser);
@@ -149,14 +150,6 @@ public class UserService {
             user.setUsername(request.getUsername());
         }
 
-        // Update email if provided
-        if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
-            if (userRepository.existsByEmail(request.getEmail())) {
-                throw new IllegalArgumentException("Email already exists: " + request.getEmail());
-            }
-            user.setEmail(request.getEmail());
-        }
-
         // Update password if provided
         if (request.getPassword() != null && !request.getPassword().isEmpty()) {
             user.setPassword(passwordEncoder.encode(request.getPassword()));
@@ -192,14 +185,14 @@ public class UserService {
         User updatedUser = userRepository.save(user);
         log.info("User updated successfully: {}", updatedUser.getUsername());
 
-        // Assign username to employee if provided
+        // Assign user to employee if provided
         if (request.getEmployeeId() != null) {
             Employee employee = employeeRepository.findByIdActive(request.getEmployeeId())
                     .orElseThrow(() -> new NoSuchElementException("Employee not found: " + request.getEmployeeId()));
 
-            employee.setUsername(updatedUser.getUsername());
+            employee.setUser(updatedUser);
             employeeRepository.save(employee);
-            log.info("Username {} assigned to employee {}", updatedUser.getUsername(), employee.getId());
+            log.info("User {} assigned to employee {}", updatedUser.getId(), employee.getId());
         }
 
         return mapToDTO(updatedUser);
@@ -303,10 +296,10 @@ public class UserService {
                         .build())
                 .collect(Collectors.toSet());
 
-        // Find employee ID by matching username
+        // Find employee ID by matching user ID
         Long employeeId = null;
-        if (user.getUsername() != null) {
-            employeeId = employeeRepository.findByUsername(user.getUsername())
+        if (user.getId() != null) {
+            employeeId = employeeRepository.findByUserId(user.getId())
                     .map(Employee::getId)
                     .orElse(null);
         }
@@ -326,6 +319,160 @@ public class UserService {
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();
+    }
+
+    public PasswordResetResponse resetUserPassword(Long userId) {
+        log.info("Request: Reset user password - userId: {}", userId);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    log.error("User not found for password reset - userId: {}", userId);
+                    return new NoSuchElementException("User not found: " + userId);
+                });
+
+        // Generate temporary password
+        String tempPassword = generateTemporaryPassword();
+
+        // Update user password and set requireAction
+        user.setPassword(passwordEncoder.encode(tempPassword));
+        user.setRequireAction("CHANGE_PASSWORD");
+
+        User updatedUser = userRepository.save(user);
+
+        log.info("User password reset successfully - userId: {}, username: {}", userId, user.getUsername());
+
+        return PasswordResetResponse.builder()
+                .userId(updatedUser.getId())
+                .username(updatedUser.getUsername())
+                .email(updatedUser.getEmail())
+                .tempPassword(tempPassword)
+                .message("Password has been reset. User must change password on next login.")
+                .requirePasswordChange(true)
+                .build();
+    }
+
+    /**
+     * Change user password on first login (does not require old password)
+     * Used when user logs in for the first time with a temporary password
+     * Sets requireAction to null after successful change
+     */
+    public UserDTO changePasswordOnFirstLogin(ChangePasswordRequest request) {
+        log.info("Request: Change password on first login");
+
+        // Get current username from SecurityContext
+        String username = SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getName();
+
+        if (username == null || "anonymousUser".equals(username)) {
+            log.error("No authenticated user found for password change");
+            throw new IllegalStateException("User must be authenticated to change password");
+        }
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> {
+                    log.error("User not found for password change - username: {}", username);
+                    return new NoSuchElementException("User not found: " + username);
+                });
+
+        // Update password and clear requireAction flag
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setRequireAction(null);
+
+        User updatedUser = userRepository.save(user);
+
+        log.info("Password changed on first login successfully - username: {}", username);
+
+        return mapToDTO(updatedUser);
+    }
+
+    /**
+     * Change user password (requires old password)
+     * Standard password change when user is already logged in
+     */
+    public UserDTO changePassword(ChangePasswordRequest request) {
+        log.info("Request: Change password with old password verification");
+
+        // Get current username from SecurityContext
+        String username = org.springframework.security.core.context.SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getName();
+
+        if (username == null || "anonymousUser".equals(username)) {
+            log.error("No authenticated user found for password change");
+            throw new IllegalStateException("User must be authenticated to change password");
+        }
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> {
+                    log.error("User not found for password change - username: {}", username);
+                    return new NoSuchElementException("User not found: " + username);
+                });
+
+        // Verify old password
+        if (request.getOldPassword() == null || request.getOldPassword().isEmpty()) {
+            log.warn("Old password not provided for password change - username: {}", username);
+            throw new IllegalArgumentException("Old password is required");
+        }
+
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+            log.warn("Old password verification failed - username: {}", username);
+            throw new IllegalArgumentException("Old password is incorrect");
+        }
+
+        // Update password
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+
+        User updatedUser = userRepository.save(user);
+
+        log.info("Password changed successfully - username: {}", username);
+
+        return mapToDTO(updatedUser);
+    }
+
+    /**
+     * log.info("Request: Reset user password - userId: {}", userId);
+     * <p>
+     * User user = userRepository.findById(userId)
+     * .orElseThrow(() -> {
+     * log.error("User not found for password reset - userId: {}", userId);
+     * return new NoSuchElementException("User not found: " + userId);
+     * });
+     * <p>
+     * // Generate temporary password
+     * String tempPassword = generateTemporaryPassword();
+     * <p>
+     * // Update user password and set requireAction
+     * user.setPassword(passwordEncoder.encode(tempPassword));
+     * user.setRequireAction("CHANGE_PASSWORD");
+     * <p>
+     * User updatedUser = userRepository.save(user);
+     * <p>
+     * log.info("User password reset successfully - userId: {}, username: {}", userId, user.getUsername());
+     * <p>
+     * return PasswordResetResponse.builder()
+     * .userId(updatedUser.getId())
+     * .username(updatedUser.getUsername())
+     * .email(updatedUser.getEmail())
+     * .tempPassword(tempPassword)
+     * .message("Password has been reset. User must change password on next login.")
+     * .requirePasswordChange(true)
+     * .build();
+     * }
+     * <p>
+     * /**
+     * Generate a temporary password for password reset
+     * Format: Random UUID (first 12 characters) + random numbers
+     * Example: a1f2b3c4d5e6-1234
+     */
+    private String generateTemporaryPassword() {
+        String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String numbers = String.format("%04d", (int) (Math.random() * 10000));
+        String tempPassword = uuid + "-" + numbers;
+        log.debug("Generated temporary password for reset");
+        return tempPassword;
     }
 }
 

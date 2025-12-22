@@ -23,8 +23,11 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.phone = :phone")
     Optional<Employee> findByPhone(String phone);
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.username = :username")
-    Optional<Employee> findByUsername(String username);
+    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.user.id = :userId")
+    Optional<Employee> findByUserId(Long userId);
+
+    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.user IS NULL")
+    Page<Employee> findByUserIdIsNull(Pageable pageable);
 
     @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.status = :status")
     List<Employee> findByStatus(String status);

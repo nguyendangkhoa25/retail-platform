@@ -195,6 +195,7 @@ public class EmployeeService {
                 .name(employee.getName())
                 .phone(employee.getPhone())
                 .email(employee.getEmail())
+                .userId(employee.getUser() != null ? employee.getUser().getId() : null)
                 .position(employee.getPosition())
                 .hireDate(employee.getHireDate())
                 .status(employee.getStatus().name())

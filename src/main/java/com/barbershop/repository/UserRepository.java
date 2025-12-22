@@ -37,7 +37,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
             "(:search IS NULL OR LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
             "LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
             "LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
-            "u.deletedAt IS NULL " +
+            "u.deleted <> true " +
             "ORDER BY u.id DESC")
     Page<User> findAllWithSearch(
             @Param("search") String search,

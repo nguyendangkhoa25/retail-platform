@@ -19,6 +19,7 @@ public class UserDTO {
     private Boolean accountNonLocked;
     private Boolean credentialsNonExpired;
     private Boolean accountNonExpired;
+    private String requireAction;
     private Long employeeId;
     private Set<RoleDTO> roles;
     private String notes;

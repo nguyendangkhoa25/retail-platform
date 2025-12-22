@@ -67,10 +67,15 @@ public class AuthService {
             log.warn("User account is inactive: {}", loginRequest.getUsername());
             throw new RuntimeException("User account is inactive");
         }
-
         // Generate access token
         String accessToken = jwtTokenProvider.generateToken(user.getUsername());
         log.info("Access token generated for user: {}", loginRequest.getUsername());
+
+        if (StringUtils.isNotEmpty(user.getRequireAction())) {
+            log.info("User {} requires action: {}", loginRequest.getUsername(), user.getRequireAction());
+            return AuthResponse.requiredAction(user.getUsername(), user.getRequireAction(),
+                    accessToken, jwtTokenProvider.getTokenExpirationMs());
+        }
 
         // Generate refresh token if rememberMe is enabled
         String refreshToken = null;
@@ -130,6 +135,10 @@ public class AuthService {
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
+        if (StringUtils.isNotEmpty(user.getRequireAction())) {
+            throw new RuntimeException("User is required to perform action");
+        }
 
         List<RefreshToken> tokenEntities = refreshTokenRepository.findAllByUserAndActive(user, System.currentTimeMillis());
         if (tokenEntities.isEmpty()) {

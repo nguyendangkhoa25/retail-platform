@@ -44,6 +44,9 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private Boolean accountNonExpired = true;
 
+    @Column(name = "require_action", nullable = false)
+    private String requireAction;
+
     // Many-to-many relationship with Roles
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(

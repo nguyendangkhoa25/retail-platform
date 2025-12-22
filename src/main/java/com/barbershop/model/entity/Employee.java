@@ -28,11 +28,12 @@ public class Employee extends BaseEntity {
     private String phone;
 
     @Email(message = "Email should be valid")
-    @Column(unique = true)
+    @Column
     private String email;
 
-    @Column(length = 50)
-    private String username;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = true)
+    private User user;
 
     @Column(nullable = false)
     private String position;

@@ -3,6 +3,8 @@ package com.barbershop.controller;
 import com.barbershop.model.dto.ApiResponse;
 import com.barbershop.model.dto.CreateUserRequest;
 import com.barbershop.model.dto.UserDTO;
+import com.barbershop.model.dto.PasswordResetResponse;
+import com.barbershop.model.dto.ChangePasswordRequest;
 import com.barbershop.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -175,6 +177,83 @@ public class UserController {
         log.info("Endpoint: DELETE /users/{}/roles/{} - Remove role from user", id, roleName);
         UserDTO updatedUser = userService.removeRoleFromUser(id, roleName);
         return ResponseEntity.ok(ApiResponse.success(updatedUser, "Role removed from user successfully"));
+    }
+
+    /**
+     * POST /api/users/change-password-first-login
+     * Change password on first login (no old password required)
+     * Required: Authentication (user must be logged in with temporary password)
+     * The requiredAction flag will be cleared after successful change
+     *
+     * Request body:
+     * - newPassword: New password (required)
+     * - confirmPassword: Confirm password (optional)
+     *
+     * Response:
+     * Returns updated user information
+     *
+     * Examples:
+     * - POST /api/users/change-password-first-login
+     * {
+     *     "newPassword": "MyNewPassword123",
+     *     "confirmPassword": "MyNewPassword123"
+     * }
+     */
+    @PostMapping("/change-password-first-login")
+    public ResponseEntity<ApiResponse<UserDTO>> changePasswordOnFirstLogin(@RequestBody ChangePasswordRequest request) {
+        log.info("Endpoint: POST /users/change-password-first-login - Change password on first login");
+        UserDTO updatedUser = userService.changePasswordOnFirstLogin(request);
+        return ResponseEntity.ok(ApiResponse.success(updatedUser, "Password changed successfully on first login"));
+    }
+
+    /**
+     * POST /api/users/change-password
+     * Change password (requires old password verification)
+     * Required: Authentication (user must be logged in)
+     *
+     * Request body:
+     * - oldPassword: Current password (required)
+     * - newPassword: New password (required)
+     * - confirmPassword: Confirm password (optional)
+     *
+     * Response:
+     * Returns updated user information
+     *
+     * Examples:
+     * - POST /api/users/change-password
+     * {
+     *     "oldPassword": "CurrentPassword123",
+     *     "newPassword": "MyNewPassword456",
+     *     "confirmPassword": "MyNewPassword456"
+     * }
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<UserDTO>> changePassword(@RequestBody ChangePasswordRequest request) {
+        log.info("Endpoint: POST /users/change-password - Change password with old password verification");
+        UserDTO updatedUser = userService.changePassword(request);
+        return ResponseEntity.ok(ApiResponse.success(updatedUser, "Password changed successfully"));
+    }
+
+    /**
+     * Reset user password with auto-generated default password
+     * Required role: ROLE_ADMIN
+     *
+     * Path parameter:
+     * - id: User ID (required)
+     *
+     * Response:
+     * Returns the newly generated temporary password
+     * Sets requireAction to "CHANGE_PASSWORD"
+     * User must change password on next login
+     *
+     * Examples:
+     * - POST /api/users/1/reset-password
+     */
+    @PostMapping("/{id}/reset-password")
+    public ResponseEntity<ApiResponse<PasswordResetResponse>> resetUserPassword(@PathVariable Long id) {
+        log.info("Endpoint: POST /users/{}/reset-password - Reset user password", id);
+        PasswordResetResponse response = userService.resetUserPassword(id);
+        return ResponseEntity.ok(ApiResponse.success(response, "User password reset successfully. User must change password on next login"));
     }
 }
 
