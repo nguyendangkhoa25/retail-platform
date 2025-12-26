@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "order_items")
@@ -19,6 +20,9 @@ public class OrderItem extends BaseEntity {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
+
+    @Column(name = "product_id")
+    private Long productId;
 
     @NotBlank(message = "Service/Product name is required")
     @Column(nullable = false)
@@ -34,6 +38,29 @@ public class OrderItem extends BaseEntity {
 
     @Column(name = "total_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalPrice;
+
+    @Column(name = "tax_percentage", precision = 5, scale = 2, columnDefinition = "DECIMAL(5,2) DEFAULT 0")
+    private BigDecimal taxPercentage = BigDecimal.ZERO;
+
+    @Column(name = "tax_amount", precision = 10, scale = 2)
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private ItemStatus status = ItemStatus.READY;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "assigned_employee_id")
+    private Employee assignedEmployee;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
+    public enum ItemStatus {
+        READY,
+        IN_PROGRESS,
+        COMPLETED
+    }
 
     @PrePersist
     @PreUpdate

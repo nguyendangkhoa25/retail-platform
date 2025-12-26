@@ -54,9 +54,6 @@ public class InvoiceService {
                 .build();
 
         Invoice saved = invoiceRepository.save(invoice);
-        order.setInvoice(invoice);
-        orderRepository.save(order);
-
         return mapToDTO(saved);
     }
 

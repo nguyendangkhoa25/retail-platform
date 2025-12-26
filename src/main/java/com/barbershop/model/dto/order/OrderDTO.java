@@ -19,6 +19,9 @@ public class OrderDTO {
     private String assignedEmployeeName;
     private String status;
     private BigDecimal totalAmount;
+    private BigDecimal discountAmount;
+    private BigDecimal taxPercentage;
+    private BigDecimal taxAmount;
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;

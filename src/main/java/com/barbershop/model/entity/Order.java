@@ -32,6 +32,15 @@ public class Order extends BaseEntity {
     @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "discount_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
+    @Column(name = "tax_percentage", precision = 5, scale = 2, columnDefinition = "DECIMAL(5,2) DEFAULT 0")
+    private BigDecimal taxPercentage = BigDecimal.ZERO;
+
+    @Column(name = "tax_amount", precision = 10, scale = 2)
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
     @Column(length = 500)
     private String notes;
 
@@ -40,9 +49,6 @@ public class Order extends BaseEntity {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> orderItems = new ArrayList<>();
-
-    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL)
-    private Invoice invoice;
 
     public enum OrderStatus {
         PENDING,

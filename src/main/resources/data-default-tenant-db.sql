@@ -1,3 +1,7 @@
+-- Insert default "Khách lẻ" (Walk-in) customer
+INSERT IGNORE INTO customers (id, name, phone, email, notes, zalo_id, facebook_id, preferred_services, allergies_or_sensitivities, hair_type, special_requests, deleted)
+VALUES (68202600001, 'Khách lẻ', '0000000000', NULL, 'Khách hàng lẻ - không có thông tin liên hệ', NULL, NULL, NULL, NULL, NULL, NULL, FALSE);
+
 INSERT INTO products (name, description, price_before_tax, tax, price, duration_minutes, commission_rate, quantity, active, product_as_service)
 VALUES('Cắt tóc nam 50k', '', 50000.00, 0.00, 50000.00, 0, 0.00, 0, 1, 1),
 ('Cắt tóc nam 60k', '', 60000.00, 0.00, 60000.00, 0, 0.00, 0, 1, 1),

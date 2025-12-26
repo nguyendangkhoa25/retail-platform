@@ -9,12 +9,10 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class CreateOrderItemRequest {
-    private Long productId;
-    private String productName;
+public class UpdateOrderItemRequest {
     private Integer quantity;
     private BigDecimal unitPrice;
-    private BigDecimal totalPrice;
-    private BigDecimal taxAmount;
+    private String status;
     private Long assignedEmployeeId;
 }
+
