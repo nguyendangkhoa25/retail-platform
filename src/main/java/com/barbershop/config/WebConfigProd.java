@@ -9,16 +9,16 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-@Profile("dev")
+@Profile("prod")
 @RequiredArgsConstructor
-public class WebConfig implements WebMvcConfigurer {
+public class WebConfigProd implements WebMvcConfigurer {
 
     private final TenantInterceptor tenantInterceptor;
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOriginPatterns("*")
+                .allowedOrigins("https://yourdomain.com", "https://www.yourdomain.com")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)
