@@ -67,6 +67,10 @@ CREATE TABLE IF NOT EXISTS customers (
     INDEX idx_deleted_at (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=68202600001;
 
+-- Insert default customer if not exists
+INSERT INTO customers (id,name,phone,email,notes,zalo_id,allergies_or_sensitivities,deleted)
+VALUES (100202600000,'Khách lẻ','0000.000.000','khach_le@email.com','Khách lẻ, Sử dụng khi không cần tạo thông tin khách hàng','0000.000.000','Không',0);
+
 --- shop_info definition
 CREATE TABLE `shop_info` (
                              `id` bigint NOT NULL AUTO_INCREMENT,

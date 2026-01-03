@@ -10,6 +10,7 @@ import com.barbershop.repository.RoleRepository;
 import com.barbershop.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -47,7 +48,7 @@ public class UserService {
         }
 
         // Check if email already exists
-        if (request.getEmail() != null && userRepository.existsByEmail(request.getEmail())) {
+        if (StringUtils.isNoneEmpty(request.getEmail()) && userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("Email already exists: " + request.getEmail());
         }
 
@@ -205,6 +206,14 @@ public class UserService {
         log.info("Deleting user: {}", id);
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+
+        // Remove user from associated employee if exists
+        employeeRepository.findByUserId(id).ifPresent(employee -> {
+            employee.setUser(null);
+            employeeRepository.save(employee);
+            log.info("Removed user from employee: {}", employee.getId());
+        });
+
         user.setDeleted(true);
         userRepository.save(user);
         log.info("User deleted: {}", user.getUsername());
