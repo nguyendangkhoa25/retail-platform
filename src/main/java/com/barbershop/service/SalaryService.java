@@ -1,14 +1,17 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.BadRequestException;
+import com.barbershop.exception.DuplicateResourceException;
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.salary.*;
-import com.barbershop.model.entity.Order;
-import com.barbershop.model.entity.Salary;
 import com.barbershop.model.entity.Employee;
+import com.barbershop.model.entity.Order;
 import com.barbershop.model.entity.OrderItem;
-import com.barbershop.repository.SalaryRepository;
+import com.barbershop.model.entity.Salary;
 import com.barbershop.repository.EmployeeRepository;
-import com.barbershop.repository.OrderRepository;
 import com.barbershop.repository.OrderItemRepository;
+import com.barbershop.repository.OrderRepository;
+import com.barbershop.repository.SalaryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -63,20 +66,20 @@ public class SalaryService {
 
         // Validate month and year
         if (request.getMonth() < 1 || request.getMonth() > 12) {
-            throw new IllegalArgumentException("Month must be between 1 and 12");
+            throw new BadRequestException("Month must be between 1 and 12");
         }
         if (request.getYear() < 2000 || request.getYear() > 2100) {
-            throw new IllegalArgumentException("Year must be between 2000 and 2100");
+            throw new BadRequestException("Year must be between 2000 and 2100");
         }
 
         // Check if salary already exists
         if (salaryRepository.existsByEmployeeAndMonthAndYear(request.getEmployeeId(), request.getMonth(), request.getYear())) {
-            throw new IllegalArgumentException("Salary already exists for this employee in this month");
+            throw new DuplicateResourceException("Salary already exists for this employee in this month");
         }
 
         // Get employee
         Employee employee = employeeRepository.findById(request.getEmployeeId())
-                .orElseThrow(() -> new RuntimeException("Employee not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with id: " + request.getEmployeeId()));
 
         // Use netSalary from UI request instead of recalculating
         BigDecimal netSalary = request.getNetSalary() != null ? request.getNetSalary() : BigDecimal.ZERO;
@@ -121,7 +124,7 @@ public class SalaryService {
         log.info("Updating salary with id: {}", salaryId);
 
         Salary salary = salaryRepository.findById(salaryId)
-                .orElseThrow(() -> new RuntimeException("Salary not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Salary not found with id: " + salaryId));
 
         if (request.getNetSalary() != null) {
             salary.setNetSalary(request.getNetSalary());
@@ -165,7 +168,7 @@ public class SalaryService {
         log.info("Fetching salary with id: {}", salaryId);
 
         Salary salary = salaryRepository.findById(salaryId)
-                .orElseThrow(() -> new RuntimeException("Salary not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Salary not found with id: " + salaryId));
 
         return mapToDTO(salary);
     }
@@ -219,7 +222,7 @@ public class SalaryService {
         log.info("Fetching detailed salary information for id: {}", salaryId);
 
         Salary salary = salaryRepository.findById(salaryId)
-                .orElseThrow(() -> new RuntimeException("Salary not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Salary not found with id: " + salaryId));
 
         Employee employee = salary.getEmployee();
         List<Order> completedOrders = orderRepository.findCompletedOrdersByEmployee(employee.getId());
@@ -272,7 +275,7 @@ public class SalaryService {
         log.info("Deleting salary with id: {}", salaryId);
 
         Salary salary = salaryRepository.findById(salaryId)
-                .orElseThrow(() -> new RuntimeException("Salary not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Salary not found with id: " + salaryId));
 
         // Get all order items included in this salary before deleting
         List<OrderItem> itemsInSalary = orderItemRepository.findItemsBySalaryId(salaryId);
@@ -402,9 +405,10 @@ public class SalaryService {
 
     /**
      * Get order items for an employee with optional filtering by calculated status
-     * @param employeeId Employee ID
+     *
+     * @param employeeId       Employee ID
      * @param salaryCalculated true for calculated items, false for uncalculated items
-     * @param pageable Pagination info
+     * @param pageable         Pagination info
      * @return Page of OrderItemEarningDTO
      */
     public Page<OrderItemEarningDTO> getOrderItemsByEmployeeAndCalculatedStatus(
@@ -459,7 +463,7 @@ public class SalaryService {
         log.info("Approving salary with id: {}", salaryId);
 
         Salary salary = salaryRepository.findById(salaryId)
-                .orElseThrow(() -> new RuntimeException("Salary not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Salary not found with id: " + salaryId));
 
         salary.setStatus(Salary.SalaryStatus.APPROVED);
         salary.setApprovedAt(java.time.LocalDateTime.now());
@@ -477,11 +481,11 @@ public class SalaryService {
         log.info("Rejecting salary with id: {} - Reason: {}", salaryId, reason);
 
         Salary salary = salaryRepository.findById(salaryId)
-                .orElseThrow(() -> new RuntimeException("Salary not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Salary not found with id: " + salaryId));
 
         salary.setStatus(Salary.SalaryStatus.REJECTED);
         salary.setNotes((salary.getNotes() != null ? salary.getNotes() + "\n" : "") +
-                        "Rejected: " + (reason != null ? reason : "No reason provided"));
+                "Rejected: " + (reason != null ? reason : "No reason provided"));
 
         Salary savedSalary = salaryRepository.save(salary);
         log.info("Salary rejected successfully");

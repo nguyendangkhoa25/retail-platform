@@ -1,12 +1,13 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.BadRequestException;
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.promotion.CreatePromotionRequest;
 import com.barbershop.model.dto.promotion.PromotionDTO;
 import com.barbershop.model.entity.Product;
 import com.barbershop.model.entity.Promotion;
 import com.barbershop.model.entity.PromotionProduct;
 import com.barbershop.repository.ProductRepository;
-import com.barbershop.repository.PromotionProductRepository;
 import com.barbershop.repository.PromotionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +29,6 @@ import java.util.stream.Collectors;
 public class PromotionService {
 
     private final PromotionRepository promotionRepository;
-    private final PromotionProductRepository promotionProductRepository;
     private final ProductRepository productRepository;
 
     @Transactional(readOnly = true)
@@ -40,7 +40,7 @@ public class PromotionService {
     @Transactional(readOnly = true)
     public PromotionDTO getPromotionById(Long id) {
         Promotion promotion = promotionRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Promotion not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Promotion not found with id: " + id));
         return mapToDTO(promotion);
     }
 
@@ -84,10 +84,10 @@ public class PromotionService {
         if (request.getProducts() != null && !request.getProducts().isEmpty()) {
             for (CreatePromotionRequest.PromotionProductRequest productRequest : request.getProducts()) {
                 Product product = productRepository.findById(productRequest.getProductId())
-                        .orElseThrow(() -> new RuntimeException("Product not found with id: " + productRequest.getProductId()));
+                        .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productRequest.getProductId()));
 
                 if (!product.getActive()) {
-                    throw new RuntimeException("Product is not active with id: " + productRequest.getProductId());
+                    throw new BadRequestException("Product is not active with id: " + productRequest.getProductId());
                 }
 
                 PromotionProduct promotionProduct = PromotionProduct.builder()
@@ -110,7 +110,7 @@ public class PromotionService {
         log.info("Updating promotion: {}", id);
 
         Promotion promotion = promotionRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Promotion not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Promotion not found with id: " + id));
 
         promotion.setName(request.getName());
         promotion.setDescription(request.getDescription());
@@ -129,10 +129,10 @@ public class PromotionService {
         if (request.getProducts() != null && !request.getProducts().isEmpty()) {
             for (CreatePromotionRequest.PromotionProductRequest productRequest : request.getProducts()) {
                 Product product = productRepository.findById(productRequest.getProductId())
-                        .orElseThrow(() -> new RuntimeException("Product not found with id: " + productRequest.getProductId()));
+                        .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productRequest.getProductId()));
 
                 if (!product.getActive()) {
-                    throw new RuntimeException("Product is not active with id: " + productRequest.getProductId());
+                    throw new BadRequestException("Product is not active with id: " + productRequest.getProductId());
                 }
 
                 PromotionProduct promotionProduct = PromotionProduct.builder()
@@ -154,7 +154,7 @@ public class PromotionService {
     public void deletePromotion(Long id) {
         log.info("Deleting promotion: {}", id);
         Promotion promotion = promotionRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Promotion not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Promotion not found with id: " + id));
 
         promotion.setDeletedAt(LocalDateTime.now());
         promotionRepository.save(promotion);

@@ -1,6 +1,9 @@
 package com.barbershop.service;
 
 import com.barbershop.config.JwtTokenProvider;
+import com.barbershop.exception.UnauthorizedException;
+import com.barbershop.exception.ResourceNotFoundException;
+import com.barbershop.exception.BadRequestException;
 import com.barbershop.model.dto.auth.AuthResponse;
 import com.barbershop.model.dto.auth.LoginRequest;
 import com.barbershop.model.dto.auth.UserDTO;
@@ -58,18 +61,18 @@ public class AuthService {
         User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElseThrow(() -> {
                     log.error("User not found: {}", loginRequest.getUsername());
-                    return new RuntimeException("Invalid username or password");
+                    return new UnauthorizedException("Invalid username or password");
                 });
 
         // Verify password
         if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
             log.warn("Invalid password for user: {}", loginRequest.getUsername());
-            throw new RuntimeException("Invalid username or password");
+            throw new UnauthorizedException("Invalid username or password");
         }
 
         if (!user.getActive()) {
             log.warn("User account is inactive: {}", loginRequest.getUsername());
-            throw new RuntimeException("User account is inactive");
+            throw new UnauthorizedException("User account is inactive");
         }
         // Generate access token
         String accessToken = jwtTokenProvider.generateToken(user.getUsername());
@@ -147,22 +150,22 @@ public class AuthService {
         log.info("Refreshing access token for user: {}", username);
 
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
 
         if (StringUtils.isNotEmpty(user.getRequireAction())) {
-            throw new RuntimeException("User is required to perform action");
+            throw new BadRequestException("User is required to perform action");
         }
 
         List<RefreshToken> tokenEntities = refreshTokenRepository.findAllByUserAndActive(user, System.currentTimeMillis());
         if (tokenEntities.isEmpty()) {
-            throw new RuntimeException("Refresh token is invalid or expired");
+            throw new UnauthorizedException("Refresh token is invalid or expired");
         }
 
         // Check if token is expired
         tokenEntities.stream()
                 .filter(rt -> passwordEncoder.matches(refreshToken, rt.getToken()))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Refresh token is invalid or expired"));
+                .orElseThrow(() -> new UnauthorizedException("Refresh token is invalid or expired"));
 
         // Generate new access token
         String accessToken = jwtTokenProvider.generateToken(username);

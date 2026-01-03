@@ -1,5 +1,8 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.BadRequestException;
+import com.barbershop.exception.ResourceNotFoundException;
+import com.barbershop.exception.UnauthorizedException;
 import com.barbershop.model.dto.*;
 import com.barbershop.model.entity.Employee;
 import com.barbershop.model.entity.Role;
@@ -111,7 +114,7 @@ public class UserService {
     public UserDTO getUserById(Long id) {
         log.info("Fetching user by id: {}", id);
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
         return mapToDTO(user);
     }
 
@@ -121,7 +124,7 @@ public class UserService {
     public UserDTO getUserByUsername(String username) {
         log.info("Fetching user by username: {}", username);
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new NoSuchElementException("User not found: " + username));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
         return mapToDTO(user);
     }
 
@@ -376,13 +379,13 @@ public class UserService {
 
         if (username == null || "anonymousUser".equals(username)) {
             log.error("No authenticated user found for password change");
-            throw new IllegalStateException("User must be authenticated to change password");
+            throw new UnauthorizedException("User must be authenticated to change password");
         }
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.error("User not found for password change - username: {}", username);
-                    return new NoSuchElementException("User not found: " + username);
+                    return new ResourceNotFoundException("User not found: " + username);
                 });
 
         // Update password and clear requireAction flag
@@ -411,24 +414,24 @@ public class UserService {
 
         if (username == null || "anonymousUser".equals(username)) {
             log.error("No authenticated user found for password change");
-            throw new IllegalStateException("User must be authenticated to change password");
+            throw new UnauthorizedException("User must be authenticated to change password");
         }
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.error("User not found for password change - username: {}", username);
-                    return new NoSuchElementException("User not found: " + username);
+                    return new ResourceNotFoundException("User not found: " + username);
                 });
 
         // Verify old password
         if (request.getOldPassword() == null || request.getOldPassword().isEmpty()) {
             log.warn("Old password not provided for password change - username: {}", username);
-            throw new IllegalArgumentException("Old password is required");
+            throw new BadRequestException("Old password is required");
         }
 
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
             log.warn("Old password verification failed - username: {}", username);
-            throw new IllegalArgumentException("Old password is incorrect");
+            throw new BadRequestException("Old password is incorrect");
         }
 
         // Update password
