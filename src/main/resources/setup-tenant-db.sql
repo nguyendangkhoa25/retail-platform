@@ -309,4 +309,45 @@ CREATE TABLE IF NOT EXISTS api_audit_log (
     INDEX idx_trace_id (trace_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 
+-- Create promotions table
+CREATE TABLE IF NOT EXISTS promotions (
+                                          id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                          name VARCHAR(255) NOT NULL,
+    description VARCHAR(1000),
+    promotion_type VARCHAR(50) NOT NULL,
+    discount_type VARCHAR(50) NOT NULL,
+    discount_value DECIMAL(10, 2),
+    discount_percentage DECIMAL(5, 2),
+    start_date DATETIME,
+    end_date DATETIME,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    min_purchase_amount DECIMAL(10, 2),
+    max_discount_amount DECIMAL(10, 2),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at DATETIME,
+    INDEX idx_promotion_type (promotion_type),
+    INDEX idx_is_active (is_active),
+    INDEX idx_dates (start_date, end_date),
+    INDEX idx_deleted (deleted),
+    INDEX idx_deleted_at (deleted_at)
+    )ENGINE=InnoDB AUTO_INCREMENT=7620260101 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Create promotion_products table (for combo promotions)
+CREATE TABLE IF NOT EXISTS promotion_products (
+                                                  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                                  promotion_id BIGINT NOT NULL,
+                                                  product_id BIGINT NOT NULL,
+                                                  quantity INT,
+                                                  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                                  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                                  deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                                                  deleted_at DATETIME,
+                                                  FOREIGN KEY (promotion_id) REFERENCES promotions(id),
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    INDEX idx_promotion_id (promotion_id),
+    INDEX idx_product_id (product_id),
+    INDEX idx_deleted (deleted),
+    INDEX idx_deleted_at (deleted_at)
+    )ENGINE=InnoDB AUTO_INCREMENT=8820260102 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
