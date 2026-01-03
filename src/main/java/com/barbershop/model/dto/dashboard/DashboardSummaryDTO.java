@@ -28,6 +28,7 @@ public class DashboardSummaryDTO {
     private BigDecimal yearlyRevenue;
     private List<RecentOrderDTO> recentOrders;
     private List<TopEmployeeDTO> topEmployees;
+    private List<TopCustomerDTO> topCustomers;
 
     @Data
     @Builder
@@ -51,6 +52,18 @@ public class DashboardSummaryDTO {
         private String name;
         private Long orderCount;
         private BigDecimal revenue;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TopCustomerDTO {
+        private Long id;
+        private String name;
+        private String phone;
+        private Long orderCount;
+        private BigDecimal totalSpent;
     }
 }
 

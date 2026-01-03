@@ -1,7 +1,6 @@
 package com.barbershop.service;
 
 import com.barbershop.model.dto.dashboard.DashboardSummaryDTO;
-import com.barbershop.model.entity.Customer;
 import com.barbershop.model.entity.Employee;
 import com.barbershop.model.entity.Order;
 import com.barbershop.repository.CustomerRepository;
@@ -40,54 +39,50 @@ public class DashboardService {
     public DashboardSummaryDTO getDashboardSummary() {
         log.info("Generating dashboard summary");
 
-        // Get all active entities using pagination to get all results
-        PageRequest allRecordsPageable = PageRequest.of(0, 10000);
-        List<Order> allOrders = orderRepository.findAllActive(allRecordsPageable).getContent();
-        List<Employee> allEmployees = employeeRepository.findAllActive(allRecordsPageable).getContent();
-        List<Customer> allCustomers = customerRepository.findAllActive(allRecordsPageable).getContent();
+        // Use count queries for better performance - no need to load all records
+        long totalOrders = orderRepository.countAllActive();
+        long totalEmployees = employeeRepository.countAllActive();
+        long activeEmployees = employeeRepository.countByStatus(Employee.EmployeeStatus.ACTIVE);
+        long inactiveEmployees = totalEmployees - activeEmployees;
+        long totalCustomers = customerRepository.countAllActive();
 
-        // Count active and inactive employees
-        long activeEmployees = allEmployees.stream()
-                .filter(emp -> emp.getStatus() == Employee.EmployeeStatus.ACTIVE)
-                .count();
-        long inactiveEmployees = allEmployees.size() - activeEmployees;
+        // Count orders by status efficiently
+        long completedOrdersCount = orderRepository.countByStatus(Order.OrderStatus.COMPLETED);
+        long pendingOrders = orderRepository.countByStatus(Order.OrderStatus.PENDING)
+                           + orderRepository.countByStatus(Order.OrderStatus.IN_PROGRESS);
 
-        // Calculate completed orders
-        List<Order> completedOrders = allOrders.stream()
-                .filter(order -> order.getStatus() == Order.OrderStatus.COMPLETED)
-                .toList();
-
-        // Calculate total revenue
-        BigDecimal totalRevenue = completedOrders.stream()
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Calculate total revenue from completed orders only
+        BigDecimal totalRevenue = orderRepository.sumTotalAmountByStatus(Order.OrderStatus.COMPLETED);
+        if (totalRevenue == null) {
+            totalRevenue = BigDecimal.ZERO;
+        }
 
         // Calculate monthly revenue (current month)
         YearMonth currentMonth = YearMonth.now();
         LocalDateTime startOfMonth = currentMonth.atDay(1).atStartOfDay();
         LocalDateTime endOfMonth = currentMonth.atEndOfMonth().atTime(23, 59, 59);
-
-        BigDecimal monthlyRevenue = completedOrders.stream()
-                .filter(order -> order.getCompletedAt() != null)
-                .filter(order -> {
-                    LocalDateTime completedAt = order.getCompletedAt();
-                    return !completedAt.isBefore(startOfMonth) && !completedAt.isAfter(endOfMonth);
-                })
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal monthlyRevenue = orderRepository.sumTotalAmountByStatusAndDateRange(
+                Order.OrderStatus.COMPLETED, startOfMonth, endOfMonth);
+        if (monthlyRevenue == null) {
+            monthlyRevenue = BigDecimal.ZERO;
+        }
 
         // Calculate yearly revenue (current year)
         int currentYear = LocalDateTime.now().getYear();
-        BigDecimal yearlyRevenue = completedOrders.stream()
-                .filter(order -> order.getCompletedAt() != null)
-                .filter(order -> order.getCompletedAt().getYear() == currentYear)
-                .map(Order::getTotalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        LocalDateTime startOfYear = LocalDateTime.of(currentYear, 1, 1, 0, 0, 0);
+        LocalDateTime endOfYear = LocalDateTime.of(currentYear, 12, 31, 23, 59, 59);
+        BigDecimal yearlyRevenue = orderRepository.sumTotalAmountByStatusAndDateRange(
+                Order.OrderStatus.COMPLETED, startOfYear, endOfYear);
+        if (yearlyRevenue == null) {
+            yearlyRevenue = BigDecimal.ZERO;
+        }
 
-        // Get recent orders - ALL orders (not just completed) sorted by creation date DESC (last 50 to allow load more in frontend)
-        List<DashboardSummaryDTO.RecentOrderDTO> recentOrders = allOrders.stream()
-                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
-                .limit(50)
+        // Get recent 50 orders - fetch only what we need
+        PageRequest recentOrdersPage = PageRequest.of(0, 50,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+        List<Order> recentOrdersList = orderRepository.findAllActive(recentOrdersPage).getContent();
+
+        List<DashboardSummaryDTO.RecentOrderDTO> recentOrders = recentOrdersList.stream()
                 .map(order -> {
                     // Get assigned employee from first order item
                     String employeeName = order.getOrderItems().stream()
@@ -108,9 +103,13 @@ public class DashboardService {
                 .collect(Collectors.toList());
 
         // Calculate top employees based on completed order items
-        Map<Long, DashboardSummaryDTO.TopEmployeeDTO> employeeStats = new HashMap<>();
+        // Fetch only completed orders for this calculation
+        PageRequest completedOrdersPage = PageRequest.of(0, 1000);
+        List<Order> completedOrders = orderRepository.findByStatusActive(
+                Order.OrderStatus.COMPLETED, completedOrdersPage).getContent();
 
-        log.debug("Completed orders count: {}", completedOrders.size());
+        Map<Long, DashboardSummaryDTO.TopEmployeeDTO> employeeStats = new HashMap<>();
+        log.debug("Completed orders count for top employees: {}", completedOrders.size());
 
         // Iterate through completed orders and their items
         completedOrders.forEach(order -> {
@@ -141,25 +140,49 @@ public class DashboardService {
 
         log.info("Top employees count: {}", topEmployees.size());
 
-        // Count pending and in-progress orders (not completed or cancelled)
-        long pendingOrders = allOrders.stream()
-                .filter(order -> order.getStatus() == Order.OrderStatus.PENDING ||
-                                 order.getStatus() == Order.OrderStatus.IN_PROGRESS)
-                .count();
+        // Calculate top customers based on completed orders
+        Map<Long, DashboardSummaryDTO.TopCustomerDTO> customerStats = new HashMap<>();
+        log.debug("Calculating top customers from completed orders");
+
+        completedOrders.forEach(order -> {
+            if (order.getCustomer() != null) {
+                Long customerId = order.getCustomer().getId();
+                DashboardSummaryDTO.TopCustomerDTO stats = customerStats.getOrDefault(customerId,
+                        DashboardSummaryDTO.TopCustomerDTO.builder()
+                                .id(customerId)
+                                .name(order.getCustomer().getName())
+                                .phone(order.getCustomer().getPhone())
+                                .orderCount(0L)
+                                .totalSpent(BigDecimal.ZERO)
+                                .build());
+
+                stats.setOrderCount(stats.getOrderCount() + 1);
+                stats.setTotalSpent(stats.getTotalSpent().add(order.getTotalAmount()));
+                customerStats.put(customerId, stats);
+            }
+        });
+
+        List<DashboardSummaryDTO.TopCustomerDTO> topCustomers = customerStats.values().stream()
+                .sorted((a, b) -> b.getTotalSpent().compareTo(a.getTotalSpent()))
+                .limit(5)
+                .collect(Collectors.toList());
+
+        log.info("Top customers count: {}", topCustomers.size());
 
         return DashboardSummaryDTO.builder()
-                .totalOrders((long) allOrders.size())
-                .completedOrders((long) completedOrders.size())
+                .totalOrders(totalOrders)
+                .completedOrders(completedOrdersCount)
                 .pendingOrders(pendingOrders)
-                .totalEmployees((long) allEmployees.size())
+                .totalEmployees(totalEmployees)
                 .activeEmployees(activeEmployees)
                 .inactiveEmployees(inactiveEmployees)
-                .totalCustomers((long) allCustomers.size())
+                .totalCustomers(totalCustomers)
                 .totalRevenue(totalRevenue)
                 .monthlyRevenue(monthlyRevenue)
                 .yearlyRevenue(yearlyRevenue)
                 .recentOrders(recentOrders)
                 .topEmployees(topEmployees)
+                .topCustomers(topCustomers)
                 .build();
     }
 }

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
@@ -47,5 +48,21 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND " +
            "YEAR(o.completedAt) = :year AND MONTH(o.completedAt) = :month")
     List<Order> findCompletedOrdersByYearAndMonth(@Param("year") Integer year, @Param("month") Integer month);
-}
 
+    // Count queries for dashboard optimization
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false")
+    long countAllActive();
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = :status")
+    long countByStatus(@Param("status") Order.OrderStatus status);
+
+    // Sum queries for revenue calculation
+    @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.deleted = false AND o.status = :status")
+    BigDecimal sumTotalAmountByStatus(@Param("status") Order.OrderStatus status);
+
+    @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.deleted = false AND o.status = :status " +
+           "AND o.completedAt >= :startDate AND o.completedAt <= :endDate")
+    BigDecimal sumTotalAmountByStatusAndDateRange(@Param("status") Order.OrderStatus status,
+                                                   @Param("startDate") LocalDateTime startDate,
+                                                   @Param("endDate") LocalDateTime endDate);
+}

@@ -39,5 +39,11 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
            "(LOWER(e.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(e.phone) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<Employee> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
-}
 
+    // Count queries for dashboard optimization
+    @Query("SELECT COUNT(e) FROM Employee e WHERE e.deleted = false")
+    long countAllActive();
+
+    @Query("SELECT COUNT(e) FROM Employee e WHERE e.deleted = false AND e.status = :status")
+    long countByStatus(@Param("status") Employee.EmployeeStatus status);
+}
