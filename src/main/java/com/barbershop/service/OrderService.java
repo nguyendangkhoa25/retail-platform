@@ -1,5 +1,7 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.BadRequestException;
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.customer.CreateCustomerRequest;
 import com.barbershop.model.dto.customer.CustomerDTO;
 import com.barbershop.model.dto.order.*;
@@ -33,6 +35,7 @@ public class OrderService {
     private final EmployeeRepository employeeRepository;
     private final CustomerRepository customerRepository;
     private final CustomerService customerService;
+    private final MessageService messageService;
 
     @Transactional
     public OrderDTO createOrder(CreateOrderRequest request) {
@@ -91,18 +94,25 @@ public class OrderService {
 
     public OrderDTO getOrderById(Long id) {
         Order order = orderRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         return mapToDTO(order);
     }
 
     public OrderDTO updateOrder(Long id, UpdateOrderRequest request) {
         log.info("Updating order ID {} with request: {}", id, request);
         Order order = orderRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Check if order can be modified (not completed or cancelled)
         if (order.getStatus() == Order.OrderStatus.COMPLETED || order.getStatus() == Order.OrderStatus.CANCELLED) {
-            throw new RuntimeException("Cannot modify a completed or cancelled order");
+            String errorMessage = messageService.getMessage("error.order.cannot.modify");
+            throw new BadRequestException(errorMessage);
         }
 
 
@@ -131,19 +141,29 @@ public class OrderService {
     public OrderDTO assignItemToEmployee(Long orderId, Long itemId, Long employeeId) {
         log.info("Assigning item ID {} of order ID {} to employee ID {}", itemId, orderId, employeeId);
         Order order = orderRepository.findByIdActive(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", orderId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         Employee employee = employeeRepository.findByIdActive(employeeId)
-                .orElseThrow(() -> new RuntimeException("Employee not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.employee.not.found", employeeId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         OrderItem item = order.getOrderItems().stream()
                 .filter(oi -> oi.getId().equals(itemId))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Order item not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.item.not.found", itemId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Check if item can be reassigned (not completed)
         if (item.getStatus() == OrderItem.ItemStatus.COMPLETED) {
-            throw new RuntimeException("Cannot reassign a completed item");
+            String errorMessage = messageService.getMessage("error.order.item.cannot.reassign");
+            throw new BadRequestException(errorMessage);
         }
 
         item.setAssignedEmployee(employee);
@@ -155,12 +175,18 @@ public class OrderService {
     public OrderDTO updateItemStatus(Long orderId, Long itemId, String status) {
         log.info("Updating status of item ID {} in order ID {} to {}", itemId, orderId, status);
         Order order = orderRepository.findByIdActive(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", orderId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         OrderItem item = order.getOrderItems().stream()
                 .filter(oi -> oi.getId().equals(itemId))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Order item not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.item.not.found", itemId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         OrderItem.ItemStatus newStatus = OrderItem.ItemStatus.valueOf(status);
         item.setStatus(newStatus);
@@ -176,7 +202,10 @@ public class OrderService {
     public BillPreviewDTO getBillPreview(Long orderId) {
         log.info("Generating bill preview for order ID {}", orderId);
         Order order = orderRepository.findByIdActive(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", orderId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<BillPreviewDTO.BillItemDTO> billItems = new java.util.ArrayList<>();
@@ -211,11 +240,15 @@ public class OrderService {
     public OrderDTO startOrder(Long orderId) {
         log.info("Starting order ID {}", orderId);
         Order order = orderRepository.findByIdActive(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", orderId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Check if order is in PENDING status
         if (order.getStatus() != Order.OrderStatus.PENDING) {
-            throw new RuntimeException("Only pending orders can be started. Current status: " + order.getStatus());
+            String errorMessage = messageService.getMessage("error.order.invalid.status.for.start", order.getStatus());
+            throw new BadRequestException(errorMessage);
         }
 
         // Change status to IN_PROGRESS
@@ -228,7 +261,10 @@ public class OrderService {
     public OrderDTO completeOrder(Long orderId) {
         log.info("Completing order ID {}", orderId);
         Order order = orderRepository.findByIdActive(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", orderId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         order.complete();
 
@@ -252,7 +288,10 @@ public class OrderService {
 
     public void deleteOrder(Long id) {
         Order order = orderRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         order.softDelete();
         orderRepository.save(order);
     }
@@ -260,10 +299,14 @@ public class OrderService {
     public OrderDTO cancelOrder(Long id, String reason) {
         log.info("Cancelling order ID {} for reason: {}", id, reason);
         Order order = orderRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         if (order.getStatus() == Order.OrderStatus.COMPLETED) {
-            throw new RuntimeException("Cannot cancel a completed order");
+            String errorMessage = messageService.getMessage("error.order.cannot.cancel.completed");
+            throw new BadRequestException(errorMessage);
         }
 
         order.setStatus(Order.OrderStatus.CANCELLED);
@@ -336,20 +379,28 @@ public class OrderService {
 
         // Find the order item directly
         OrderItem item = orderItemRepository.findByIdWithOrder(itemId)
-                .orElseThrow(() -> new RuntimeException("Order item not found with id: " + itemId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.item.not.found", itemId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Verify item is available (PENDING status and no assigned employee)
         if (item.getStatus() != OrderItem.ItemStatus.PENDING) {
-            throw new RuntimeException("Item is not available for pickup. Current status: " + item.getStatus());
+            String errorMessage = messageService.getMessage("error.order.item.not.available", item.getStatus());
+            throw new BadRequestException(errorMessage);
         }
 
         if (item.getAssignedEmployee() != null) {
-            throw new RuntimeException("Item is already assigned to employee: " + item.getAssignedEmployee().getName());
+            String errorMessage = messageService.getMessage("error.order.item.already.assigned", item.getAssignedEmployee().getName());
+            throw new BadRequestException(errorMessage);
         }
 
         // Assign employee and change status to IN_PROGRESS
         Employee employee = employeeRepository.findByIdActive(employeeId)
-                .orElseThrow(() -> new RuntimeException("Employee not found with id: " + employeeId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.employee.not.found", employeeId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         item.setAssignedEmployee(employee);
         item.setStatus(OrderItem.ItemStatus.IN_PROGRESS);
@@ -364,11 +415,15 @@ public class OrderService {
 
         // Find the order item directly
         OrderItem item = orderItemRepository.findByIdWithOrder(itemId)
-                .orElseThrow(() -> new RuntimeException("Order item not found with id: " + itemId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.item.not.found", itemId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Verify item is assigned (either PENDING assigned or IN_PROGRESS)
         if (item.getAssignedEmployee() == null) {
-            throw new RuntimeException("Only assigned items can be released");
+            String errorMessage = messageService.getMessage("error.order.item.not.assigned");
+            throw new BadRequestException(errorMessage);
         }
 
         // Release item - remove employee assignment and set status back to PENDING
@@ -385,20 +440,26 @@ public class OrderService {
 
         // Find the order item directly
         OrderItem item = orderItemRepository.findByIdWithOrder(itemId)
-                .orElseThrow(() -> new RuntimeException("Order item not found with id: " + itemId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.item.not.found", itemId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Verify item is assigned to the requesting employee
         if (item.getAssignedEmployee() == null) {
-            throw new RuntimeException("Item is not assigned to any employee");
+            String errorMessage = messageService.getMessage("error.order.item.not.assigned");
+            throw new BadRequestException(errorMessage);
         }
 
         if (!item.getAssignedEmployee().getId().equals(employeeId)) {
-            throw new RuntimeException("Item is not assigned to you");
+            String errorMessage = messageService.getMessage("error.order.item.not.assigned.to.you");
+            throw new BadRequestException(errorMessage);
         }
 
         // Verify item status is PENDING (assigned but not yet started)
         if (item.getStatus() != OrderItem.ItemStatus.PENDING) {
-            throw new RuntimeException("Only pending items can be started. Current status: " + item.getStatus());
+            String errorMessage = messageService.getMessage("error.order.item.invalid.status.for.start", item.getStatus());
+            throw new BadRequestException(errorMessage);
         }
 
         // Change status to IN_PROGRESS
@@ -414,15 +475,20 @@ public class OrderService {
 
         // Find the order item directly
         OrderItem item = orderItemRepository.findByIdWithOrder(itemId)
-                .orElseThrow(() -> new RuntimeException("Order item not found with id: " + itemId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.item.not.found", itemId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Verify item is assigned to the requesting employee
         if (item.getAssignedEmployee() == null) {
-            throw new RuntimeException("Only assigned items can be completed");
+            String errorMessage = messageService.getMessage("error.order.item.cannot.complete.unassigned");
+            throw new BadRequestException(errorMessage);
         }
 
         if (!item.getAssignedEmployee().getId().equals(employeeId)) {
-            throw new RuntimeException("You can only complete items assigned to you");
+            String errorMessage = messageService.getMessage("error.order.item.can.only.complete.own");
+            throw new BadRequestException(errorMessage);
         }
 
         // Mark item as completed
@@ -460,7 +526,10 @@ public class OrderService {
     private Customer getOrCreateCustomer(CreateOrderRequest request) {
         if (request.getCustomerId() != null) {
             return customerRepository.findByIdActive(request.getCustomerId())
-                    .orElseThrow(() -> new RuntimeException("Customer not found"));
+                    .orElseThrow(() -> {
+                        String errorMessage = messageService.getMessage("error.customer.not.found", request.getCustomerId());
+                        return new ResourceNotFoundException(errorMessage);
+                    });
         }
 
         CreateCustomerRequest custRequest = CreateCustomerRequest.builder()
@@ -512,7 +581,10 @@ public class OrderService {
         // Assign employee if provided
         if (itemRequest.getAssignedEmployeeId() != null) {
             Employee employee = employeeRepository.findByIdActive(itemRequest.getAssignedEmployeeId())
-                    .orElseThrow(() -> new RuntimeException("Employee not found with id: " + itemRequest.getAssignedEmployeeId()));
+                    .orElseThrow(() -> {
+                        String errorMessage = messageService.getMessage("error.employee.not.found", itemRequest.getAssignedEmployeeId());
+                        return new ResourceNotFoundException(errorMessage);
+                    });
             builder.assignedEmployee(employee);
         }
 
@@ -575,7 +647,10 @@ public class OrderService {
         // Update assigned employee if provided
         if (itemRequest.getAssignedEmployeeId() != null) {
             Employee employee = employeeRepository.findByIdActive(itemRequest.getAssignedEmployeeId())
-                    .orElseThrow(() -> new RuntimeException("Employee not found with id: " + itemRequest.getAssignedEmployeeId()));
+                    .orElseThrow(() -> {
+                        String errorMessage = messageService.getMessage("error.employee.not.found", itemRequest.getAssignedEmployeeId());
+                        return new ResourceNotFoundException(errorMessage);
+                    });
             item.setAssignedEmployee(employee);
         } else {
             item.setAssignedEmployee(null);

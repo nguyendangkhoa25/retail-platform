@@ -1,5 +1,6 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.employee.CreateEmployeeRequest;
 import com.barbershop.model.dto.employee.EmployeeDTO;
 import com.barbershop.model.dto.employee.EmployeeEarningsDTO;
@@ -29,6 +30,9 @@ public class EmployeeService {
 
     private final EmployeeRepository employeeRepository;
     private final OrderItemRepository orderItemRepository;
+    private final MessageService messageService;
+
+    // ...existing code...
 
     public EmployeeDTO createEmployee(CreateEmployeeRequest request) {
         log.info("Request: Create new employee - name: {}, phone: {}, email: {}, position: {}",
@@ -102,7 +106,8 @@ public class EmployeeService {
         Employee employee = employeeRepository.findByIdActive(id)
                 .orElseThrow(() -> {
                     log.error("Employee not found - id: {}", id);
-                    return new RuntimeException("Employee not found with id: " + id);
+                    String errorMessage = messageService.getMessage("error.employee.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
                 });
         log.info("Retrieved employee - id: {}, name: {}", employee.getId(), employee.getName());
         return mapToDTO(employee);
@@ -113,7 +118,8 @@ public class EmployeeService {
         Employee employee = employeeRepository.findByIdActive(id)
                 .orElseThrow(() -> {
                     log.error("Employee not found for update - id: {}", id);
-                    return new RuntimeException("Employee not found with id: " + id);
+                    String errorMessage = messageService.getMessage("error.employee.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
                 });
 
         if (request.getName() != null) {

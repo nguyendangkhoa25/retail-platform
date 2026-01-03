@@ -57,6 +57,38 @@ public class JwtTokenProvider {
     }
 
     /**
+     * Generate JWT token with roles and master user flag
+     *
+     * @param username the username to encode in token
+     * @param roles list of role names
+     * @param isMasterUser flag indicating if user is from master database
+     * @return JWT token string
+     */
+    public String generateTokenWithRoles(String username, java.util.List<String> roles, boolean isMasterUser) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("roles", roles);
+        claims.put("isMasterUser", isMasterUser);
+        return generateTokenWithClaims(username, claims);
+    }
+
+    /**
+     * Generate JWT token with roles, features and master user flag
+     *
+     * @param username the username to encode in token
+     * @param roles list of role names
+     * @param features list of accessible feature names
+     * @param isMasterUser flag indicating if user is from master database
+     * @return JWT token string
+     */
+    public String generateTokenWithRolesAndFeatures(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("roles", roles);
+        claims.put("features", features);
+        claims.put("isMasterUser", isMasterUser);
+        return generateTokenWithClaims(username, claims);
+    }
+
+    /**
      * Generate JWT token with additional claims
      * Allows passing extra information in the token payload
      *
@@ -114,6 +146,65 @@ public class JwtTokenProvider {
     public String getUsernameFromToken(String token) {
         log.debug("Extracting username from token");
         return getClaimsFromToken(token).getSubject();
+    }
+
+    /**
+     * Extract roles from token claims
+     *
+     * @param token JWT token string
+     * @return list of roles extracted from token, or empty list if not present
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.List<String> getRolesFromToken(String token) {
+        log.debug("Extracting roles from token");
+        Claims claims = getClaimsFromToken(token);
+        Object rolesObj = claims.get("roles");
+        if (rolesObj instanceof java.util.List) {
+            return (java.util.List<String>) rolesObj;
+        }
+        return new java.util.ArrayList<>();
+    }
+
+    /**
+     * Extract features from token claims
+     *
+     * @param token JWT token string
+     * @return list of features extracted from token, or empty list if not present
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.List<String> getFeaturesFromToken(String token) {
+        log.debug("Extracting features from token");
+        Claims claims = getClaimsFromToken(token);
+        Object featuresObj = claims.get("features");
+        if (featuresObj instanceof java.util.List) {
+            return (java.util.List<String>) featuresObj;
+        }
+        return new java.util.ArrayList<>();
+    }
+
+    /**
+     * Extract role from token claims
+     *
+     * @param token JWT token string
+     * @return role extracted from token, or null if not present
+     */
+    public String getRoleFromToken(String token) {
+        log.debug("Extracting role from token");
+        Claims claims = getClaimsFromToken(token);
+        return claims.get("role", String.class);
+    }
+
+    /**
+     * Check if token is for master database user
+     *
+     * @param token JWT token string
+     * @return true if user is from master database, false otherwise
+     */
+    public Boolean isMasterUserFromToken(String token) {
+        log.debug("Checking if token is from master database");
+        Claims claims = getClaimsFromToken(token);
+        Boolean isMasterUser = claims.get("isMasterUser", Boolean.class);
+        return isMasterUser != null ? isMasterUser : false;
     }
 
     /**

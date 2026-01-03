@@ -1,13 +1,17 @@
 package com.barbershop.service;
-
+import com.barbershop.config.AuthContext;
+import com.barbershop.model.dto.CreateTenantRequest;
 import com.barbershop.model.dto.TenantDTO;
+import com.barbershop.model.dto.UpdateTenantRequest;
 import com.barbershop.model.entity.Tenant;
+import com.barbershop.multitenant.DatasourceManager;
 import com.barbershop.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,6 +26,16 @@ import java.util.stream.Collectors;
 public class TenantService {
 
     private final TenantRepository tenantRepository;
+    private final AuthContext authContext;
+    private final DatasourceManager datasourceManager;
+
+    /**
+     * Get current username for audit fields
+     */
+    private String getCurrentUsername() {
+        String username = authContext.getCurrentUsername();
+        return username != null ? username : "system";
+    }
 
     /**
      * Get all active tenants
@@ -31,6 +45,54 @@ public class TenantService {
         log.info("Fetching all active tenants");
         return tenantRepository.findAllByActiveTrue()
                 .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get all tenants (active and inactive) for admin management
+     */
+    public List<TenantDTO> getAllTenants() {
+        log.info("Fetching all tenants");
+        return tenantRepository.findAll()
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get all tenants (active and inactive) with optional search filter
+     * Searches by tenant name, database name, or contact person name
+     */
+    public List<TenantDTO> getAllTenants(String search) {
+        log.info("Fetching all tenants with search: {}", search);
+
+        if (search == null || search.trim().isEmpty()) {
+            return getAllTenants();
+        }
+
+        String searchTerm = search.trim().toLowerCase();
+        return tenantRepository.findAll()
+                .stream()
+                .filter(tenant -> {
+                    // Search in tenant name
+                    if (tenant.getName() != null && tenant.getName().toLowerCase().contains(searchTerm)) {
+                        return true;
+                    }
+                    // Search in database name
+                    if (tenant.getDbName() != null && tenant.getDbName().toLowerCase().contains(searchTerm)) {
+                        return true;
+                    }
+                    // Search in contact person name
+                    if (tenant.getContactPersonName() != null && tenant.getContactPersonName().toLowerCase().contains(searchTerm)) {
+                        return true;
+                    }
+                    // Search in contact person phone
+                    if (tenant.getContactPersonPhone() != null && tenant.getContactPersonPhone().toLowerCase().contains(searchTerm)) {
+                        return true;
+                    }
+                    return false;
+                })
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
@@ -49,25 +111,115 @@ public class TenantService {
     }
 
     /**
-     * Create a new tenant
+     * Create a new tenant with enhanced features
      */
-    public TenantDTO createTenant(String tenantId, String name, String dbUrl, String dbName,
-                                   String dbUsername, String dbPassword) {
-        log.info("Creating new tenant: {}", tenantId);
+    public TenantDTO createTenant(CreateTenantRequest request) {
+        log.info("Creating new tenant: {}", request.getTenantId());
+
+        // Check if tenant already exists
+        if (tenantRepository.findByTenantId(request.getTenantId()).isPresent()) {
+            throw new RuntimeException("Tenant already exists: " + request.getTenantId());
+        }
+
+        String currentUser = getCurrentUsername();
 
         Tenant tenant = Tenant.builder()
-                .tenantId(tenantId)
-                .name(name)
-                .dbUrl(dbUrl)
-                .dbName(dbName)
-                .dbUsername(dbUsername)
-                .dbPassword(dbPassword)
+                .tenantId(request.getTenantId())
+                .name(request.getName())
+                .dbName(request.getDbName())
                 .active(true)
+                .expirationDate(request.getExpirationDate())
+                .maxUsers(request.getMaxUsers())
+                .features(request.getFeatures() != null ? String.join(",", request.getFeatures()) : null)
+                .subscriptionType(request.getSubscriptionType())
+                .contactPersonName(request.getContactPersonName())
+                .contactPersonPhone(request.getContactPersonPhone())
+                .contactPersonEmail(request.getContactPersonEmail())
+                .contactPersonZaloId(request.getContactPersonZaloId())
+                .createdBy(currentUser)
+                .updatedBy(currentUser)
+                .activeAt(System.currentTimeMillis())
+                .activeBy(currentUser)
                 .build();
 
         Tenant saved = tenantRepository.save(tenant);
-        log.info("Tenant created successfully: {}", tenantId);
+        log.info("Tenant created successfully: {} by {}", request.getTenantId(), currentUser);
+
+        // Reload datasources to include new tenant
+        datasourceManager.addOrUpdateTenantDatasource(request.getTenantId(), request.getDbName());
+
+        //Reload
+        datasourceManager.reloadAllTenantDatasources();
         return mapToDTO(saved);
+    }
+
+    /**
+     * Update an existing tenant
+     */
+    public TenantDTO updateTenant(String tenantId, UpdateTenantRequest request) {
+        log.info("Updating tenant: {}", tenantId);
+
+        Tenant tenant = getTenantEntity(tenantId);
+        String currentUser = getCurrentUsername();
+
+        // Update fields if provided
+        if (request.getName() != null) {
+            tenant.setName(request.getName());
+        }
+        if (request.getDbName() != null) {
+            tenant.setDbName(request.getDbName());
+        }
+        if (request.getExpirationDate() != null) {
+            tenant.setExpirationDate(request.getExpirationDate());
+        }
+        if (request.getMaxUsers() != null) {
+            tenant.setMaxUsers(request.getMaxUsers());
+        }
+        if (request.getFeatures() != null) {
+            tenant.setFeatures(String.join(",", request.getFeatures()));
+        }
+        if (request.getSubscriptionType() != null) {
+            tenant.setSubscriptionType(request.getSubscriptionType());
+        }
+        if (request.getContactPersonName() != null) {
+            tenant.setContactPersonName(request.getContactPersonName());
+        }
+        if (request.getContactPersonPhone() != null) {
+            tenant.setContactPersonPhone(request.getContactPersonPhone());
+        }
+        if (request.getContactPersonEmail() != null) {
+            tenant.setContactPersonEmail(request.getContactPersonEmail());
+        }
+        if (request.getContactPersonZaloId() != null) {
+            tenant.setContactPersonZaloId(request.getContactPersonZaloId());
+        }
+
+        // Set audit field
+        tenant.setUpdatedBy(currentUser);
+
+        Tenant updated = tenantRepository.save(tenant);
+
+        //Reload
+        datasourceManager.reloadAllTenantDatasources();
+
+        log.info("Tenant updated successfully: {} by {}", tenantId, currentUser);
+        return mapToDTO(updated);
+    }
+
+    /**
+     * Delete a tenant (soft delete by deactivating)
+     */
+    public void deleteTenant(String tenantId) {
+        log.info("Deleting tenant: {}", tenantId);
+        Tenant tenant = getTenantEntity(tenantId);
+        tenantRepository.delete(tenant);
+        log.info("Tenant deleted successfully: {}", tenantId);
+
+        // Remove datasource for deleted tenant
+        datasourceManager.removeTenantDatasource(tenantId);
+
+        //Reload
+        datasourceManager.reloadAllTenantDatasources();
     }
 
     /**
@@ -89,9 +241,21 @@ public class TenantService {
     public TenantDTO deactivateTenant(String tenantId) {
         log.info("Deactivating tenant: {}", tenantId);
         Tenant tenant = getTenantEntity(tenantId);
+        String currentUser = getCurrentUsername();
+
         tenant.setActive(false);
+        tenant.setActiveAt(System.currentTimeMillis());
+        tenant.setActiveBy(currentUser);
+        tenant.setUpdatedBy(currentUser);
+
         Tenant updated = tenantRepository.save(tenant);
-        log.info("Tenant deactivated: {}", tenantId);
+        log.info("Tenant deactivated: {} by {}", tenantId, currentUser);
+
+        // Remove datasource for deactivated tenant
+        datasourceManager.removeTenantDatasource(tenantId);
+
+        //Reload all data sources
+        datasourceManager.reloadAllTenantDatasources();
         return mapToDTO(updated);
     }
 
@@ -101,9 +265,20 @@ public class TenantService {
     public TenantDTO activateTenant(String tenantId) {
         log.info("Activating tenant: {}", tenantId);
         Tenant tenant = getTenantEntity(tenantId);
+        String currentUser = getCurrentUsername();
+
         tenant.setActive(true);
+        tenant.setActiveAt(System.currentTimeMillis());
+        tenant.setActiveBy(currentUser);
+        tenant.setUpdatedBy(currentUser);
+
         Tenant updated = tenantRepository.save(tenant);
-        log.info("Tenant activated: {}", tenantId);
+        log.info("Tenant activated: {} by {}", tenantId, currentUser);
+
+        // Add datasource for activated tenant
+        datasourceManager.addOrUpdateTenantDatasource(tenantId, tenant.getDbName());
+        //Reload all data sources
+        datasourceManager.reloadAllTenantDatasources();
         return mapToDTO(updated);
     }
 
@@ -115,7 +290,23 @@ public class TenantService {
                 .id(tenant.getId())
                 .tenantId(tenant.getTenantId())
                 .name(tenant.getName())
+                .dbName(tenant.getDbName())
                 .active(tenant.isActive())
+                .expirationDate(tenant.getExpirationDate())
+                .maxUsers(tenant.getMaxUsers())
+                .features(tenant.getFeatures() != null ?
+                    Arrays.asList(tenant.getFeatures().split(",")) : null)
+                .subscriptionType(tenant.getSubscriptionType())
+                .contactPersonName(tenant.getContactPersonName())
+                .contactPersonPhone(tenant.getContactPersonPhone())
+                .contactPersonEmail(tenant.getContactPersonEmail())
+                .contactPersonZaloId(tenant.getContactPersonZaloId())
+                .createdAt(tenant.getCreatedAt())
+                .updatedAt(tenant.getUpdatedAt())
+                .activeAt(tenant.getActiveAt())
+                .activeBy(tenant.getActiveBy())
+                .createdBy(tenant.getCreatedBy())
+                .updatedBy(tenant.getUpdatedBy())
                 .build();
     }
 }

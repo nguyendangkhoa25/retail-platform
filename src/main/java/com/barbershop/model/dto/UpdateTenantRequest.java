@@ -10,25 +10,19 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * TenantDTO - Data Transfer Object for Tenant
- * Used for API responses to hide sensitive information
- * (e.g., database passwords are not included in responses)
+ * UpdateTenantRequest - Request DTO for updating a tenant
  */
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class TenantDTO {
-
-    private Long id;
-
-    private String tenantId;
+public class UpdateTenantRequest {
 
     private String name;
+
     private String dbName;
 
-    private Boolean active;
 
     private LocalDate expirationDate;
 
@@ -45,17 +39,5 @@ public class TenantDTO {
     private String contactPersonEmail;
 
     private String contactPersonZaloId;
-
-    private Long createdAt;
-
-    private Long updatedAt;
-
-    private Long activeAt;
-
-    private String activeBy;
-
-    private String createdBy;
-
-    private String updatedBy;
 }
 

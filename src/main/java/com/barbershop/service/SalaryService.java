@@ -31,32 +31,7 @@ public class SalaryService {
     private final SalaryRepository salaryRepository;
     private final EmployeeRepository employeeRepository;
     private final OrderItemRepository orderItemRepository;
-
-    /**
-     * Calculate total earnings from completed orders for an employee in a given month/year
-     */
-    public BigDecimal calculateEmployeeEarnings(Long employeeId, Integer month, Integer year) {
-        log.info("Calculating earnings for employee {} for {}/{}", employeeId, month, year);
-
-        // Get all completed order items for this employee
-        List<OrderItem> completedItems = orderItemRepository.findByAssignedEmployeeIdAndStatus(
-                employeeId,
-                OrderItem.ItemStatus.COMPLETED
-        );
-
-        BigDecimal totalEarnings = completedItems.stream()
-                .filter(item -> item.getCompletedAt() != null)
-                .filter(item -> {
-                    LocalDate completedDate = item.getCompletedAt().toLocalDate();
-                    return completedDate.getMonthValue() == month && completedDate.getYear() == year;
-                })
-                .map(item -> item.getCommissionAmount() != null ?
-                        item.getCommissionAmount() : item.getAmount())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        log.info("Total earnings calculated: {}", totalEarnings);
-        return totalEarnings;
-    }
+    private final MessageService messageService;
 
     /**
      * Create a new salary record
@@ -66,20 +41,28 @@ public class SalaryService {
 
         // Validate month and year
         if (request.getMonth() < 1 || request.getMonth() > 12) {
-            throw new BadRequestException("Month must be between 1 and 12");
+            String errorMessage = messageService.getMessage("error.salary.month.invalid");
+            throw new BadRequestException(errorMessage);
         }
         if (request.getYear() < 2000 || request.getYear() > 2100) {
-            throw new BadRequestException("Year must be between 2000 and 2100");
+            String errorMessage = messageService.getMessage("error.salary.year.invalid");
+            throw new BadRequestException(errorMessage);
         }
 
         // Check if salary already exists
         if (salaryRepository.existsByEmployeeAndMonthAndYear(request.getEmployeeId(), request.getMonth(), request.getYear())) {
-            throw new DuplicateResourceException("Salary already exists for this employee in this month");
+            String errorMessage = messageService.getMessage("error.salary.duplicate");
+            throw new DuplicateResourceException(errorMessage);
         }
 
         // Get employee
         Employee employee = employeeRepository.findById(request.getEmployeeId())
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with id: " + request.getEmployeeId()));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.employee.not.found", request.getEmployeeId());
+                    return new ResourceNotFoundException(errorMessage);
+                });
+
+        // ...existing code...
 
         // Use netSalary from UI request instead of recalculating
         BigDecimal netSalary = request.getNetSalary() != null ? request.getNetSalary() : BigDecimal.ZERO;

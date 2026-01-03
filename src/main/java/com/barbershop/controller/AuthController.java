@@ -71,11 +71,11 @@ public class AuthController {
 
     /**
      * POST /api/auth/logout
-     * Logout user - invalidate all refresh tokens
+     * Logout user - invalidate all refresh tokens and clear cookie
      * Requires authentication
      */
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout() {
+    public ResponseEntity<ApiResponse<Void>> logout(HttpServletResponse response) {
         String username = authContext.getCurrentUsername();
 
         if (username == null) {
@@ -85,6 +85,9 @@ public class AuthController {
 
         log.info("Logout request for user: {}", username);
         authService.logoutUser(username);
+
+        // Clear the refresh token cookie
+        authService.clearRefreshTokenCookie(response);
 
         return ResponseEntity.ok(
                 ApiResponse.success(null, "Logout successful")

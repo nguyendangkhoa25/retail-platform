@@ -30,6 +30,9 @@ public class PromotionService {
 
     private final PromotionRepository promotionRepository;
     private final ProductRepository productRepository;
+    private final MessageService messageService;
+
+    // ...existing code...
 
     @Transactional(readOnly = true)
     public Page<PromotionDTO> getAllPromotions(Pageable pageable) {
@@ -84,10 +87,14 @@ public class PromotionService {
         if (request.getProducts() != null && !request.getProducts().isEmpty()) {
             for (CreatePromotionRequest.PromotionProductRequest productRequest : request.getProducts()) {
                 Product product = productRepository.findById(productRequest.getProductId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productRequest.getProductId()));
+                        .orElseThrow(() -> {
+                            String errorMessage = messageService.getMessage("error.product.not.found", productRequest.getProductId());
+                            return new ResourceNotFoundException(errorMessage);
+                        });
 
                 if (!product.getActive()) {
-                    throw new BadRequestException("Product is not active with id: " + productRequest.getProductId());
+                    String errorMessage = messageService.getMessage("error.product.inactive", productRequest.getProductId());
+                    throw new BadRequestException(errorMessage);
                 }
 
                 PromotionProduct promotionProduct = PromotionProduct.builder()
@@ -110,7 +117,10 @@ public class PromotionService {
         log.info("Updating promotion: {}", id);
 
         Promotion promotion = promotionRepository.findByIdActive(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Promotion not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.promotion.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         promotion.setName(request.getName());
         promotion.setDescription(request.getDescription());
@@ -129,10 +139,14 @@ public class PromotionService {
         if (request.getProducts() != null && !request.getProducts().isEmpty()) {
             for (CreatePromotionRequest.PromotionProductRequest productRequest : request.getProducts()) {
                 Product product = productRepository.findById(productRequest.getProductId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productRequest.getProductId()));
+                        .orElseThrow(() -> {
+                            String errorMessage = messageService.getMessage("error.product.not.found", productRequest.getProductId());
+                            return new ResourceNotFoundException(errorMessage);
+                        });
 
                 if (!product.getActive()) {
-                    throw new BadRequestException("Product is not active with id: " + productRequest.getProductId());
+                    String errorMessage = messageService.getMessage("error.product.inactive", productRequest.getProductId());
+                    throw new BadRequestException(errorMessage);
                 }
 
                 PromotionProduct promotionProduct = PromotionProduct.builder()

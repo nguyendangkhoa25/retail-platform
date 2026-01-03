@@ -28,6 +28,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class TenantInterceptor implements HandlerInterceptor {
 
     private static final String TENANT_HEADER = "X-Tenant-ID";
+    private static final String MASTER_TENANT = "master";
     private final TenantRepository tenantRepository;
     private final TenantContext tenantContext;
 
@@ -41,7 +42,10 @@ public class TenantInterceptor implements HandlerInterceptor {
 
     // Paths that support both tenant and non-tenant access
     private static final String[] FLEXIBLE_PATHS = {
-            "/api/auth"
+            "/api/auth",
+            "/api/users",
+            "/api/employees",
+            "/api/multi-tenants"         // Tenant management (master DB only)
     };
 
     @Override
@@ -78,6 +82,12 @@ public class TenantInterceptor implements HandlerInterceptor {
             // No tenant header - use master database
             log.info("Non-tenant request to {}: using master database", requestPath);
             // Don't set tenant context - will use master DB
+            return true;
+        }
+
+        // Special case: "master" tenant uses master database without validation
+        if (MASTER_TENANT.equalsIgnoreCase(tenantId.trim())) {
+            log.info("Master tenant request to {}: using master database directly", requestPath);
             return true;
         }
 

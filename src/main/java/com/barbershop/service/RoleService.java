@@ -1,5 +1,7 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.BadRequestException;
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.RoleDTO;
 import com.barbershop.model.entity.Role;
 import com.barbershop.model.enums.RoleEnum;
@@ -10,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 public class RoleService {
 
     private final RoleRepository roleRepository;
+    private final MessageService messageService;
 
     /**
      * Get role by code
@@ -29,11 +31,15 @@ public class RoleService {
 
         // Validate role code
         if (!RoleEnum.isValidRole(code)) {
-            throw new IllegalArgumentException("Invalid role code: " + code);
+            String errorMessage = messageService.getMessage("error.role.invalid", code);
+            throw new BadRequestException(errorMessage);
         }
 
         Role role = roleRepository.findByName(code)
-                .orElseThrow(() -> new NoSuchElementException("Role not found: " + code));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.role.not.found", code);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         return mapToDTO(role);
     }
 

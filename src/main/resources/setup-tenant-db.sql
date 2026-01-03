@@ -115,12 +115,12 @@ CREATE TABLE IF NOT EXISTS roles (
     INDEX idx_deleted_at (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=202600001;
 -- Insert 5 predefined roles (only these roles are available in the system)
-    INSERT IGNORE INTO roles (id, name, description) VALUES
-    (1, 'SHOP_OWNER', 'Shop Owner - Full access to all features'),
-    (2, 'MANAGER', 'Manager - Can manage shop, employees, and reports'),
-    (3, 'RECEPTIONIST', 'Receptionist - Can manage appointments and customers'),
-    (4, 'CLEANER', 'Cleaner - Can manage cleaning tasks and inventory'),
-    (5, 'TECHNICIAN', 'Technician/Employee - Can view appointments and customer info');
+    INSERT IGNORE INTO roles (name, description) VALUES
+    ('SHOP_OWNER', 'Shop Owner - Full access to all features'),
+    ('MANAGER', 'Manager - Can manage shop, employees, and reports'),
+    ('RECEPTIONIST', 'Receptionist - Can manage appointments and customers'),
+    ('CLEANER', 'Cleaner - Can manage cleaning tasks and inventory'),
+    ('TECHNICIAN', 'Technician/Employee - Can view appointments and customer info');
 
 -- Users Table
 CREATE TABLE IF NOT EXISTS users (
@@ -352,3 +352,98 @@ CREATE TABLE IF NOT EXISTS promotion_products (
     INDEX idx_deleted (deleted),
     INDEX idx_deleted_at (deleted_at)
     )ENGINE=InnoDB AUTO_INCREMENT=8820260102 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE IF NOT EXISTS features (
+                                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                        name VARCHAR(50) NOT NULL UNIQUE COMMENT 'Feature code/identifier (e.g., DASHBOARD, ORDER)',
+    display_name VARCHAR(100) NOT NULL COMMENT 'Display name for UI (e.g., Dashboard)',
+    description VARCHAR(500) COMMENT 'Detailed description of the feature',
+    active BOOLEAN NOT NULL DEFAULT TRUE COMMENT 'Is feature enabled',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMP NULL,
+
+    INDEX idx_name (name),
+    INDEX idx_active (active),
+    INDEX idx_deleted (deleted),
+    INDEX idx_deleted_at (deleted_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=202601001;
+
+INSERT IGNORE INTO features (name, display_name, description, active) VALUES
+    ('DASHBOARD', 'Bảng Điều Khiển', 'Xem tổng quan và thống kê chính của cửa hàng', TRUE),
+    ('ORDER', 'Đơn Hàng', 'Quản lý đơn hàng, theo dõi trạng thái và lịch sử đơn hàng', TRUE),
+    ('MY_WORK', 'Công Việc Của Tôi', 'Xem công việc được giao cho nhân viên hiện tại', TRUE),
+    ('PRODUCT', 'Sản Phẩm & Dịch Vụ', 'Quản lý danh sách sản phẩm, dịch vụ, giá cả và hoa hồng', TRUE),
+    ('PROMOTION', 'Khuyến Mãi', 'Tạo và quản lý các chương trình khuyến mãi, giảm giá', TRUE),
+    ('EMPLOYEE', 'Nhân Viên', 'Quản lý nhân viên, chức vụ, lương cơ bản', TRUE),
+    ('SALARY', 'Lương Nhân Viên', 'Quản lý bảng lương, tính toán lương, chi trả', TRUE),
+    ('CUSTOMER', 'Khách Hàng', 'Quản lý thông tin khách hàng, lịch sử mua hàng', TRUE),
+    ('INVOICE', 'Hóa Đơn', 'Quản lý hóa đơn, xuất hóa đơn điện tử', TRUE),
+    ('REVENUE', 'Doanh Thu', 'Xem báo cáo doanh thu, lợi nhuận, chi phí', TRUE),
+    ('USER', 'Người Dùng', 'Quản lý tài khoản người dùng, quyền truy cập', TRUE),
+    ('SHOP_INFO', 'Thông Tin Cửa Hàng', 'Cập nhật thông tin cửa hàng, cấu hình hệ thống', TRUE);
+
+CREATE TABLE IF NOT EXISTS role_features (
+                                             id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                             role_id BIGINT NOT NULL COMMENT 'Reference to roles table',
+                                             feature_id BIGINT NOT NULL COMMENT 'Reference to features table',
+                                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Unique constraint: each role can have each feature only once
+                                             UNIQUE KEY uk_role_feature (role_id, feature_id),
+
+    -- Foreign keys
+    CONSTRAINT fk_role_features_role_id FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    CONSTRAINT fk_role_features_feature_id FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+
+    -- Indexes for optimal query performance
+    INDEX idx_role_id (role_id),
+    INDEX idx_feature_id (feature_id),
+    INDEX idx_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=20260001
+    COMMENT='Maps roles to features for role-based access control';
+
+
+-- =====================================================
+-- INSERT DEFAULT ROLE-FEATURE MAPPINGS
+-- =====================================================
+
+-- Get role IDs and feature IDs for insertion
+-- SHOP_OWNER can access everything except TENANT_MGMT
+INSERT INTO role_features (role_id, feature_id)
+SELECT r.id, f.id FROM roles r, features f
+WHERE r.name = 'SHOP_OWNER'
+  AND f.name IN ('DASHBOARD', 'ORDER', 'PRODUCT', 'PROMOTION', 'EMPLOYEE', 'SALARY', 'CUSTOMER', 'INVOICE', 'REVENUE', 'USER', 'SHOP_INFO')
+  AND f.deleted = FALSE;
+
+-- MANAGER can access everything except SHOP_INFO, SALARY, DASHBOARD
+INSERT INTO role_features (role_id, feature_id)
+SELECT r.id, f.id FROM roles r, features f
+WHERE r.name = 'MANAGER'
+  AND f.name IN ('ORDER', 'MY_WORK', 'PRODUCT', 'PROMOTION', 'EMPLOYEE', 'CUSTOMER', 'INVOICE', 'REVENUE', 'USER')
+  AND f.deleted = FALSE;
+
+-- RECEPTIONIST can access ORDER, CUSTOMER, INVOICE, PROMOTION, PRODUCT
+INSERT INTO role_features (role_id, feature_id)
+SELECT r.id, f.id FROM roles r, features f
+WHERE r.name = 'RECEPTIONIST'
+  AND f.name IN ('ORDER', 'CUSTOMER', 'INVOICE', 'PROMOTION', 'PRODUCT')
+  AND f.deleted = FALSE;
+
+-- CLEANER can access MY_WORK
+INSERT INTO role_features (role_id, feature_id)
+SELECT r.id, f.id FROM roles r, features f
+WHERE r.name = 'CLEANER'
+  AND f.name IN ('MY_WORK')
+  AND f.deleted = FALSE;
+
+-- TECHNICIAN can access MY_WORK, PRODUCT
+INSERT INTO role_features (role_id, feature_id)
+SELECT r.id, f.id FROM roles r, features f
+WHERE r.name = 'TECHNICIAN'
+  AND f.name IN ('MY_WORK', 'CUSTOMER', 'ORDER')
+  AND f.deleted = FALSE;
+
+

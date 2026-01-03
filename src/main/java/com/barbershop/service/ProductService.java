@@ -1,5 +1,6 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.ProductDTO;
 import com.barbershop.model.entity.Product;
 import com.barbershop.repository.ProductRepository;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final MessageService messageService;
 
     public ProductDTO createProduct(ProductDTO productDTO) {
         String currentUser = getCurrentUser();
@@ -48,7 +50,10 @@ public class ProductService {
 
     public ProductDTO getProductById(Long productId) {
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.product.not.found", productId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         return mapToDTO(product);
     }
 
@@ -110,7 +115,10 @@ public class ProductService {
     public ProductDTO updateProduct(Long productId, ProductDTO productDTO) {
         String currentUser = getCurrentUser();
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.product.not.found", productId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         product.setName(productDTO.getName());
         product.setDescription(productDTO.getDescription());
@@ -130,7 +138,10 @@ public class ProductService {
     public ProductDTO deactivateProduct(Long productId) {
         String currentUser = getCurrentUser();
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.product.not.found", productId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         product.setActive(false);
         product.setUpdatedBy(currentUser);
@@ -142,7 +153,10 @@ public class ProductService {
     public ProductDTO activateProduct(Long productId) {
         String currentUser = getCurrentUser();
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.product.not.found", productId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         product.setActive(true);
         product.setUpdatedBy(currentUser);
@@ -153,7 +167,8 @@ public class ProductService {
 
     public void deleteProduct(Long productId) {
         if (!productRepository.existsById(productId)) {
-            throw new RuntimeException("Product not found");
+            String errorMessage = messageService.getMessage("error.product.not.found", productId);
+            throw new ResourceNotFoundException(errorMessage);
         }
         String currentUser = getCurrentUser();
         productRepository.deleteById(productId);

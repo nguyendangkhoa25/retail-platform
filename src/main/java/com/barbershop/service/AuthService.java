@@ -9,6 +9,7 @@ import com.barbershop.model.dto.auth.LoginRequest;
 import com.barbershop.model.dto.auth.UserDTO;
 import com.barbershop.model.entity.Employee;
 import com.barbershop.model.entity.RefreshToken;
+import com.barbershop.model.entity.Role;
 import com.barbershop.model.entity.User;
 import com.barbershop.multitenant.TenantContext;
 import com.barbershop.repository.EmployeeRepository;
@@ -29,6 +30,7 @@ import java.util.Optional;
 
 /**
  * AuthService - Authentication and token management business logic
+ * Uses MessageService for i18n error messages
  */
 @Service
 @RequiredArgsConstructor
@@ -42,6 +44,9 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
     private final TenantContext tenantContext;
+    private final RoleFeatureService roleFeatureService;
+    private final TenantFeatureService tenantFeatureService;
+    private final MessageService messageService;
     public static final String REFRESH_TOKEN_HEADER_KEY = "refresh-token";
 
     /**
@@ -61,22 +66,48 @@ public class AuthService {
         User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElseThrow(() -> {
                     log.error("User not found: {}", loginRequest.getUsername());
-                    return new UnauthorizedException("Invalid username or password");
+                    String errorMessage = messageService.getMessage("error.unauthorized");
+                    return new BadRequestException(errorMessage);
                 });
 
         // Verify password
         if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
             log.warn("Invalid password for user: {}", loginRequest.getUsername());
-            throw new UnauthorizedException("Invalid username or password");
+            String errorMessage = messageService.getMessage("error.unauthorized");
+            throw new BadRequestException(errorMessage);
         }
 
         if (!user.getActive()) {
             log.warn("User account is inactive: {}", loginRequest.getUsername());
-            throw new UnauthorizedException("User account is inactive");
+            String errorMessage = messageService.getMessage("error.user.inactive");
+            throw new BadRequestException(errorMessage);
         }
-        // Generate access token
-        String accessToken = jwtTokenProvider.generateToken(user.getUsername());
-        log.info("Access token generated for user: {}", loginRequest.getUsername());
+
+        // Determine if user is from master database
+        boolean isMasterUser = tenantContext.getCurrentTenant() == null;
+
+        // Extract role names from user's roles
+        List<String> roleNames = user.getRoles().stream()
+                .map(Role::getName)
+                .toList();
+
+        // Get accessible features: intersection of tenant features and role features
+        // Step 1: Get features assigned to the tenant from master DB
+        // Step 2: Get features assigned to the role
+        // Step 3: Return matching features (intersection)
+        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
+        log.info("User {} has access to {} features (tenant + role intersection): {}",
+                loginRequest.getUsername(), featureNames.size(), featureNames);
+
+        // Generate access token with roles, features and master user flag
+        String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(
+                user.getUsername(),
+                roleNames,
+                featureNames,
+                isMasterUser
+        );
+        log.info("Access token generated for user: {} with roles: {}, features: {}, isMasterUser: {}",
+                loginRequest.getUsername(), roleNames, featureNames.size(), isMasterUser);
 
         if (StringUtils.isNotEmpty(user.getRequireAction())) {
             log.info("User {} requires action: {}", loginRequest.getUsername(), user.getRequireAction());
@@ -150,26 +181,53 @@ public class AuthService {
         log.info("Refreshing access token for user: {}", username);
 
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", username);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         if (StringUtils.isNotEmpty(user.getRequireAction())) {
-            throw new BadRequestException("User is required to perform action");
+            String errorMessage = messageService.getMessage("error.refresh.token.required");
+            throw new BadRequestException(errorMessage);
         }
 
         List<RefreshToken> tokenEntities = refreshTokenRepository.findAllByUserAndActive(user, System.currentTimeMillis());
         if (tokenEntities.isEmpty()) {
-            throw new UnauthorizedException("Refresh token is invalid or expired");
+            String errorMessage = messageService.getMessage("error.refresh.token.invalid");
+            throw new UnauthorizedException(errorMessage);
         }
 
         // Check if token is expired
         tokenEntities.stream()
                 .filter(rt -> passwordEncoder.matches(refreshToken, rt.getToken()))
                 .findFirst()
-                .orElseThrow(() -> new UnauthorizedException("Refresh token is invalid or expired"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.refresh.token.invalid");
+                    return new UnauthorizedException(errorMessage);
+                });
 
-        // Generate new access token
-        String accessToken = jwtTokenProvider.generateToken(username);
-        log.info("New access token generated for user: {}", username);
+        // Determine if user is from master database
+        boolean isMasterUser = tenantContext.getCurrentTenant() == null;
+
+        // Extract role names from user's roles
+        List<String> roleNames = user.getRoles().stream()
+                .map(Role::getName)
+                .toList();
+
+        // Get accessible features: intersection of tenant features and role features
+        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
+        log.info("User {} has access to {} features during token refresh (tenant + role intersection): {}",
+                username, featureNames.size(), featureNames);
+
+        // Generate new access token with roles, features and master user flag
+        String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(
+                username,
+                roleNames,
+                featureNames,
+                isMasterUser
+        );
+        log.info("New access token generated for user: {} with roles: {}, features: {}, isMasterUser: {}",
+                username, roleNames, featureNames.size(), isMasterUser);
 
         // Get employee ID if user has an associated employee
         Long employeeId = null;
@@ -195,7 +253,10 @@ public class AuthService {
         log.info("Logging out user: {}", username);
 
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", username);
+                    return new RuntimeException(errorMessage);
+                });
 
         // Deactivate all refresh tokens
         refreshTokenRepository.findByUser(user).forEach(token -> {
@@ -207,13 +268,34 @@ public class AuthService {
     }
 
     /**
+     * Clear refresh token cookie from browser
+     */
+    public void clearRefreshTokenCookie(jakarta.servlet.http.HttpServletResponse response) {
+        log.info("Clearing refresh token cookie");
+
+        // Create an expired cookie to clear it from the browser
+        ResponseCookie cookie = ResponseCookie.from(REFRESH_TOKEN_HEADER_KEY, "")
+                .httpOnly(true)
+                .secure(false) // Set to true in production with HTTPS
+                .path("/")
+                .maxAge(0) // Expire immediately
+                .sameSite("Lax")
+                .build();
+
+        response.addHeader("Set-Cookie", cookie.toString());
+    }
+
+    /**
      * Get user profile
      */
     public UserDTO getUserProfile(String username) {
         log.info("Fetching user profile: {}", username);
 
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", username);
+                    return new RuntimeException(errorMessage);
+                });
 
         return mapToDTO(user);
     }

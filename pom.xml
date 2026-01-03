@@ -5,12 +5,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.barbershop</groupId>
-    <artifactId>barber-management-system</artifactId>
+    <artifactId>barber-mgmt-system</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <name>Barber Management System</name>
-    <description>Spring Boot API for Barber Shop Order, Employee and Invoice Management</description>
+    <description>Spring Boot API for Barber Shop</description>
 
     <parent>
         <groupId>org.springframework.boot</groupId>

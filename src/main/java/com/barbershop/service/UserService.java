@@ -24,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
-import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -77,12 +76,15 @@ public class UserService {
             for (String roleName : request.getRoleNames()) {
                 // Validate role code against predefined roles
                 if (!RoleEnum.isValidRole(roleName)) {
-                    throw new IllegalArgumentException("Invalid role: " + roleName +
-                            ". Valid roles are: SHOP_OWNER, MANAGER, RECEPTIONIST, CLEANER, TECHNICIAN");
+                    String errorMessage = messageService.getMessage("error.role.invalid", roleName);
+                    throw new BadRequestException(errorMessage);
                 }
 
                 Role role = roleRepository.findByName(roleName)
-                        .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleName));
+                        .orElseThrow(() -> {
+                            String errorMessage = messageService.getMessage("error.role.not.found", roleName);
+                            return new ResourceNotFoundException(errorMessage);
+                        });
                 roles.add(role);
             }
             user.setRoles(roles);
@@ -94,7 +96,10 @@ public class UserService {
         // Assign user to employee if provided
         if (request.getEmployeeId() != null) {
             Employee employee = employeeRepository.findByIdActive(request.getEmployeeId())
-                    .orElseThrow(() -> new NoSuchElementException("Employee not found: " + request.getEmployeeId()));
+                    .orElseThrow(() -> {
+                        String errorMessage = messageService.getMessage("error.employee.not.found", request.getEmployeeId());
+                        return new ResourceNotFoundException(errorMessage);
+                    });
 
             // Check if another user is already assigned to this employee
             if (employee.getUser() != null && !employee.getUser().getId().equals(createdUser.getId())) {
@@ -116,7 +121,10 @@ public class UserService {
     public UserDTO getUserById(Long id) {
         log.info("Fetching user by id: {}", id);
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         return mapToDTO(user);
     }
 
@@ -126,7 +134,10 @@ public class UserService {
     public UserDTO getUserByUsername(String username) {
         log.info("Fetching user by username: {}", username);
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", username);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         return mapToDTO(user);
     }
 
@@ -146,12 +157,16 @@ public class UserService {
     public UserDTO updateUser(Long id, CreateUserRequest request) {
         log.info("Updating user: {}", id);
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Update username if provided
         if (request.getUsername() != null && !request.getUsername().equals(user.getUsername())) {
             if (userRepository.existsByUsername(request.getUsername())) {
-                throw new IllegalArgumentException("Username already exists: " + request.getUsername());
+                String errorMessage = messageService.getMessage("error.user.duplicate.username", request.getUsername());
+                throw new DuplicateResourceException(errorMessage);
             }
             user.setUsername(request.getUsername());
         }
@@ -172,12 +187,15 @@ public class UserService {
             for (String roleName : request.getRoleNames()) {
                 // Validate role code against predefined roles
                 if (!RoleEnum.isValidRole(roleName)) {
-                    throw new IllegalArgumentException("Invalid role: " + roleName +
-                            ". Valid roles are: SHOP_OWNER, MANAGER, RECEPTIONIST, CLEANER, TECHNICIAN");
+                    String errorMessage = messageService.getMessage("error.role.invalid", roleName);
+                    throw new BadRequestException(errorMessage);
                 }
 
                 Role role = roleRepository.findByName(roleName)
-                        .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleName));
+                        .orElseThrow(() -> {
+                            String errorMessage = messageService.getMessage("error.role.not.found", roleName);
+                            return new ResourceNotFoundException(errorMessage);
+                        });
                 roles.add(role);
             }
             user.setRoles(roles);
@@ -194,7 +212,10 @@ public class UserService {
         // Assign user to employee if provided
         if (request.getEmployeeId() != null) {
             Employee employee = employeeRepository.findByIdActive(request.getEmployeeId())
-                    .orElseThrow(() -> new NoSuchElementException("Employee not found: " + request.getEmployeeId()));
+                    .orElseThrow(() -> {
+                        String errorMessage = messageService.getMessage("error.employee.not.found", request.getEmployeeId());
+                        return new ResourceNotFoundException(errorMessage);
+                    });
 
             employee.setUser(updatedUser);
             employeeRepository.save(employee);
@@ -210,7 +231,10 @@ public class UserService {
     public void deleteUser(Long id) {
         log.info("Deleting user: {}", id);
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Remove user from associated employee if exists
         employeeRepository.findByUserId(id).ifPresent(employee -> {
@@ -230,7 +254,10 @@ public class UserService {
     public UserDTO disableUser(Long id, boolean active) {
         log.info("Setting user {} active status to: {}", id, active);
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         user.setActive(active);
         User updatedUser = userRepository.save(user);
         log.info("User {} status updated", updatedUser.getUsername());
@@ -243,7 +270,10 @@ public class UserService {
     public UserDTO lockUser(Long id, boolean locked) {
         log.info("Setting user {} locked status to: {}", id, locked);
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("User not found: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         user.setAccountNonLocked(!locked);
         User updatedUser = userRepository.save(user);
         log.info("User {} lock status updated", updatedUser.getUsername());
@@ -258,14 +288,20 @@ public class UserService {
 
         // Validate role code against predefined roles
         if (!RoleEnum.isValidRole(roleName)) {
-            throw new IllegalArgumentException("Invalid role: " + roleName +
-                    ". Valid roles are: SHOP_OWNER, MANAGER, RECEPTIONIST, CLEANER, TECHNICIAN");
+            String errorMessage = messageService.getMessage("error.role.invalid", roleName);
+            throw new BadRequestException(errorMessage);
         }
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new NoSuchElementException("User not found: " + userId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", userId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         Role role = roleRepository.findByName(roleName)
-                .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleName));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.role.not.found", roleName);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         user.addRole(role);
         User updatedUser = userRepository.save(user);
@@ -281,14 +317,20 @@ public class UserService {
 
         // Validate role code against predefined roles
         if (!RoleEnum.isValidRole(roleName)) {
-            throw new IllegalArgumentException("Invalid role: " + roleName +
-                    ". Valid roles are: SHOP_OWNER, MANAGER, RECEPTIONIST, CLEANER, TECHNICIAN");
+            String errorMessage = messageService.getMessage("error.role.invalid", roleName);
+            throw new BadRequestException(errorMessage);
         }
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new NoSuchElementException("User not found: " + userId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.user.not.found", userId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         Role role = roleRepository.findByName(roleName)
-                .orElseThrow(() -> new NoSuchElementException("Role not found: " + roleName));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.role.not.found", roleName);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         user.removeRole(role);
         User updatedUser = userRepository.save(user);
@@ -341,7 +383,8 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> {
                     log.error("User not found for password reset - userId: {}", userId);
-                    return new NoSuchElementException("User not found: " + userId);
+                    String errorMessage = messageService.getMessage("error.user.not.found", userId);
+                    return new ResourceNotFoundException(errorMessage);
                 });
 
         // Generate temporary password
@@ -381,13 +424,15 @@ public class UserService {
 
         if (username == null || "anonymousUser".equals(username)) {
             log.error("No authenticated user found for password change");
-            throw new UnauthorizedException("User must be authenticated to change password");
+            String errorMessage = messageService.getMessage("error.user.not.authenticated");
+            throw new UnauthorizedException(errorMessage);
         }
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.error("User not found for password change - username: {}", username);
-                    return new ResourceNotFoundException("User not found: " + username);
+                    String errorMessage = messageService.getMessage("error.user.not.found", username);
+                    return new ResourceNotFoundException(errorMessage);
                 });
 
         // Update password and clear requireAction flag
@@ -416,24 +461,28 @@ public class UserService {
 
         if (username == null || "anonymousUser".equals(username)) {
             log.error("No authenticated user found for password change");
-            throw new UnauthorizedException("User must be authenticated to change password");
+            String errorMessage = messageService.getMessage("error.user.not.authenticated");
+            throw new UnauthorizedException(errorMessage);
         }
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.error("User not found for password change - username: {}", username);
-                    return new ResourceNotFoundException("User not found: " + username);
+                    String errorMessage = messageService.getMessage("error.user.not.found", username);
+                    return new ResourceNotFoundException(errorMessage);
                 });
 
         // Verify old password
         if (request.getOldPassword() == null || request.getOldPassword().isEmpty()) {
             log.warn("Old password not provided for password change - username: {}", username);
-            throw new BadRequestException("Old password is required");
+            String errorMessage = messageService.getMessage("error.password.old.required");
+            throw new BadRequestException(errorMessage);
         }
 
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
             log.warn("Old password verification failed - username: {}", username);
-            throw new BadRequestException("Old password is incorrect");
+            String errorMessage = messageService.getMessage("error.password.old.incorrect");
+            throw new BadRequestException(errorMessage);
         }
 
         // Update password

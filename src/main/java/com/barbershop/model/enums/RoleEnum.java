@@ -8,6 +8,7 @@ import lombok.Getter;
  */
 @Getter
 public enum RoleEnum {
+    MASTER_TENANT("MASTER_TENANT", "Master Tenant - Full access to tenant management"),
     SHOP_OWNER("SHOP_OWNER", "Shop Owner - Full access to all features"),
     MANAGER("MANAGER", "Manager - Can manage shop, employees, and reports"),
     RECEPTIONIST("RECEPTIONIST", "Receptionist - Can manage appointments and customers"),

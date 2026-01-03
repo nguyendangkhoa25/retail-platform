@@ -1,5 +1,6 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.customer.CreateCustomerRequest;
 import com.barbershop.model.dto.customer.CustomerDTO;
 import com.barbershop.model.dto.customer.UpdateCustomerRequest;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomerService {
 
     private final CustomerRepository customerRepository;
+    private final MessageService messageService;
 
     public CustomerDTO createCustomer(CreateCustomerRequest request) {
         log.info("Request: Create new customer - name: {}, phone: {}, email: {}",
@@ -78,7 +80,8 @@ public class CustomerService {
         Customer customer = customerRepository.findByIdActive(id)
                 .orElseThrow(() -> {
                     log.error("Customer not found - id: {}", id);
-                    return new RuntimeException("Customer not found with id: " + id);
+                    String errorMessage = messageService.getMessage("error.customer.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
                 });
         log.info("Retrieved customer - id: {}, name: {}", customer.getId(), customer.getName());
         return mapToDTO(customer);
@@ -106,7 +109,8 @@ public class CustomerService {
         Customer customer = customerRepository.findByIdActive(id)
                 .orElseThrow(() -> {
                     log.error("Customer not found for update - id: {}", id);
-                    return new RuntimeException("Customer not found with id: " + id);
+                    String errorMessage = messageService.getMessage("error.customer.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
                 });
 
         if (request.getName() != null) {
@@ -156,7 +160,8 @@ public class CustomerService {
         Customer customer = customerRepository.findByIdActive(id)
                 .orElseThrow(() -> {
                     log.error("Customer not found for deletion - id: {}", id);
-                    return new RuntimeException("Customer not found with id: " + id);
+                    String errorMessage = messageService.getMessage("error.customer.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
                 });
         customer.softDelete();
         customerRepository.save(customer);

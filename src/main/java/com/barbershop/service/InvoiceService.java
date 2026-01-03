@@ -1,16 +1,11 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.BadRequestException;
+import com.barbershop.exception.BusinessException;
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.invoice.*;
-import com.barbershop.model.entity.Invoice;
-import com.barbershop.model.entity.InvoiceItem;
-import com.barbershop.model.entity.InvoiceBuyer;
-import com.barbershop.model.entity.Order;
-import com.barbershop.model.entity.ShopInfo;
-import com.barbershop.repository.InvoiceRepository;
-import com.barbershop.repository.InvoiceItemRepository;
-import com.barbershop.repository.InvoiceBuyerRepository;
-import com.barbershop.repository.OrderRepository;
-import com.barbershop.repository.ShopInfoRepository;
+import com.barbershop.model.entity.*;
+import com.barbershop.repository.*;
 import com.barbershop.service.invoice.ExternalInvoiceService;
 import com.barbershop.service.invoice.InvoiceServiceFactory;
 import lombok.RequiredArgsConstructor;
@@ -42,14 +37,19 @@ public class InvoiceService {
     private final OrderRepository orderRepository;
     private final InvoiceServiceFactory invoiceServiceFactory;
     private final ShopInfoRepository shopInfoRepository;
+    private final MessageService messageService;
 
     public InvoiceDTO createInvoice(CreateInvoiceRequest request) {
         Order order = orderRepository.findByIdActive(request.getOrderId())
-                .orElseThrow(() -> new RuntimeException("Order not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.order.not.found", request.getOrderId());
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Check if invoice already exists for this order
         if (order.getInvoiceId() != null) {
-            throw new RuntimeException("Invoice already exists for this order (Invoice ID: " + order.getInvoiceId() + ")");
+            String errorMessage = messageService.getMessage("error.invoice.already.exists", order.getInvoiceId());
+            throw new BusinessException(errorMessage);
         }
 
         String invoiceNumber = generateInvoiceNumber();
@@ -161,12 +161,12 @@ public class InvoiceService {
 
     private InvoiceItem createInvoiceItemFromOrderItem(Invoice invoice, CreateInvoiceRequest.OrderItemInput orderItem) {
         int lineNumber = orderItem.getOrdinalNumber() != null ? orderItem.getOrdinalNumber() :
-                        (invoice.getItems() != null ? invoice.getItems().size() : 0) + 1;
+                (invoice.getItems() != null ? invoice.getItems().size() : 0) + 1;
 
         BigDecimal unitPrice = orderItem.getPrice() != null ? orderItem.getPrice() : BigDecimal.ZERO;
         BigDecimal quantity = orderItem.getQuantity() != null ? orderItem.getQuantity() : BigDecimal.ONE;
         BigDecimal totalPrice = orderItem.getTotalPrice() != null ? orderItem.getTotalPrice() :
-                               unitPrice.multiply(quantity);
+                unitPrice.multiply(quantity);
 
         return InvoiceItem.builder()
                 .invoice(invoice)
@@ -189,7 +189,7 @@ public class InvoiceService {
         BigDecimal unitPrice = orderItem.getUnitPrice() != null ? orderItem.getUnitPrice() : BigDecimal.ZERO;
         BigDecimal quantity = BigDecimal.valueOf(orderItem.getQuantity() != null ? orderItem.getQuantity() : 1);
         BigDecimal totalPrice = orderItem.getAmount() != null ? orderItem.getAmount() :
-                               unitPrice.multiply(quantity);
+                unitPrice.multiply(quantity);
 
         return InvoiceItem.builder()
                 .invoice(invoice)
@@ -215,20 +215,29 @@ public class InvoiceService {
 
     public InvoiceDTO getInvoiceById(Long id) {
         Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         return mapToDTO(invoice);
     }
 
     public InvoiceDTO getInvoiceByOrderId(Long orderId) {
         Invoice invoice = invoiceRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new RuntimeException("Invoice not found for order: " + orderId));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found.for.order", orderId);
+                    return new ResourceNotFoundException(errorMessage);
+                });
         return mapToDTO(invoice);
     }
 
     public InvoiceDTO updateInvoice(Long id, UpdateInvoiceRequest request) {
         log.info("Updating invoice {} with request: {}", id, request);
         Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Update basic fields
         if (request.getStatus() != null) {
@@ -286,7 +295,10 @@ public class InvoiceService {
 
     public InvoiceDTO issueInvoice(Long id) {
         Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         invoice.setStatus(Invoice.InvoiceStatus.COMPLETED);
         invoice.setIssuedDate(LocalDateTime.now());
@@ -298,7 +310,10 @@ public class InvoiceService {
 
     public void deleteInvoice(Long id) {
         Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Clear invoice ID from order
         Order order = invoice.getOrder();
@@ -460,11 +475,15 @@ public class InvoiceService {
 
     /**
      * Get the configured invoice service from shop info
+     *
      * @return The configured ExternalInvoiceService implementation
      */
     private ExternalInvoiceService getConfiguredInvoiceService() {
         ShopInfo shopInfo = shopInfoRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new RuntimeException("Shop info not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.shop.info.not.found");
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         String invoiceSystem = shopInfo.getInvoiceSystem();
         if (invoiceSystem == null || invoiceSystem.trim().isEmpty()) {
@@ -483,12 +502,16 @@ public class InvoiceService {
     public InvoiceDTO syncInvoiceWithExternalSystem(Long id) {
         log.info("Syncing invoice {} with external system", id);
         Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Only allow sync for DRAFT or FAILED invoices
         if (invoice.getStatus() != Invoice.InvoiceStatus.DRAFT &&
-            invoice.getStatus() != Invoice.InvoiceStatus.FAILED) {
-            throw new RuntimeException("Invoice status must be DRAFT or FAILED to sync. Current status: " + invoice.getStatus());
+                invoice.getStatus() != Invoice.InvoiceStatus.FAILED) {
+            String errorMessage = messageService.getMessage("error.invoice.invalid.status.for.sync", invoice.getStatus());
+            throw new BadRequestException(errorMessage);
         }
 
         try {
@@ -521,7 +544,8 @@ public class InvoiceService {
             log.error("Error syncing invoice {}", id, e);
             invoice.setStatus(Invoice.InvoiceStatus.FAILED);
             invoice.setErrorMessage("Error: " + e.getMessage());
-            throw new RuntimeException("Failed to sync invoice: " + e.getMessage(), e);
+            String errorMessage = messageService.getMessage("error.invoice.sync.failed", e.getMessage());
+            throw new BusinessException(errorMessage, e);
         }
     }
 
@@ -532,15 +556,20 @@ public class InvoiceService {
     public byte[] downloadInvoicePdf(Long id) throws IOException {
         log.info("Downloading PDF for invoice {}", id);
         Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Only allow download for COMPLETED invoices
         if (invoice.getStatus() != Invoice.InvoiceStatus.COMPLETED) {
-            throw new RuntimeException("Invoice must be COMPLETED to download. Current status: " + invoice.getStatus());
+            String errorMessage = messageService.getMessage("error.invoice.invalid.status.for.download", invoice.getStatus());
+            throw new BadRequestException(errorMessage);
         }
 
         if (StringUtils.isEmpty(invoice.getExternalInvoiceId())) {
-            throw new RuntimeException("External invoice ID not found. Invoice may not be synced properly.");
+            String errorMessage = messageService.getMessage("error.invoice.external.id.not.found");
+            throw new ResourceNotFoundException(errorMessage);
         }
 
         try {
@@ -548,7 +577,8 @@ public class InvoiceService {
             return externalInvoiceService.downloadInvoicePdf(invoice);
         } catch (IOException e) {
             log.error("Error downloading PDF for invoice {}", id, e);
-            throw new IOException("Failed to download invoice PDF: " + e.getMessage(), e);
+            String errorMessage = messageService.getMessage("error.invoice.pdf.download.failed", e.getMessage());
+            throw new IOException(errorMessage, e);
         }
     }
 
@@ -559,16 +589,21 @@ public class InvoiceService {
     public InvoiceDTO sendInvoiceEmail(Long id) {
         log.info("Sending email for invoice {}", id);
         Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Only allow email for COMPLETED invoices
         if (invoice.getStatus() != Invoice.InvoiceStatus.COMPLETED) {
-            throw new RuntimeException("Invoice must be COMPLETED to send email. Current status: " + invoice.getStatus());
+            String errorMessage = messageService.getMessage("error.invoice.invalid.status.for.email", invoice.getStatus());
+            throw new BadRequestException(errorMessage);
         }
 
         // Check if buyer has email
         if (invoice.getBuyer() == null || StringUtils.isEmpty(invoice.getBuyer().getBuyerEmail())) {
-            throw new RuntimeException("Customer email not found. Cannot send email.");
+            String errorMessage = messageService.getMessage("error.customer.email.not.found");
+            throw new ResourceNotFoundException(errorMessage);
         }
 
         try {
@@ -576,7 +611,8 @@ public class InvoiceService {
             InvoiceResponse response = externalInvoiceService.sendEmailInvoice(invoice);
 
             if (!response.isSuccess()) {
-                throw new RuntimeException("Failed to send email: " + response.getMessage());
+                String errorMessage = messageService.getMessage("error.invoice.email.send.failed", response.getMessage());
+                throw new BusinessException(errorMessage);
             }
 
             log.info("Email sent successfully for invoice {} to {}", id, invoice.getBuyer().getBuyerEmail());
@@ -584,7 +620,8 @@ public class InvoiceService {
 
         } catch (Exception e) {
             log.error("Error sending email for invoice {}", id, e);
-            throw new RuntimeException("Failed to send invoice email: " + e.getMessage(), e);
+            String errorMessage = messageService.getMessage("error.invoice.email.send.exception", e.getMessage());
+            throw new BusinessException(errorMessage, e);
         }
     }
 
@@ -595,18 +632,22 @@ public class InvoiceService {
     public InvoiceDTO cancelInvoice(Long id, String reason) {
         log.info("Cancelling invoice {} with reason: {}", id, reason);
         Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.invoice.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         // Only allow cancel for DRAFT or FAILED invoices
         if (invoice.getStatus() != Invoice.InvoiceStatus.DRAFT &&
-            invoice.getStatus() != Invoice.InvoiceStatus.FAILED) {
-            throw new RuntimeException("Only DRAFT or FAILED invoices can be cancelled. Current status: " + invoice.getStatus());
+                invoice.getStatus() != Invoice.InvoiceStatus.FAILED) {
+            String errorMessage = messageService.getMessage("error.invoice.invalid.status.for.cancel", invoice.getStatus());
+            throw new BadRequestException(errorMessage);
         }
 
         invoice.setStatus(Invoice.InvoiceStatus.CANCELLED);
         invoice.setNotes(invoice.getNotes() != null ?
-                        invoice.getNotes() + "\nCancellation reason: " + reason :
-                        "Cancellation reason: " + reason);
+                invoice.getNotes() + "\nCancellation reason: " + reason :
+                "Cancellation reason: " + reason);
 
         Invoice savedInvoice = invoiceRepository.save(invoice);
         log.info("Invoice {} cancelled successfully", id);

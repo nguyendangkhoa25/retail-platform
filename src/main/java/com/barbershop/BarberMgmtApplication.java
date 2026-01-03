@@ -8,10 +8,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableAsync
 @EnableScheduling
-public class BarberManagementApplication {
+public class BarberMgmtApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(BarberManagementApplication.class, args);
+        SpringApplication.run(BarberMgmtApplication.class, args);
     }
 }
 

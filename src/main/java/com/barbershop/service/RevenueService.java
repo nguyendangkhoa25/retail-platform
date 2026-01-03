@@ -1,5 +1,6 @@
 package com.barbershop.service;
 
+import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.revenue.CreateRevenueRequest;
 import com.barbershop.model.dto.revenue.RevenueDTO;
 import com.barbershop.model.dto.revenue.RevenueCostDTO;
@@ -35,6 +36,7 @@ public class RevenueService {
     private final OrderRepository orderRepository;
     private final SalaryRepository salaryRepository;
     private final RevenueCostRepository revenueCostRepository;
+    private final MessageService messageService;
 
     /**
      * Calculate gross revenue for a given month and year
@@ -87,7 +89,9 @@ public class RevenueService {
                 .orElse(null);
 
         if (existingRevenue != null) {
-            throw new IllegalArgumentException("Revenue already exists for " + request.getMonth() + "/" + request.getYear());
+            String errorMessage = messageService.getMessage("error.revenue.already.exists",
+                    request.getMonth(), request.getYear());
+            throw new IllegalArgumentException(errorMessage);
         }
 
         // Calculate gross revenue
@@ -147,7 +151,10 @@ public class RevenueService {
         log.info("Fetching revenue with ID: {}", id);
 
         Revenue revenue = revenueRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Revenue not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.revenue.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         return mapToDTO(revenue);
     }
@@ -159,7 +166,10 @@ public class RevenueService {
         log.info("Fetching revenue for {}/{}", month, year);
 
         Revenue revenue = revenueRepository.findByYearAndMonthNotDeleted(year, month)
-                .orElseThrow(() -> new RuntimeException("Revenue not found for " + month + "/" + year));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.revenue.not.found.for.month", month, year);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         return mapToDTO(revenue);
     }
@@ -191,7 +201,10 @@ public class RevenueService {
         log.info("Deleting revenue with ID: {}", id);
 
         Revenue revenue = revenueRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Revenue not found"));
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.revenue.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
 
         revenue.setDeleted(true);
         revenueRepository.save(revenue);
