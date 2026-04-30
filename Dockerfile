@@ -2,6 +2,7 @@ FROM eclipse-temurin:21-jre-alpine
 LABEL maintainer="nguyendangkhoa25@gmail.com"
 
 ENV TZ="Asia/Ho_Chi_Minh"
+WORKDIR /app
 RUN mkdir -p /app/logs
 
 COPY target/retail-platform-1.0.0.jar /app/retail-platform.jar
