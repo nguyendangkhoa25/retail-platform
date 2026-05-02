@@ -4,6 +4,7 @@ import com.knp.exception.BadRequestException;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.model.dto.tenant.SaveVendorRequest;
 import com.knp.model.dto.tenant.VendorDTO;
+import com.knp.model.entity.notification.Notification;
 import com.knp.model.entity.tenant.Agent;
 import com.knp.model.enums.ActivityAction;
 import com.knp.repository.auth.UserRepository;
@@ -11,6 +12,8 @@ import com.knp.repository.tenant.AgentRepository;
 import com.knp.service.MessageService;
 import com.knp.service.audit.ActivityLogService;
 import com.knp.service.notification.NotificationService;
+
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -56,7 +59,7 @@ public class AgentService {
         Agent saved = agentRepository.save(agent);
 
         String actorUsername = SecurityContextHolder.getContext().getAuthentication().getName();
-        String actorFullName = userRepository.findByUsername(actorUsername)
+        String actorFullName = userRepository.findByUsernameTenantScoped(actorUsername)
                 .map(u -> u.getFullName()).orElse(actorUsername);
         activityLogService.logAsync("master", actorUsername, actorFullName,
                 ActivityAction.VENDOR_CREATED, "VENDOR", String.valueOf(saved.getId()),
@@ -64,7 +67,8 @@ public class AgentService {
         String title = messageService.getMessage("notification.master.vendor.created.title");
         String msg = messageService.getMessage("notification.master.vendor.created.message",
                 saved.getName(), actorUsername);
-        notificationService.pushToMasterUsers(title, msg, "VENDOR", saved.getId());
+        notificationService.pushToRolesAsync(Notification.NotificationType.SYSTEM, title, msg,
+                "VENDOR", saved.getId(), List.of("MASTER_TENANT"), null);
 
         return toDTO(saved);
     }

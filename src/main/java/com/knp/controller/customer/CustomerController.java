@@ -119,6 +119,12 @@ public class CustomerController {
         return ResponseEntity.ok(ApiResponse.success(customerService.getWalkinCustomer()));
     }
 
+    @GetMapping("/check-phone")
+    public ResponseEntity<ApiResponse<CustomerDTO>> checkPhone(@RequestParam String phone) {
+        CustomerDTO customer = customerService.findCustomerByPhone(phone);
+        return ResponseEntity.ok(ApiResponse.success(customer, "Phone lookup completed"));
+    }
+
     /**
      * PUT /api/customers/{id}
      * Update an existing customer

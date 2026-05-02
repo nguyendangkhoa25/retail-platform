@@ -14,32 +14,62 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
 
     /**
-     * Find user by username
+     * Find user by username — cross-tenant, use only where tenant isolation is not required
+     * (e.g. JwtAuthenticationFilter which must locate a user from any tenant by JWT claim).
      */
     Optional<User> findByUsername(String username);
 
-
     /**
-     * Check if username exists
+     * Find user by username scoped to the current tenant via current_tenant_id().
+     * Use this for all login/auth flows to prevent cross-tenant credential reuse.
+     * Relies on app.current_tenant being set (done by TenantRlsAspect on @Transactional entry).
      */
-    boolean existsByUsername(String username);
+    @Query(value = "SELECT * FROM users WHERE username = :username " +
+           "AND tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
+           "AND deleted <> true",
+           nativeQuery = true)
+    Optional<User> findByUsernameTenantScoped(@Param("username") String username);
+
 
     /**
-     * Check if email exists
+     * Check if username exists within the current tenant.
      */
-    boolean existsByEmail(String email);
-
+    @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE username = :username " +
+           "AND tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
+           "AND deleted <> true",
+           nativeQuery = true)
+    boolean existsByUsernameTenantScoped(@Param("username") String username);
 
     /**
-     * Get all users with pagination, search, and filtering
+     * Check if email exists within the current tenant.
+     */
+    @Query(value = "SELECT COUNT(*) > 0 FROM users WHERE email = :email " +
+           "AND tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
+           "AND deleted <> true",
+           nativeQuery = true)
+    boolean existsByEmailTenantScoped(@Param("email") String email);
+
+    /**
+     * Find user by ID scoped to the current tenant.
+     */
+    @Query(value = "SELECT * FROM users WHERE id = :id " +
+           "AND tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
+           "AND deleted <> true",
+           nativeQuery = true)
+    Optional<User> findByIdTenantScoped(@Param("id") Long id);
+
+    /**
+     * Get all users with pagination, search, and filtering — scoped to the current tenant.
      */
     @Query(value = "SELECT * FROM users WHERE " +
+            "tenant_id IS NOT DISTINCT FROM current_tenant_id() AND " +
             "(CAST(:search AS text) IS NULL OR LOWER(username) LIKE LOWER('%' || CAST(:search AS text) || '%') OR " +
             "LOWER(email) LIKE LOWER('%' || CAST(:search AS text) || '%') OR " +
             "LOWER(full_name) LIKE LOWER('%' || CAST(:search AS text) || '%')) AND " +
             "deleted <> true " +
             "ORDER BY id DESC",
            countQuery = "SELECT COUNT(*) FROM users WHERE " +
+            "tenant_id IS NOT DISTINCT FROM current_tenant_id() AND " +
             "(CAST(:search AS text) IS NULL OR LOWER(username) LIKE LOWER('%' || CAST(:search AS text) || '%') OR " +
             "LOWER(email) LIKE LOWER('%' || CAST(:search AS text) || '%') OR " +
             "LOWER(full_name) LIKE LOWER('%' || CAST(:search AS text) || '%')) AND " +
@@ -73,5 +103,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     @Query("SELECT u.username FROM User u JOIN u.roles r WHERE r.name = :roleName AND u.active = true AND u.deletedAt IS NULL")
     java.util.List<String> findUsernamesByRole(@Param("roleName") String roleName);
+
+    /**
+     * Get active usernames by any of the given role names.
+     * DISTINCT prevents duplicates when a user holds multiple matching roles.
+     */
+    @Query("SELECT DISTINCT u.username FROM User u JOIN u.roles r WHERE r.name IN :roleNames AND u.active = true AND u.deletedAt IS NULL")
+    java.util.List<String> findUsernamesByRoleNames(@Param("roleNames") java.util.List<String> roleNames);
 }
 

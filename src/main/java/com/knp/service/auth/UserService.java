@@ -59,13 +59,13 @@ public class UserService {
     public UserDetailDTO createUser(CreateUserRequest request) {
         log.info("Creating new user: {}", request.getUsername());
 
-        // Check if username already exists
-        if (userRepository.existsByUsername(request.getUsername())) {
+        // Check if username already exists within current tenant
+        if (userRepository.existsByUsernameTenantScoped(request.getUsername())) {
             throw new DuplicateResourceException(messageService.getMessage("error.user.duplicate.username", request.getUsername()));
         }
 
-        // Check if email already exists
-        if (StringUtils.isNoneEmpty(request.getEmail()) && userRepository.existsByEmail(request.getEmail())) {
+        // Check if email already exists within current tenant
+        if (StringUtils.isNoneEmpty(request.getEmail()) && userRepository.existsByEmailTenantScoped(request.getEmail())) {
             throw new DuplicateResourceException(messageService.getMessage("error.user.duplicate.email", request.getEmail()));
         }
 
@@ -110,7 +110,7 @@ public class UserService {
 
         if (tenantContext.getCurrentTenant() == null) {
             String actorUsername = SecurityContextHolder.getContext().getAuthentication().getName();
-            String actorFullName = userRepository.findByUsername(actorUsername)
+            String actorFullName = userRepository.findByUsernameTenantScoped(actorUsername)
                     .map(User::getFullName).orElse(actorUsername);
             activityLogService.logAsync("master", actorUsername, actorFullName,
                     ActivityAction.USER_CREATED, "USER", String.valueOf(createdUser.getId()),
@@ -129,7 +129,7 @@ public class UserService {
      */
     public UserDetailDTO getUserById(Long id) {
         log.info("Fetching user by id: {}", id);
-        User user = userRepository.findById(id)
+        User user = userRepository.findByIdTenantScoped(id)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", id);
                     return new ResourceNotFoundException(errorMessage);
@@ -142,7 +142,7 @@ public class UserService {
      */
     public UserDetailDTO getUserByUsername(String username) {
         log.info("Fetching user by username: {}", username);
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameTenantScoped(username)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", username);
                     return new ResourceNotFoundException(errorMessage);
@@ -165,7 +165,7 @@ public class UserService {
      */
     public UserDetailDTO updateUser(Long id, CreateUserRequest request) {
         log.info("Updating user: {}", id);
-        User user = userRepository.findById(id)
+        User user = userRepository.findByIdTenantScoped(id)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", id);
                     return new ResourceNotFoundException(errorMessage);
@@ -173,7 +173,7 @@ public class UserService {
 
         // Update username if provided
         if (request.getUsername() != null && !request.getUsername().equals(user.getUsername())) {
-            if (userRepository.existsByUsername(request.getUsername())) {
+            if (userRepository.existsByUsernameTenantScoped(request.getUsername())) {
                 String errorMessage = messageService.getMessage("error.user.duplicate.username", request.getUsername());
                 throw new DuplicateResourceException(errorMessage);
             }
@@ -228,7 +228,7 @@ public class UserService {
      */
     public void deleteUser(Long id) {
         log.info("Deleting user: {}", id);
-        User user = userRepository.findById(id)
+        User user = userRepository.findByIdTenantScoped(id)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", id);
                     return new ResourceNotFoundException(errorMessage);
@@ -245,7 +245,7 @@ public class UserService {
      */
     public UserDetailDTO disableUser(Long id, boolean active) {
         log.info("Setting user {} active status to: {}", id, active);
-        User user = userRepository.findById(id)
+        User user = userRepository.findByIdTenantScoped(id)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", id);
                     return new ResourceNotFoundException(errorMessage);
@@ -261,7 +261,7 @@ public class UserService {
      */
     public UserDetailDTO lockUser(Long id, boolean locked) {
         log.info("Setting user {} locked status to: {}", id, locked);
-        User user = userRepository.findById(id)
+        User user = userRepository.findByIdTenantScoped(id)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", id);
                     return new ResourceNotFoundException(errorMessage);
@@ -287,7 +287,7 @@ public class UserService {
             throw new BadRequestException(errorMessage);
         }
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdTenantScoped(userId)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", userId);
                     return new ResourceNotFoundException(errorMessage);
@@ -316,7 +316,7 @@ public class UserService {
             throw new BadRequestException(errorMessage);
         }
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdTenantScoped(userId)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", userId);
                     return new ResourceNotFoundException(errorMessage);
@@ -384,33 +384,25 @@ public class UserService {
                 .build();
     }
 
-    public PasswordResetResponse resetUserPassword(Long userId) {
+    public PasswordResetResponse resetUserPassword(Long userId, String newPassword) {
         log.info("Request: Reset user password - userId: {}", userId);
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdTenantScoped(userId)
                 .orElseThrow(() -> {
                     log.error("User not found for password reset - userId: {}", userId);
-                    String errorMessage = messageService.getMessage("error.user.not.found", userId);
-                    return new ResourceNotFoundException(errorMessage);
+                    return new ResourceNotFoundException(messageService.getMessage("error.user.not.found", userId));
                 });
 
-        // Generate temporary password
-        String tempPassword = generateTemporaryPassword();
-
-        // Update user password and set requireAction
-        user.setPassword(passwordEncoder.encode(tempPassword));
+        user.setPassword(passwordEncoder.encode(newPassword));
         user.setRequireAction("CHANGE_PASSWORD");
 
         User updatedUser = userRepository.save(user);
-
         log.info("User password reset successfully - userId: {}, username: {}", userId, user.getUsername());
 
         return PasswordResetResponse.builder()
                 .userId(updatedUser.getId())
                 .username(updatedUser.getUsername())
                 .email(updatedUser.getEmail())
-                .tempPassword(tempPassword)
-                .message("Password has been reset. User must change password on next login.")
                 .requirePasswordChange(true)
                 .build();
     }
@@ -435,7 +427,7 @@ public class UserService {
             throw new UnauthorizedException(errorMessage);
         }
 
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameTenantScoped(username)
                 .orElseThrow(() -> {
                     log.error("User not found for password change - username: {}", username);
                     String errorMessage = messageService.getMessage("error.user.not.found", username);
@@ -472,7 +464,7 @@ public class UserService {
             throw new UnauthorizedException(errorMessage);
         }
 
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameTenantScoped(username)
                 .orElseThrow(() -> {
                     log.error("User not found for password change - username: {}", username);
                     String errorMessage = messageService.getMessage("error.user.not.found", username);

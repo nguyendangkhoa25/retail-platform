@@ -135,8 +135,8 @@ class UserServiceTest {
     @DisplayName("Should create user successfully")
     void testCreateUser_Success() {
         // Given
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -148,8 +148,8 @@ class UserServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getUsername()).isEqualTo("testuser");
         assertThat(result.getEmail()).isEqualTo("test@example.com");
-        verify(userRepository).existsByUsername("testuser");
-        verify(userRepository).existsByEmail("test@example.com");
+        verify(userRepository).existsByUsernameTenantScoped("testuser");
+        verify(userRepository).existsByEmailTenantScoped("test@example.com");
         verify(roleRepository).findByName("SHOP_OWNER");
         verify(userRepository).save(any(User.class));
     }
@@ -158,22 +158,22 @@ class UserServiceTest {
     @DisplayName("Should fail when username already exists")
     void testCreateUser_DuplicateUsername() {
         // Given
-        when(userRepository.existsByUsername("testuser")).thenReturn(true);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(true);
         when(messageService.getMessage("error.user.duplicate.username", "testuser"))
                 .thenReturn("Username already exists");
 
         // When & Then
         assertThatThrownBy(() -> userService.createUser(createUserRequest))
                 .isInstanceOf(DuplicateResourceException.class);
-        verify(userRepository).existsByUsername("testuser");
+        verify(userRepository).existsByUsernameTenantScoped("testuser");
     }
 
     @Test
     @DisplayName("Should fail when email already exists")
     void testCreateUser_DuplicateEmail() {
         // Given
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(true);
         when(messageService.getMessage("error.user.duplicate.email", "test@example.com"))
                 .thenReturn("Email already exists");
 
@@ -187,8 +187,8 @@ class UserServiceTest {
     void testCreateUser_InvalidRole() {
         // Given
         createUserRequest.setRoleNames(new HashSet<>(List.of("INVALID_ROLE")));
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(messageService.getMessage("error.role.invalid", "INVALID_ROLE"))
                 .thenReturn("Invalid role");
 
@@ -201,8 +201,8 @@ class UserServiceTest {
     @DisplayName("Should fail when role not found in database")
     void testCreateUser_RoleNotFound() {
         // Given
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.empty());
         when(messageService.getMessage("error.role.not.found", "SHOP_OWNER"))
                 .thenReturn("Role not found");
@@ -217,8 +217,8 @@ class UserServiceTest {
     void testCreateUser_NoRoles() {
         // Given
         createUserRequest.setRoleNames(null);
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -236,7 +236,7 @@ class UserServiceTest {
     @DisplayName("Should get user by ID successfully")
     void testGetUserById_Success() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserById(1L);
@@ -245,14 +245,14 @@ class UserServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(1L);
         assertThat(result.getUsername()).isEqualTo("testuser");
-        verify(userRepository).findById(1L);
+        verify(userRepository).findByIdTenantScoped(1L);
     }
 
     @Test
     @DisplayName("Should throw exception when user not found by ID")
     void testGetUserById_NotFound() {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", 999L))
                 .thenReturn("User not found");
 
@@ -265,7 +265,7 @@ class UserServiceTest {
     @DisplayName("Should get user by username successfully")
     void testGetUserByUsername_Success() {
         // Given
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserByUsername("testuser");
@@ -273,14 +273,14 @@ class UserServiceTest {
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getUsername()).isEqualTo("testuser");
-        verify(userRepository).findByUsername("testuser");
+        verify(userRepository).findByUsernameTenantScoped("testuser");
     }
 
     @Test
     @DisplayName("Should throw exception when user not found by username")
     void testGetUserByUsername_NotFound() {
         // Given
-        when(userRepository.findByUsername("nonexistent")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameTenantScoped("nonexistent")).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", "nonexistent"))
                 .thenReturn("User not found");
 
@@ -337,7 +337,7 @@ class UserServiceTest {
                 .notes("Updated notes")
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.encode("newPassword123")).thenReturn("hashedNewPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -346,7 +346,7 @@ class UserServiceTest {
 
         // Then
         assertThat(result).isNotNull();
-        verify(userRepository).findById(1L);
+        verify(userRepository).findByIdTenantScoped(1L);
         verify(userRepository).save(any(User.class));
     }
 
@@ -358,8 +358,8 @@ class UserServiceTest {
                 .username("otheruser")
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(userRepository.existsByUsername("otheruser")).thenReturn(true);
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.existsByUsernameTenantScoped("otheruser")).thenReturn(true);
         when(messageService.getMessage("error.user.duplicate.username", "otheruser"))
                 .thenReturn("Username already exists");
 
@@ -379,7 +379,7 @@ class UserServiceTest {
                 .roleNames(new HashSet<>(List.of("MANAGER")))
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(managerRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -397,14 +397,14 @@ class UserServiceTest {
     @DisplayName("Should delete user (soft delete)")
     void testDeleteUser_Success() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
         userService.deleteUser(1L);
 
         // Then
-        verify(userRepository).findById(1L);
+        verify(userRepository).findByIdTenantScoped(1L);
         verify(userRepository).save(any(User.class));
     }
 
@@ -412,7 +412,7 @@ class UserServiceTest {
     @DisplayName("Should fail to delete non-existent user")
     void testDeleteUser_NotFound() {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", 999L))
                 .thenReturn("User not found");
 
@@ -427,7 +427,7 @@ class UserServiceTest {
     @DisplayName("Should disable user")
     void testDisableUser_Success() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -435,7 +435,7 @@ class UserServiceTest {
 
         // Then
         assertThat(result).isNotNull();
-        verify(userRepository).findById(1L);
+        verify(userRepository).findByIdTenantScoped(1L);
         verify(userRepository).save(any(User.class));
     }
 
@@ -444,7 +444,7 @@ class UserServiceTest {
     void testDisableUser_Enable() {
         // Given
         testUser.setActive(false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -460,7 +460,7 @@ class UserServiceTest {
     @DisplayName("Should lock user account")
     void testLockUser_Lock() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -476,7 +476,7 @@ class UserServiceTest {
     void testLockUser_Unlock() {
         // Given
         testUser.setAccountNonLocked(false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -499,7 +499,7 @@ class UserServiceTest {
         addRole.setDescription("Shop Owner role");
         addRole.setUsers(new HashSet<>()); // Use setter instead of builder
         
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(addRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -509,7 +509,7 @@ class UserServiceTest {
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getUsername()).isEqualTo("testuser");
-        verify(userRepository).findById(1L);
+        verify(userRepository).findByIdTenantScoped(1L);
         verify(roleRepository).findByName("SHOP_OWNER");
         verify(userRepository).save(any(User.class));
     }
@@ -538,7 +538,7 @@ class UserServiceTest {
         removeRole.setDescription("Shop Owner role");
         removeRole.setUsers(new HashSet<>(Collections.singletonList(testUser))); // Add user to role
         
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(removeRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -547,7 +547,7 @@ class UserServiceTest {
 
         // Then
         assertThat(result).isNotNull();
-        verify(userRepository).findById(1L);
+        verify(userRepository).findByIdTenantScoped(1L);
         verify(roleRepository).findByName("SHOP_OWNER");
         verify(userRepository).save(any(User.class));
     }
@@ -556,7 +556,7 @@ class UserServiceTest {
     @DisplayName("Should throw exception when removing non-existent role from user")
     void testRemoveRoleFromUser_RoleNotFound() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.empty());
         when(messageService.getMessage("error.role.not.found", "MANAGER"))
                 .thenReturn("Role not found");
@@ -572,53 +572,37 @@ class UserServiceTest {
     @DisplayName("Should reset user password")
     void testResetUserPassword_Success() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(passwordEncoder.encode(anyString())).thenReturn("hashedTempPassword");
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
+        when(passwordEncoder.encode("NewPass@123")).thenReturn("hashedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
-        PasswordResetResponse result = userService.resetUserPassword(1L);
+        PasswordResetResponse result = userService.resetUserPassword(1L, "NewPass@123");
 
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getUsername()).isEqualTo("testuser");
         assertThat(result.getRequirePasswordChange()).isTrue();
-        verify(userRepository).findById(1L);
+        verify(userRepository).findByIdTenantScoped(1L);
+        verify(passwordEncoder).encode("NewPass@123");
         verify(userRepository).save(any(User.class));
     }
 
     @Test
-    @DisplayName("Should verify reset password generates temp password")
-    void testResetUserPassword_GeneratesTempPassword() {
+    @DisplayName("Should encode the supplied password")
+    void testResetUserPassword_EncodesPassword() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(passwordEncoder.encode(anyString())).thenReturn("hashedTempPassword");
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
+        when(passwordEncoder.encode("MySecret1!")).thenReturn("hashedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
-        PasswordResetResponse result = userService.resetUserPassword(1L);
+        PasswordResetResponse result = userService.resetUserPassword(1L, "MySecret1!");
 
         // Then
         assertThat(result).isNotNull();
-        assertThat(result.getTempPassword()).isNotNull();
-        assertThat(result.getTempPassword()).isNotBlank();
         assertThat(result.getRequirePasswordChange()).isTrue();
-    }
-
-    @Test
-    @DisplayName("Should generate unique temporary passwords")
-    void testResetUserPassword_UniquePasswords() {
-        // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(passwordEncoder.encode(anyString())).thenReturn("hashedTempPassword");
-        when(userRepository.save(any(User.class))).thenReturn(testUser);
-
-        // When
-        PasswordResetResponse result1 = userService.resetUserPassword(1L);
-        PasswordResetResponse result2 = userService.resetUserPassword(1L);
-
-        // Then
-        assertThat(result1.getTempPassword()).isNotEqualTo(result2.getTempPassword());
+        verify(passwordEncoder).encode("MySecret1!");
     }
 
     // ============= changePasswordOnFirstLogin Tests =============
@@ -639,7 +623,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.encode("newPassword123")).thenReturn("hashedNewPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -648,7 +632,7 @@ class UserServiceTest {
 
         // Then
         assertThat(result).isNotNull();
-        verify(userRepository).findByUsername(username);
+        verify(userRepository).findByUsernameTenantScoped(username);
         verify(userRepository).save(any(User.class));
     }
 
@@ -694,7 +678,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
         when(passwordEncoder.encode("newPassword123")).thenReturn("hashedNewPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -704,7 +688,7 @@ class UserServiceTest {
 
         // Then
         assertThat(result).isNotNull();
-        verify(userRepository).findByUsername(username);
+        verify(userRepository).findByUsernameTenantScoped(username);
         verify(passwordEncoder).matches("password123", "hashedPassword");
         verify(userRepository).save(any(User.class));
     }
@@ -726,7 +710,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("wrongPassword", "hashedPassword")).thenReturn(false);
         when(messageService.getMessage("error.password.old.incorrect"))
                 .thenReturn("Old password is incorrect");
@@ -753,7 +737,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.of(testUser));
         when(messageService.getMessage("error.password.old.required"))
                 .thenReturn("Old password is required");
 
@@ -769,7 +753,7 @@ class UserServiceTest {
     void testCreateUser_EmptyEmail() {
         // Given
         createUserRequest.setEmail("");
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -790,8 +774,8 @@ class UserServiceTest {
         managerRole.setId(2L);
         createUserRequest.setRoleNames(new HashSet<>(Arrays.asList("SHOP_OWNER", "MANAGER")));
 
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(managerRole));
@@ -812,8 +796,8 @@ class UserServiceTest {
     void testCreateUser_NullNotes() {
         // Given
         createUserRequest.setNotes(null);
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -832,8 +816,8 @@ class UserServiceTest {
         // Given
         String longNotes = "A".repeat(1000);
         createUserRequest.setNotes(longNotes);
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -851,7 +835,7 @@ class UserServiceTest {
     void testUpdateUser_UserNotFound() {
         // Given
         CreateUserRequest updateRequest = new CreateUserRequest();
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage(anyString(), anyLong())).thenReturn("User not found");
 
         // When & Then
@@ -870,7 +854,7 @@ class UserServiceTest {
         Role managerRole = Role.builder().name("MANAGER").build();
         managerRole.setId(2L);
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(managerRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -890,7 +874,7 @@ class UserServiceTest {
                 .roleNames(new HashSet<>(List.of("NONEXISTENT")))
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(messageService.getMessage("error.role.invalid", "NONEXISTENT"))
                 .thenReturn("Invalid role");
 
@@ -922,7 +906,7 @@ class UserServiceTest {
         CreateUserRequest updateWithEmail = CreateUserRequest.builder()
                 .email("newemail@example.com")
                 .build();
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -940,7 +924,7 @@ class UserServiceTest {
         CreateUserRequest updateWithPassword = CreateUserRequest.builder()
                 .password("newPassword123")
                 .build();
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.encode("newPassword123")).thenReturn("hashedNewPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -956,7 +940,7 @@ class UserServiceTest {
     @DisplayName("Should throw exception when adding non-existent role to user")
     void testAddRoleToUser_RoleNotFound() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.empty());
         when(messageService.getMessage("error.role.not.found", "MANAGER"))
                 .thenReturn("Role not found");
@@ -1016,7 +1000,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
         when(passwordEncoder.encode("newPassword456")).thenReturn("hashedNewPassword456");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -1045,7 +1029,7 @@ class UserServiceTest {
 
         testUser.setRoles(new HashSet<>(List.of(role1, role2)));
 
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserByUsername("testuser");
@@ -1060,7 +1044,7 @@ class UserServiceTest {
     void testLockUser_VerifyLocked() {
         // Given
         testUser.setAccountNonLocked(true);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1076,7 +1060,7 @@ class UserServiceTest {
     void testDisableUser_VerifyDisabled() {
         // Given
         testUser.setActive(true);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1096,7 +1080,7 @@ class UserServiceTest {
         newRole.setId(2L);
         newRole.setName("MANAGER");
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(newRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -1122,7 +1106,7 @@ class UserServiceTest {
 
         testUser.setRoles(new HashSet<>(List.of(role1, role2)));
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(role2));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -1140,8 +1124,8 @@ class UserServiceTest {
         // Given
         createUserRequest.setFullName("José María O'Connor-Smith");
 
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -1162,7 +1146,7 @@ class UserServiceTest {
                 .email("")
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1219,7 +1203,7 @@ class UserServiceTest {
     @DisplayName("Should delete user not found and throw exception")
     void testDeleteUser_NotFoundThrowsException() {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", 999L))
                 .thenReturn("User not found");
 
@@ -1249,8 +1233,8 @@ class UserServiceTest {
 
         createUserRequest.setRoleNames(new HashSet<>(List.of("SHOP_OWNER", "MANAGER", "RECEPTIONIST")));
 
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(ownerRole));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(managerRole));
@@ -1290,7 +1274,7 @@ class UserServiceTest {
                 .fullName("Updated Name")
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1319,7 +1303,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.encode("newPassword123")).thenReturn("hashedNewPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -1338,8 +1322,8 @@ class UserServiceTest {
         createUserRequest.setUsername("testuser");
         createUserRequest.setEmail("testuser@example.com");
 
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
-        when(userRepository.existsByEmail("testuser@example.com")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("testuser@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -1356,7 +1340,7 @@ class UserServiceTest {
     @DisplayName("Should verify DTO mapping includes all user fields")
     void testMapToDTO_IncludesAllFields() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserById(1L);
@@ -1379,7 +1363,7 @@ class UserServiceTest {
         // Given
         LocalDateTime now = LocalDateTime.now();
         testUser.setCreatedAt(now);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserById(1L);
@@ -1395,7 +1379,7 @@ class UserServiceTest {
         // Given
         LocalDateTime now = LocalDateTime.now();
         testUser.setUpdatedAt(now);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserById(1L);
@@ -1410,7 +1394,7 @@ class UserServiceTest {
     void testMapToDTO_NoRoles() {
         // Given
         testUser.setRoles(new HashSet<>());
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserById(1L);
@@ -1431,7 +1415,7 @@ class UserServiceTest {
         singleRole.setCreatedAt(LocalDateTime.now());
         
         testUser.setRoles(new HashSet<>(List.of(singleRole)));
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserById(1L);
@@ -1458,7 +1442,7 @@ class UserServiceTest {
         role2.setCreatedAt(LocalDateTime.now());
 
         testUser.setRoles(new HashSet<>(List.of(role1, role2)));
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserById(1L);
@@ -1473,7 +1457,7 @@ class UserServiceTest {
     void testMapToDTO_PasswordNotIncluded() {
         // Given
         testUser.setPassword("secretPassword");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
 
         // When
         UserDetailDTO result = userService.getUserById(1L);
@@ -1496,8 +1480,8 @@ class UserServiceTest {
                 .notes("New notes")
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(userRepository.existsByUsername("newusername")).thenReturn(false);
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.existsByUsernameTenantScoped("newusername")).thenReturn(false);
         when(passwordEncoder.encode("newPassword123")).thenReturn("hashedNewPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -1514,7 +1498,7 @@ class UserServiceTest {
     void testLockUser_AlreadyLocked() {
         // Given
         testUser.setAccountNonLocked(false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1530,7 +1514,7 @@ class UserServiceTest {
     void testLockUser_AlreadyUnlocked() {
         // Given
         testUser.setAccountNonLocked(true);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1546,7 +1530,7 @@ class UserServiceTest {
     void testDisableUser_AlreadyDisabled() {
         // Given
         testUser.setActive(false);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1562,7 +1546,7 @@ class UserServiceTest {
     void testDisableUser_AlreadyEnabled() {
         // Given
         testUser.setActive(true);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1645,7 +1629,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -1675,7 +1659,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.of(testUser));
         when(passwordEncoder.encode(longPassword)).thenReturn("hashedLongPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -1693,7 +1677,7 @@ class UserServiceTest {
         // Given
         createUserRequest.setEmail("");
 
-        when(userRepository.existsByUsername("testuser")).thenReturn(false);
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -1714,7 +1698,7 @@ class UserServiceTest {
                 .password("")
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -1749,7 +1733,7 @@ class UserServiceTest {
         newRole.setName("MANAGER");
         newRole.setUsers(new HashSet<>());
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(newRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -1773,7 +1757,7 @@ class UserServiceTest {
 
         testUser.setRoles(new HashSet<>(List.of(roleToRemove)));
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(roleToRemove));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
@@ -1791,7 +1775,7 @@ class UserServiceTest {
     @DisplayName("Should throw exception when disabling non-existent user")
     void testDisableUser_UserNotFound() {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", 999L))
                 .thenReturn("User not found");
 
@@ -1804,7 +1788,7 @@ class UserServiceTest {
     @DisplayName("Should throw exception when locking non-existent user")
     void testLockUser_UserNotFound() {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", 999L))
                 .thenReturn("User not found");
 
@@ -1817,7 +1801,7 @@ class UserServiceTest {
     @DisplayName("Should throw exception when adding role to non-existent user")
     void testAddRoleToUser_UserNotFound() {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", 999L))
                 .thenReturn("User not found");
 
@@ -1830,7 +1814,7 @@ class UserServiceTest {
     @DisplayName("Should throw exception when removing role from non-existent user")
     void testRemoveRoleFromUser_UserNotFound() {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", 999L))
                 .thenReturn("User not found");
 
@@ -1843,12 +1827,12 @@ class UserServiceTest {
     @DisplayName("Should throw exception when resetting password for non-existent user")
     void testResetUserPassword_UserNotFound() {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdTenantScoped(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", 999L))
                 .thenReturn("User not found");
 
         // When & Then
-        assertThatThrownBy(() -> userService.resetUserPassword(999L))
+        assertThatThrownBy(() -> userService.resetUserPassword(999L, "AnyPass1!"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -1868,7 +1852,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", username))
                 .thenReturn("User not found");
 
@@ -1894,7 +1878,7 @@ class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         SecurityContextHolder.setContext(securityContext);
 
-        when(userRepository.findByUsername(username)).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameTenantScoped(username)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.user.not.found", username))
                 .thenReturn("User not found");
 
@@ -1911,7 +1895,7 @@ class UserServiceTest {
                 .roleNames(new HashSet<>(List.of("MANAGER")))
                 .build();
 
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.empty());
         when(messageService.getMessage("error.role.not.found", "MANAGER"))
                 .thenReturn("Role not found");
@@ -1925,7 +1909,7 @@ class UserServiceTest {
     @DisplayName("Should throw exception when removing non-existent role from user in repo")
     void testRemoveRoleFromUser_RoleNotFoundInRepo() {
         // Given
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
         when(roleRepository.findByName("MANAGER")).thenReturn(Optional.empty());
         when(messageService.getMessage("error.role.not.found", "MANAGER"))
                 .thenReturn("Role not found");

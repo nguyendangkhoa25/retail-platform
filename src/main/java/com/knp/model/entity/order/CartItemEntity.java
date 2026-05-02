@@ -2,6 +2,8 @@ package com.knp.model.entity.order;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.Filter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.knp.model.entity.product.Product;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -100,8 +102,9 @@ public class CartItemEntity {
     @Column(name = "line_grand_total", nullable = false, precision = 19, scale = 2)
     private BigDecimal lineGrandTotal = BigDecimal.ZERO;
 
-    @Column(name = "variants", columnDefinition = "JSON")
-    private String variants; // JSON object: {"size": "M", "color": "Red"}
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "variants", columnDefinition = "jsonb")
+    private String variants;
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;

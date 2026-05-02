@@ -13,9 +13,8 @@ import java.util.List;
 /**
  * RoleFeatureRepository — data access for role-feature mappings.
  *
- * Uses IS NOT DISTINCT FROM current_tenant_id() for null-safe tenant scoping.
- * current_tenant_id() returns NULL in master context, matching master rows (tenant_id IS NULL).
- * current_setting('app.current_tenant', true) returns '' in master context — plain = would fail.
+ * features has no tenant_id — it is global master data.
+ * roles is tenant-scoped; IS NOT DISTINCT FROM current_tenant_id() gives null-safe matching.
  */
 @Repository
 public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
@@ -25,7 +24,6 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "INNER JOIN roles r ON rf.role_id = r.id " +
            "WHERE r.name = :roleName AND f.deleted = FALSE AND f.active = TRUE " +
            "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
-           "AND (f.tenant_id IS NOT DISTINCT FROM current_tenant_id() OR f.tenant_id IS NULL) " +
            "ORDER BY f.name ASC", nativeQuery = true)
     List<Feature> findActiveFeaturesByRoleName(@Param("roleName") String roleName);
 
@@ -34,7 +32,6 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "INNER JOIN roles r ON rf.role_id = r.id " +
            "WHERE r.name = :roleName AND f.deleted = FALSE AND f.active = TRUE " +
            "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
-           "AND (f.tenant_id IS NOT DISTINCT FROM current_tenant_id() OR f.tenant_id IS NULL) " +
            "ORDER BY f.name ASC", nativeQuery = true)
     List<String> findActiveFeatureNamesByRoleName(@Param("roleName") String roleName);
 
@@ -43,7 +40,6 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "INNER JOIN roles r ON rf.role_id = r.id " +
            "WHERE r.name IN :roleNames AND f.deleted = FALSE AND f.active = TRUE " +
            "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
-           "AND (f.tenant_id IS NOT DISTINCT FROM current_tenant_id() OR f.tenant_id IS NULL) " +
            "ORDER BY f.name ASC", nativeQuery = true)
     List<Feature> findActiveFeaturesByRoleNames(@Param("roleNames") List<String> roleNames);
 
@@ -52,7 +48,6 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "INNER JOIN roles r ON rf.role_id = r.id " +
            "WHERE r.name IN :roleNames AND f.deleted = FALSE AND f.active = TRUE " +
            "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
-           "AND (f.tenant_id IS NOT DISTINCT FROM current_tenant_id() OR f.tenant_id IS NULL) " +
            "ORDER BY f.name ASC", nativeQuery = true)
     List<String> findActiveFeatureNamesByRoleNames(@Param("roleNames") List<String> roleNames);
 
@@ -61,25 +56,22 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "INNER JOIN features f ON rf.feature_id = f.id " +
            "WHERE r.name = :roleName AND f.name = :featureName " +
            "AND f.deleted = FALSE AND f.active = TRUE " +
-           "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
-           "AND (f.tenant_id IS NOT DISTINCT FROM current_tenant_id() OR f.tenant_id IS NULL)",
+           "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id()",
            nativeQuery = true)
     boolean hasRoleAccessToFeature(@Param("roleName") String roleName, @Param("featureName") String featureName);
 
-    @Query(value = "SELECT DISTINCT f.* FROM features f " +
+    @Query(value = "SELECT f.* FROM features f " +
            "WHERE f.deleted = FALSE AND f.active = TRUE " +
-           "AND (f.tenant_id IS NOT DISTINCT FROM current_tenant_id() OR f.tenant_id IS NULL) " +
            "ORDER BY f.name ASC", nativeQuery = true)
     List<Feature> findAllActiveFeatures();
 
     @Transactional
     @Modifying
-    @Query(value = "INSERT INTO role_features (tenant_id, role_id, feature_id) " +
-           "SELECT current_tenant_id(), r.id, f.id " +
+    @Query(value = "INSERT INTO role_features (role_id, feature_id) " +
+           "SELECT r.id, f.id " +
            "FROM roles r, features f " +
            "WHERE r.name = :roleName AND f.name = :featureName " +
            "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
-           "AND (f.tenant_id IS NOT DISTINCT FROM current_tenant_id() OR f.tenant_id IS NULL) " +
            "ON CONFLICT (role_id, feature_id) DO NOTHING",
            nativeQuery = true)
     void assignFeatureToRole(@Param("roleName") String roleName, @Param("featureName") String featureName);
@@ -90,8 +82,7 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "USING roles r, features f " +
            "WHERE role_features.role_id = r.id AND role_features.feature_id = f.id " +
            "AND r.name = :roleName AND f.name = :featureName " +
-           "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id() " +
-           "AND (f.tenant_id IS NOT DISTINCT FROM current_tenant_id() OR f.tenant_id IS NULL)",
+           "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id()",
            nativeQuery = true)
     void removeFeatureFromRole(@Param("roleName") String roleName, @Param("featureName") String featureName);
 

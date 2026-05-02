@@ -36,4 +36,8 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     // Count query for dashboard optimization
     @Query("SELECT COUNT(c) FROM Customer c WHERE c.deleted = false")
     long countAllActive();
+
+    // Provisioning helper — explicit tenant_id avoids relying on Hibernate filter state
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.phone = :phone AND c.tenantId = :tenantId")
+    Optional<Customer> findByPhoneAndTenantId(@Param("phone") String phone, @Param("tenantId") String tenantId);
 }

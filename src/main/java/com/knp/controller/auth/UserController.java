@@ -4,6 +4,8 @@ import com.knp.model.dto.ApiResponse;
 import com.knp.model.dto.auth.CreateUserRequest;
 import com.knp.model.dto.auth.UserDetailDTO;
 import com.knp.model.dto.auth.PasswordResetResponse;
+import com.knp.model.dto.auth.ResetPasswordRequest;
+import jakarta.validation.Valid;
 import com.knp.service.auth.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -196,9 +198,11 @@ public class UserController {
      * - POST /api/users/1/reset-password
      */
     @PostMapping("/{id}/reset-password")
-    public ResponseEntity<ApiResponse<PasswordResetResponse>> resetUserPassword(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<PasswordResetResponse>> resetUserPassword(
+            @PathVariable Long id,
+            @Valid @RequestBody ResetPasswordRequest request) {
         log.info("Endpoint: POST /users/{}/reset-password - Reset user password", id);
-        PasswordResetResponse response = userService.resetUserPassword(id);
+        PasswordResetResponse response = userService.resetUserPassword(id, request.getNewPassword());
         return ResponseEntity.ok(ApiResponse.success(response, "User password reset successfully. User must change password on next login"));
     }
 }

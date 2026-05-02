@@ -62,13 +62,7 @@ JOIN category p ON p.name = c.parent_name
     AND p.tenant_id = current_setting('app.current_tenant', true)
     AND p.parent_id IS NULL;
 
--- ── 3. Walk-in customer ───────────────────────────────────────
-INSERT INTO customers (tenant_id, name, phone, email, notes, deleted)
-VALUES (current_setting('app.current_tenant', true), 'Khách lẻ', '0000000000', NULL,
-        'Khách hàng lẻ - không có thông tin liên hệ', FALSE)
-ON CONFLICT (phone, tenant_id) DO NOTHING;
-
--- ── 4. Gold types (tuổi vàng catalog — global reference) ──────
+-- ── 3. Gold types (tuổi vàng catalog — global reference) ──────
 INSERT INTO gold_types (code, label, is_silver, sort_order) VALUES
     ('Unknown', 'Tuổi vàng không xác định', FALSE,  0),
     ('610',     'Vàng 610',                 FALSE,  1),

@@ -2,12 +2,14 @@ package com.knp.service.tenant;
 
 import com.knp.model.dto.tenant.RoleSetupRequest;
 import com.knp.model.entity.auth.Role;
+import com.knp.model.entity.customer.Customer;
 import com.knp.model.entity.tenant.ShopInfo;
 import com.knp.model.entity.tenant.Tenant;
 import com.knp.model.entity.auth.User;
 import com.knp.model.enums.RoleEnum;
 import com.knp.model.enums.ShopConfigKey;
 import com.knp.repository.auth.RoleRepository;
+import com.knp.repository.customer.CustomerRepository;
 import com.knp.repository.tenant.ShopInfoRepository;
 import com.knp.repository.auth.UserRepository;
 import com.knp.service.auth.RoleFeatureService;
@@ -38,6 +40,7 @@ public class TenantProvisioningService {
     private final RoleFeatureService roleFeatureService;
     private final UserRepository userRepository;
     private final ShopInfoRepository shopInfoRepository;
+    private final CustomerRepository customerRepository;
     private final ShopConfigService shopConfigService;
     private final PasswordEncoder passwordEncoder;
 
@@ -110,6 +113,9 @@ public class TenantProvisioningService {
         try { seedDefaultConfig(); }
         catch (Exception e) { log.warn("seedDefaultConfig failed for tenant {}: {}", tenantId, e.getMessage()); }
 
+        try { seedWalkInCustomer(tenantId); }
+        catch (Exception e) { log.warn("seedWalkInCustomer failed for tenant {}: {}", tenantId, e.getMessage()); }
+
         // Admin user must succeed — propagate failures to the caller.
         seedShopOwnerUser(tenant, adminUsername, adminPassword, tenantId);
 
@@ -146,7 +152,7 @@ public class TenantProvisioningService {
             RoleEnum roleEnum;
             try { roleEnum = RoleEnum.valueOf(roleName); }
             catch (IllegalArgumentException e) { continue; }
-            if (!roleRepository.existsByName(roleEnum.getCode())) {
+            if (!roleRepository.existsByNameAndTenantId(roleEnum.getCode(), tenantId)) {
                 Role role = new Role(roleEnum.getCode(), roleEnum.getDescription());
                 role.setTenantId(tenantId);
                 roleRepository.save(role);
@@ -169,7 +175,7 @@ public class TenantProvisioningService {
     }
 
     private void seedShopInfo(Tenant tenant, String shopAddress, String tenantId) {
-        ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
+        ShopInfo shopInfo = shopInfoRepository.findFirstByTenantIdAndDeletedAtIsNullOrderByIdAsc(tenantId)
                 .orElse(ShopInfo.builder().tenantId(tenantId).build());
         shopInfo.setShopName(tenant.getName());
         shopInfo.setPhone(tenant.getContactPersonPhone());
@@ -187,13 +193,28 @@ public class TenantProvisioningService {
         log.debug("Seeded default shop_config");
     }
 
+    private void seedWalkInCustomer(String tenantId) {
+        if (customerRepository.findByPhoneAndTenantId("0000000000", tenantId).isPresent()) {
+            log.debug("Walk-in customer already exists for tenant: {}", tenantId);
+            return;
+        }
+        Customer walkIn = Customer.builder()
+                .name("Khách lẻ")
+                .phone("0000000000")
+                .notes("Khách hàng lẻ - không có thông tin liên hệ")
+                .build();
+        walkIn.setTenantId(tenantId);
+        customerRepository.save(walkIn);
+        log.debug("Seeded walk-in customer for tenant: {}", tenantId);
+    }
+
     private void seedShopOwnerUser(Tenant tenant, String adminUsername, String adminPassword, String tenantId) {
-        if (userRepository.findByUsername(adminUsername).isPresent()) {
+        if (userRepository.findByUsernameTenantScoped(adminUsername).isPresent()) {
             log.info("Admin user '{}' already exists in tenant: {}", adminUsername, tenantId);
             return;
         }
 
-        Role shopOwnerRole = roleRepository.findByName(RoleEnum.SHOP_OWNER.getCode())
+        Role shopOwnerRole = roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), tenantId)
                 .orElseThrow(() -> new RuntimeException("SHOP_OWNER role not found after seeding"));
 
         User admin = User.builder()

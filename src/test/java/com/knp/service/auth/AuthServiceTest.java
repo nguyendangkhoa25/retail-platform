@@ -100,7 +100,7 @@ class AuthServiceTest {
         @DisplayName("Should authenticate successfully in tenant context")
         void success_tenantContext() {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD"));
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -121,7 +121,7 @@ class AuthServiceTest {
         @DisplayName("Should authenticate successfully as master user (no tenant)")
         void success_masterUser() {
             when(tenantContext.getCurrentTenant()).thenReturn(null);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD"));
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -141,7 +141,7 @@ class AuthServiceTest {
         void success_withRememberMe() {
             loginRequest.setRememberMe(true);
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -164,7 +164,7 @@ class AuthServiceTest {
         void success_withoutRememberMe() {
             loginRequest.setRememberMe(false);
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -181,7 +181,7 @@ class AuthServiceTest {
         @Test
         @DisplayName("Should throw BadRequestException when user not found")
         void fail_userNotFound() {
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.empty());
             when(messageService.getMessage("error.unauthorized")).thenReturn("Unauthorized");
 
             assertThatThrownBy(() -> authService.authenticateUser(loginRequest, "127.0.0.1", "agent"))
@@ -192,7 +192,7 @@ class AuthServiceTest {
         @DisplayName("Should throw AccountLockedException when account is locked")
         void fail_accountLocked() {
             testUser.setAccountNonLocked(false);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(messageService.getMessage("error.account.locked")).thenReturn("Account locked");
 
             assertThatThrownBy(() -> authService.authenticateUser(loginRequest, "127.0.0.1", "agent"))
@@ -203,7 +203,7 @@ class AuthServiceTest {
         @DisplayName("Should throw BadRequestException when account is inactive")
         void fail_inactiveAccount() {
             testUser.setActive(false);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(messageService.getMessage("error.user.inactive")).thenReturn("Inactive");
 
             assertThatThrownBy(() -> authService.authenticateUser(loginRequest, "127.0.0.1", "agent"))
@@ -214,7 +214,7 @@ class AuthServiceTest {
         @DisplayName("Should throw BadRequestException on wrong password")
         void fail_wrongPassword() {
             testUser.setFailedLoginAttempts(0);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(false);
             when(userRepository.save(any(User.class))).thenReturn(testUser);
             when(messageService.getMessage(eq("error.invalid.credentials.remaining"), anyInt())).thenReturn("4 attempts left");
@@ -228,7 +228,7 @@ class AuthServiceTest {
         @DisplayName("Should lock account after 5 failed attempts")
         void fail_lockAfterMaxAttempts() {
             testUser.setFailedLoginAttempts(4);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(false);
             when(userRepository.save(any(User.class))).thenReturn(testUser);
             when(messageService.getMessage("error.account.locked")).thenReturn("Locked");
@@ -243,7 +243,7 @@ class AuthServiceTest {
         void success_resetFailedAttempts() {
             testUser.setFailedLoginAttempts(3);
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -262,7 +262,7 @@ class AuthServiceTest {
         void fail_deviceConflict() {
             SessionInfo existingSession = new SessionInfo("sid", "192.168.1.1", "OtherAgent", LocalDateTime.now());
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.of(existingSession));
 
@@ -275,7 +275,7 @@ class AuthServiceTest {
         void success_requiredAction() {
             testUser.setRequireAction("CHANGE_PASSWORD");
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -294,7 +294,7 @@ class AuthServiceTest {
             Role managerRole = Role.builder().name("MANAGER").build();
             testUser.getRoles().add(managerRole);
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD", "ORDER"));
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -316,7 +316,7 @@ class AuthServiceTest {
         void success_forceLogin() {
             SessionInfo existing = new SessionInfo("old-sid", "1.2.3.4", "OldAgent", LocalDateTime.now());
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.of(existing));
@@ -334,7 +334,7 @@ class AuthServiceTest {
         @DisplayName("Should log activity for tenant user login")
         void success_logsActivityForTenantUser() {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -351,7 +351,7 @@ class AuthServiceTest {
         @DisplayName("Should not log activity for master user login")
         void success_noActivityLogForMasterUser() {
             when(tenantContext.getCurrentTenant()).thenReturn(null);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -380,7 +380,7 @@ class AuthServiceTest {
                     .build();
 
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(refreshTokenRepository.findAllByUserAndActive(eq(testUser), anyLong())).thenReturn(List.of(storedToken));
             when(passwordEncoder.matches("raw-rt", "hashed-rt")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD"));
@@ -404,7 +404,7 @@ class AuthServiceTest {
                     .build();
 
             when(tenantContext.getCurrentTenant()).thenReturn(null);
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(refreshTokenRepository.findAllByUserAndActive(eq(testUser), anyLong())).thenReturn(List.of(storedToken));
             when(passwordEncoder.matches("raw-rt", "hashed-rt")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
@@ -430,7 +430,7 @@ class AuthServiceTest {
         @Test
         @DisplayName("Should throw ResourceNotFoundException when user not found")
         void fail_userNotFound() {
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.empty());
             when(messageService.getMessage(eq("error.user.not.found"), anyString())).thenReturn("Not found");
 
             assertThatThrownBy(() -> authService.refreshAccessToken("testuser", "some-token"))
@@ -440,7 +440,7 @@ class AuthServiceTest {
         @Test
         @DisplayName("Should throw UnauthorizedException when no active tokens found")
         void fail_noActiveTokens() {
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(refreshTokenRepository.findAllByUserAndActive(eq(testUser), anyLong())).thenReturn(List.of());
             when(messageService.getMessage("error.refresh.token.invalid")).thenReturn("Invalid");
 
@@ -456,7 +456,7 @@ class AuthServiceTest {
                     .expiryDate(System.currentTimeMillis() + 999999L)
                     .build();
 
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(refreshTokenRepository.findAllByUserAndActive(eq(testUser), anyLong())).thenReturn(List.of(storedToken));
             when(passwordEncoder.matches("wrong-token", "different-hash")).thenReturn(false);
             when(messageService.getMessage("error.refresh.token.invalid")).thenReturn("Invalid");
@@ -469,7 +469,7 @@ class AuthServiceTest {
         @DisplayName("Should throw BadRequestException when user has pending required action")
         void fail_requiredAction() {
             testUser.setRequireAction("CHANGE_PASSWORD");
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(messageService.getMessage("error.refresh.token.required")).thenReturn("Action required");
 
             assertThatThrownBy(() -> authService.refreshAccessToken("testuser", "rt"))
@@ -487,7 +487,7 @@ class AuthServiceTest {
         @DisplayName("Should deactivate all refresh tokens and remove session")
         void success() {
             RefreshToken token = RefreshToken.builder().user(testUser).active(true).build();
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(refreshTokenRepository.findByUser(testUser)).thenReturn(List.of(token));
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(refreshTokenRepository.save(any(RefreshToken.class))).thenReturn(token);
@@ -502,7 +502,7 @@ class AuthServiceTest {
         @Test
         @DisplayName("Should use MASTER_KEY when no tenant context")
         void success_masterKey() {
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(refreshTokenRepository.findByUser(testUser)).thenReturn(List.of());
             when(tenantContext.getCurrentTenant()).thenReturn(null);
 
@@ -514,7 +514,7 @@ class AuthServiceTest {
         @Test
         @DisplayName("Should throw RuntimeException when user not found")
         void fail_userNotFound() {
-            when(userRepository.findByUsername("unknown")).thenReturn(Optional.empty());
+            when(userRepository.findByUsernameTenantScoped("unknown")).thenReturn(Optional.empty());
             when(messageService.getMessage(eq("error.user.not.found"), anyString())).thenReturn("Not found");
 
             assertThatThrownBy(() -> authService.logoutUser("unknown"))
@@ -531,7 +531,7 @@ class AuthServiceTest {
         @Test
         @DisplayName("Should return user profile DTO")
         void success() {
-            when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
 
             UserDTO dto = authService.getUserProfile("testuser");
 
@@ -543,7 +543,7 @@ class AuthServiceTest {
         @Test
         @DisplayName("Should throw RuntimeException when user not found")
         void fail_userNotFound() {
-            when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
+            when(userRepository.findByUsernameTenantScoped("nobody")).thenReturn(Optional.empty());
             when(messageService.getMessage(eq("error.user.not.found"), anyString())).thenReturn("Not found");
 
             assertThatThrownBy(() -> authService.getUserProfile("nobody"))

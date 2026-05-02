@@ -21,5 +21,8 @@ public interface ShopInfoRepository extends JpaRepository<ShopInfo, Long> {
      * @return Optional of first active ShopInfo
      */
     Optional<ShopInfo> findFirstByDeletedAtIsNullOrderByIdAsc();
+
+    // Provisioning helper — explicit tenant_id avoids relying on Hibernate filter state
+    Optional<ShopInfo> findFirstByTenantIdAndDeletedAtIsNullOrderByIdAsc(String tenantId);
 }
 

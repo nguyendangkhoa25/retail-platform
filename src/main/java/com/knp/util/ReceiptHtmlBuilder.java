@@ -2,12 +2,15 @@ package com.knp.util;
 
 import com.knp.model.dto.tenant.ReceiptPreviewRequest;
 import com.knp.model.dto.tenant.ReceiptTemplateConfig;
+import com.knp.model.entity.finance.BankAccount;
 import com.knp.model.entity.order.Order;
 import com.knp.model.entity.order.OrderItem;
 import com.knp.model.entity.tenant.ShopInfo;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -27,11 +30,16 @@ public class ReceiptHtmlBuilder {
 
     /** Build receipt HTML from a completed Order entity + shop info using default config. */
     public static String build(Order order, ShopInfo shopInfo) {
-        return build(order, shopInfo, ReceiptTemplateConfig.defaults());
+        return build(order, shopInfo, ReceiptTemplateConfig.defaults(), null);
     }
 
     /** Build receipt HTML from a completed Order entity + shop info with custom config. */
     public static String build(Order order, ShopInfo shopInfo, ReceiptTemplateConfig cfg) {
+        return build(order, shopInfo, cfg, null);
+    }
+
+    /** Build receipt HTML from a completed Order entity + shop info with custom config and optional VietQR bank account. */
+    public static String build(Order order, ShopInfo shopInfo, ReceiptTemplateConfig cfg, BankAccount bankAccount) {
         List<ReceiptItem> items = order.getOrderItems().stream()
                 .map(oi -> new ReceiptItem(
                         oi.getProductName(),
@@ -48,6 +56,9 @@ public class ReceiptHtmlBuilder {
                 : order.getCreatedAt();
 
         String customerName = order.getCustomer() != null ? order.getCustomer().getName() : null;
+        String vietQrBlock = (cfg.isShowVietQr() && bankAccount != null)
+                ? buildVietQrBlock(bankAccount, order.getTotalAmount(), order.getOrderNumber())
+                : null;
 
         return buildHtml(
                 shopInfo != null ? shopInfo.getShopName() : null,
@@ -66,17 +77,23 @@ public class ReceiptHtmlBuilder {
                 cfg.getHeaderText(),
                 cfg.getFooterText(),
                 cfg.getPaperWidth(),
-                cfg.isAutoClose()
+                cfg.isAutoClose(),
+                vietQrBlock
         );
     }
 
     /** Build receipt HTML from a pre-checkout preview request + shop info. */
     public static String buildPreview(ReceiptPreviewRequest req, ShopInfo shopInfo) {
-        return buildPreview(req, shopInfo, ReceiptTemplateConfig.defaults());
+        return buildPreview(req, shopInfo, ReceiptTemplateConfig.defaults(), null);
     }
 
     /** Build receipt HTML from a pre-checkout preview request + shop info with custom config. */
     public static String buildPreview(ReceiptPreviewRequest req, ShopInfo shopInfo, ReceiptTemplateConfig cfg) {
+        return buildPreview(req, shopInfo, cfg, null);
+    }
+
+    /** Build receipt HTML from a pre-checkout preview request + shop info with optional VietQR bank account. */
+    public static String buildPreview(ReceiptPreviewRequest req, ShopInfo shopInfo, ReceiptTemplateConfig cfg, BankAccount bankAccount) {
         List<ReceiptItem> items = req.getItems().stream()
                 .map(i -> new ReceiptItem(
                         i.getProductName(),
@@ -87,6 +104,10 @@ public class ReceiptHtmlBuilder {
                         i.getTaxRate() != null ? i.getTaxRate() : BigDecimal.TEN
                 ))
                 .toList();
+
+        String vietQrBlock = (cfg.isShowVietQr() && bankAccount != null)
+                ? buildVietQrBlock(bankAccount, req.getTotal(), "Thanh toan")
+                : null;
 
         return buildHtml(
                 shopInfo != null ? shopInfo.getShopName() : null,
@@ -105,7 +126,8 @@ public class ReceiptHtmlBuilder {
                 cfg.getHeaderText(),
                 cfg.getFooterText(),
                 cfg.getPaperWidth(),
-                cfg.isAutoClose()
+                cfg.isAutoClose(),
+                vietQrBlock
         );
     }
 
@@ -128,7 +150,8 @@ public class ReceiptHtmlBuilder {
             String headerText,
             String footerText,
             String paperWidth,
-            boolean autoClose
+            boolean autoClose,
+            String vietQrBlock
     ) {
         String width = (paperWidth != null && !paperWidth.isBlank()) ? paperWidth : "80mm";
 
@@ -280,6 +303,7 @@ public class ReceiptHtmlBuilder {
                 cashRows +
                 "    </tbody>\n" +
                 "  </table>\n" +
+                (vietQrBlock != null ? vietQrBlock : "") +
                 footerLines +
                 autoCloseScript +
                 "</body>\n" +
@@ -301,6 +325,36 @@ public class ReceiptHtmlBuilder {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;");
+    }
+
+    private static String buildVietQrBlock(BankAccount account, BigDecimal amount, String addInfo) {
+        String url = buildVietQrImageUrl(account, amount, addInfo);
+        String shortName = account.getBankShortName() != null && !account.getBankShortName().isBlank()
+                ? account.getBankShortName() : account.getBankName();
+        return "  <div style=\"text-align:center;border-top:1px dashed #000;margin-top:8px;padding-top:6px\">\n" +
+               "    <p style=\"font-size:9px;color:#555;margin-bottom:3px\">QUÉT MÃ ĐỂ THANH TOÁN</p>\n" +
+               "    <img src=\"" + escHtml(url) + "\" style=\"width:130px;height:auto;display:block;margin:2px auto\"" +
+               "         onerror=\"this.style.display='none'\"/>\n" +
+               "    <p style=\"font-size:9px;margin-top:3px\">" + escHtml(shortName) + ": " + escHtml(account.getAccountNumber()) + "</p>\n" +
+               "    <p style=\"font-size:9px\">" + escHtml(account.getAccountName()) + "</p>\n" +
+               "  </div>\n";
+    }
+
+    private static String buildVietQrImageUrl(BankAccount account, BigDecimal amount, String addInfo) {
+        String base = "https://img.vietqr.io/image/" + account.getBankBin() + "-" + account.getAccountNumber() + "-compact2.png";
+        StringBuilder params = new StringBuilder();
+        if (account.getAccountName() != null && !account.getAccountName().isBlank()) {
+            params.append("accountName=").append(URLEncoder.encode(account.getAccountName(), StandardCharsets.UTF_8));
+        }
+        if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+            if (!params.isEmpty()) params.append("&");
+            params.append("amount=").append(amount.setScale(0, RoundingMode.HALF_UP).toPlainString());
+        }
+        if (addInfo != null && !addInfo.isBlank()) {
+            if (!params.isEmpty()) params.append("&");
+            params.append("addInfo=").append(URLEncoder.encode(addInfo, StandardCharsets.UTF_8));
+        }
+        return params.isEmpty() ? base : base + "?" + params;
     }
 
     private record ReceiptItem(

@@ -214,6 +214,10 @@ public class CustomerService {
         return getCustomerByPhone("0000000000");
     }
 
+    public CustomerDTO findCustomerByPhone(String phone) {
+        return customerRepository.findByPhone(phone).map(this::mapToDTO).orElse(null);
+    }
+
     public CustomerDTO getCustomerByPhone(String phone) {
         log.info("Request: Get customer by phone - phone: {}", phone);
         Customer customer = customerRepository.findByPhone(phone)

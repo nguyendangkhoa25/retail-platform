@@ -14,6 +14,8 @@ import com.knp.model.dto.order.VoidOrderRequest;
 import com.knp.model.entity.order.Order;
 import com.knp.model.entity.order.OrderItem;
 import com.knp.model.entity.tenant.ShopInfo;
+import com.knp.model.entity.finance.BankAccount;
+import com.knp.repository.finance.BankAccountRepository;
 import com.knp.repository.order.OrderRepository;
 import com.knp.repository.tenant.ShopInfoRepository;
 import com.knp.util.ReceiptHtmlBuilder;
@@ -44,6 +46,7 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
     private final ShopInfoRepository shopInfoRepository;
+    private final BankAccountRepository bankAccountRepository;
     private final LoyaltyService loyaltyService;
     private final InventoryService inventoryService;
     private final MessageService messageService;
@@ -255,7 +258,9 @@ public class OrderServiceImpl implements OrderService {
         log.info("Request: Generate receipt for order id: {}", id);
         Order order = findActiveOrder(id);
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc().orElse(null);
-        return ReceiptHtmlBuilder.build(order, shopInfo, printTemplateService.getReceiptConfig());
+        var cfg = printTemplateService.getReceiptConfig();
+        BankAccount bankAccount = cfg.isShowVietQr() ? bankAccountRepository.findDefault().orElse(null) : null;
+        return ReceiptHtmlBuilder.build(order, shopInfo, cfg, bankAccount);
     }
 
     @Override

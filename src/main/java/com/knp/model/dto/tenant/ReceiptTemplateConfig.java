@@ -38,6 +38,10 @@ public class ReceiptTemplateConfig {
     @Builder.Default
     private boolean autoClose = true;
 
+    /** Print VietQR code of the default bank account with the order total embedded. */
+    @Builder.Default
+    private boolean showVietQr = false;
+
     public static ReceiptTemplateConfig defaults() {
         return ReceiptTemplateConfig.builder().build();
     }

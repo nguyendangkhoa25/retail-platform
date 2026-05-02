@@ -10,5 +10,9 @@ import java.util.Optional;
 public interface RoleRepository extends JpaRepository<Role, Long> {
     Optional<Role> findByName(String name);
     boolean existsByName(String name);
+
+    // Provisioning helpers — explicit tenant_id avoids relying on Hibernate filter state
+    Optional<Role> findByNameAndTenantId(String name, String tenantId);
+    boolean existsByNameAndTenantId(String name, String tenantId);
 }
 

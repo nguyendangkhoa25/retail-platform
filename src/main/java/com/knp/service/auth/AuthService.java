@@ -80,7 +80,7 @@ public class AuthService {
             log.info("Authenticating user: {} in MASTER database", loginRequest.getUsername());
         }
 
-        User user = userRepository.findByUsername(loginRequest.getUsername())
+        User user = userRepository.findByUsernameTenantScoped(loginRequest.getUsername())
                 .orElseThrow(() -> {
                     log.error("User not found: {}", loginRequest.getUsername());
                     return new BadRequestException(messageService.getMessage("error.unauthorized"));
@@ -234,7 +234,7 @@ public class AuthService {
             throw new UnauthorizedException(messageService.getMessage("error.refresh.token.invalid"));
         }
 
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameTenantScoped(username)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", username);
                     return new ResourceNotFoundException(errorMessage);
@@ -304,7 +304,7 @@ public class AuthService {
     public void logoutUser(String username) {
         log.info("Logging out user: {}", username);
 
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameTenantScoped(username)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", username);
                     return new RuntimeException(errorMessage);
@@ -348,7 +348,7 @@ public class AuthService {
     public UserDTO getUserProfile(String username) {
         log.info("Fetching user profile: {}", username);
 
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameTenantScoped(username)
                 .orElseThrow(() -> {
                     String errorMessage = messageService.getMessage("error.user.not.found", username);
                     return new RuntimeException(errorMessage);

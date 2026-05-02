@@ -116,10 +116,11 @@ Features are enforced at three levels:
 2. Pass all required context (e.g. `tenantId`, `username`) as method parameters — `TenantContext` and `SecurityContextHolder` are ThreadLocal and are **not** inherited by the async thread.
 3. Catch and log all exceptions internally — never let them propagate to the caller.
 4. If the async method needs a DB write in tenant context, call `tenantContext.setCurrentTenant(...)` at the start and `tenantContext.clear()` in `finally`.
+5. **If the enclosing service class carries `@Transactional(readOnly = true)` at the class level**, also annotate the `@Async` method with `@Transactional(propagation = Propagation.NOT_SUPPORTED)`. Spring's AOP proxy includes the `TransactionInterceptor` in the lambda captured by the async thread pool, so the class-level `readOnly=true` transaction would be applied in the new thread — preventing any `INSERT`/`UPDATE`. `NOT_SUPPORTED` overrides this: no outer transaction starts, and each downstream repository call manages its own writable transaction independently. `REQUIRES_NEW` is **not** the right fix here — it would open a writable transaction before `TenantContext` is set, breaking RLS.
 
 **Existing implementations:**
 - `ActivityLogServiceImpl.logAsync(tenantId, ...)` — audit writes; sets its own TenantContext in the async thread.
-- `NotificationService.pushToMasterUsersAsync(title, message, ...)` — wraps `pushToMasterUsers`; called from `MultiTenantController` after tenant creation.
+- `NotificationService.pushToMasterUsersAsync/pushToRolesAsync(...)` — both annotated `@Transactional(propagation = Propagation.NOT_SUPPORTED)` to override the class-level `readOnly=true`; called from `MultiTenantController` after tenant creation.
 
 When adding new side-effects, follow this same pattern.
 
@@ -136,7 +137,7 @@ Base `Product` holds SKU, price, cost, unit, vendor, shelf location, and status.
 1. Inserts a row into the `tenants` master table.
 2. Sets `TenantContext` to the new tenant ID so RLS scopes subsequent writes to that tenant.
 3. Executes the shop-type DML file (e.g. `pawn_shop.sql`) — this uses `current_setting('app.current_tenant', true)` as the `tenant_id` value so all seed rows land in the correct tenant's partition.
-4. Seeds roles, features, role-feature mappings, shop info, admin user, a default walk-in customer (`phone=0000000000`, name `"Khách lẻ"`), and the two default shop configs (`DEFAULT_TAX_RATE`, `POS_MODE`) that are not covered by the DML file.
+4. Seeds roles, role-feature mappings, shop info, default walk-in customer (`phone=0000000000`, name `"Khách lẻ"`), default shop configs (`DEFAULT_TAX_RATE`, `POS_MODE`), and admin user via `TenantProvisioningService` — these are **not** in the DML files.
 
 ### Layer Conventions
 
@@ -172,17 +173,18 @@ Each shop type gets its own seed data file under `src/main/resources/db/tenant/`
 1. Shop info          — INSERT INTO shop_info (shop_name, ...) ON CONFLICT DO NOTHING
 2. Product types      — INSERT INTO product_type ... ON CONFLICT (code) DO UPDATE
 3. Categories         — INSERT INTO category ... ON CONFLICT (name, tenant_id) DO UPDATE
-4. Walk-in customer   — INSERT INTO customers (id=790000001, phone='0000000000', ...) ON CONFLICT DO NOTHING
-5. Vendors (optional) — 1–2 placeholder suppliers relevant to the shop type
-6. Sample products    — 15–40 realistic items the shop actually sells
-7. Product→category   — INSERT INTO product_category ... ON CONFLICT DO NOTHING
-8. Inventory          — INSERT INTO inventory for every product
-9. Loyalty program    — single default program + 4 tiers
-10. Print template    — RECEIPT template with ON CONFLICT DO NOTHING
-11. Attribute groups  — per product type, Vietnamese names, display_order
-12. Attribute defs    — per group, Vietnamese names (see below)
-13. Shop config       — cash_denominations (all shops); pawn_* keys (pawn/jewelry only)
+4. Vendors (optional) — 1–2 placeholder suppliers relevant to the shop type
+5. Sample products    — 15–40 realistic items the shop actually sells
+6. Product→category   — INSERT INTO product_category ... ON CONFLICT DO NOTHING
+7. Inventory          — INSERT INTO inventory for every product
+8. Loyalty program    — single default program + 4 tiers
+9. Print template     — RECEIPT template with ON CONFLICT DO NOTHING
+10. Attribute groups  — per product type, Vietnamese names, display_order
+11. Attribute defs    — per group, Vietnamese names (see below)
+12. Shop config       — cash_denominations (all shops); pawn_* keys (pawn/jewelry only)
 ```
+
+**Do NOT add walk-in customer to DML files.** It is seeded exclusively by `TenantProvisioningService.seedWalkInCustomer()` in Java so each tenant gets an isolated row with correct RLS scoping.
 
 Banks are seeded globally in `V001__initial_schema.sql` — do **not** add bank INSERTs to DML files.
 
@@ -386,6 +388,20 @@ All user-facing strings go through `MessageService` (wraps Spring `MessageSource
 | `jwt.refresh-expiration` | 604800000 (7d) | Refresh token TTL ms |
 | `APP_ENCRYPTION_KEY` | empty | Required for e-invoice features |
 | `system.corsAllowedOrigin` | `https://quanlycuahang.com/` | CORS origin |
+
+## Timezone
+
+All timestamps are stored and served in **Asia/Ho_Chi_Minh (UTC+7)**. This is enforced at four layers — do not change any of them independently or timestamps will become inconsistent:
+
+| Layer | Where set | What it controls |
+|-------|-----------|-----------------|
+| JVM default | `RetailPlatformApplication.main()` — `TimeZone.setDefault("Asia/Ho_Chi_Minh")` before Spring starts | `@CreationTimestamp`, `@UpdateTimestamp`, `LocalDateTime.now()` |
+| Hibernate JDBC | `spring.jpa.properties.hibernate.jdbc.time_zone=Asia/Ho_Chi_Minh` in `application.properties` | How Hibernate serialises `java.time.*` values onto the JDBC wire |
+| Jackson | `spring.jackson.time-zone=Asia/Ho_Chi_Minh` in `application.properties` | `LocalDateTime` fields in JSON API responses |
+| Docker image | `ENV TZ="Asia/Ho_Chi_Minh"` in `backend/Dockerfile` | OS timezone inside the container (also sets JVM `TZ` env var) |
+| PostgreSQL container | `TZ: Asia/Ho_Chi_Minh` in `docker-compose.yml` (both dev and prod) | `NOW()`, `CURRENT_TIMESTAMP`, `DEFAULT NOW()` in raw SQL |
+
+When running locally outside Docker (`mvn spring-boot:run`), the `TimeZone.setDefault()` in `main()` acts as a safety net so the JVM uses UTC+7 regardless of the developer's machine timezone.
 
 ## Testing
 

@@ -13,6 +13,7 @@ import com.knp.multitenant.TenantContext;
 import com.knp.repository.auth.UserRepository;
 import com.knp.repository.feedback.FeedbackRepository;
 import com.knp.repository.tenant.AgentRepository;
+import com.knp.model.entity.notification.Notification;
 import com.knp.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -119,7 +120,7 @@ public class FeedbackServiceImpl implements FeedbackService {
                     if (agent.getUserId() != null) {
                         userRepository.findById(agent.getUserId()).ifPresent(user ->
                             notificationService.pushSystem(
-                                    user.getUsername(), title, message, "FEEDBACK", feedbackId)
+                                    user.getUsername(), Notification.NotificationType.SYSTEM, title, message, "FEEDBACK", feedbackId)
                         );
                     }
                 });

@@ -64,7 +64,7 @@ public class TenantService {
      */
     private Optional<Agent> getCurrentAgent() {
         String username = getCurrentUsername();
-        return userRepository.findByUsername(username)
+        return userRepository.findByUsernameTenantScoped(username)
                 .flatMap(u -> agentRepository.findByUserId(u.getId()));
     }
 

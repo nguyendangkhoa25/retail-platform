@@ -58,13 +58,7 @@ JOIN category p ON p.name = c.parent_name
     AND p.tenant_id = current_setting('app.current_tenant', true)
     AND p.parent_id IS NULL;
 
--- ── 3. Walk-in customer ───────────────────────────────────────
-INSERT INTO customers (tenant_id, name, phone, email, notes, deleted)
-VALUES (current_setting('app.current_tenant', true), 'Khách lẻ', '0000000000', NULL,
-        'Khách hàng lẻ - không có thông tin liên hệ', FALSE)
-ON CONFLICT (phone, tenant_id) DO NOTHING;
-
--- ── 4. Vendors ────────────────────────────────────────────────
+-- ── 3. Vendors ────────────────────────────────────────────────
 INSERT INTO vendors (tenant_id, name, code, contact_name, phone, payment_terms, is_active, deleted)
 VALUES
     (current_setting('app.current_tenant', true), 'Nhà cung cấp đồ uống & FMCG',         'VND-001', NULL, NULL, 'NET_30', TRUE, FALSE),

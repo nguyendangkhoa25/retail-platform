@@ -43,6 +43,8 @@ class NotificationServiceTest {
     @Mock private NotificationRepository notificationRepository;
     @Mock private NotificationPreferenceRepository preferenceRepository;
     @Mock private UserRepository userRepository;
+    @Mock private com.knp.repository.tenant.TenantRepository tenantRepository;
+    @Mock private com.knp.multitenant.TenantContext tenantContext;
     @Mock private MessageService messageService;
 
     @InjectMocks
@@ -242,7 +244,7 @@ class NotificationServiceTest {
         tenant.setName("Shop One");
         tenant.setExpirationDate(LocalDate.now().plusDays(3));
 
-        when(userRepository.findUsernamesByRole("SHOP_OWNER")).thenReturn(List.of("owner1", "owner2"));
+        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushExpiryWarning(tenant, 3);
@@ -261,7 +263,7 @@ class NotificationServiceTest {
         tenant.setTenantId("shop1");
         tenant.setExpirationDate(LocalDate.now().plusDays(1));
 
-        when(userRepository.findUsernamesByRole("SHOP_OWNER")).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(Collections.emptyList());
 
         notificationService.pushExpiryWarning(tenant, 1);
 
@@ -276,7 +278,7 @@ class NotificationServiceTest {
         tenant.setName("Shop One");
         tenant.setExpirationDate(LocalDate.now().plusDays(7));
 
-        when(userRepository.findUsernamesByRole("SHOP_OWNER")).thenReturn(List.of("owner1", "owner2"));
+        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
         NotificationPreference pref = NotificationPreference.builder()
                 .userId("owner2").enabledTypes("ORDER,SYSTEM").build();
         when(preferenceRepository.findByUserIdIn(List.of("owner1", "owner2"))).thenReturn(List.of(pref));
@@ -296,7 +298,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: broadcasts SYSTEM notification to all master users")
     void pushToMasterUsers_success() {
-        when(userRepository.findUsernamesByRole("MASTER_TENANT")).thenReturn(List.of("admin1", "admin2"));
+        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1", "admin2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
@@ -311,7 +313,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: skips when no master users found")
     void pushToMasterUsers_noUsers() {
-        when(userRepository.findUsernamesByRole("MASTER_TENANT")).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(Collections.emptyList());
 
         notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
 
@@ -321,7 +323,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: excludes master user who opted out of SYSTEM")
     void pushToMasterUsers_respectsPreference() {
-        when(userRepository.findUsernamesByRole("MASTER_TENANT")).thenReturn(List.of("admin1", "admin2"));
+        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1", "admin2"));
         NotificationPreference pref = NotificationPreference.builder()
                 .userId("admin2").enabledTypes("BILLING,ORDER").build();
         when(preferenceRepository.findByUserIdIn(List.of("admin1", "admin2"))).thenReturn(List.of(pref));

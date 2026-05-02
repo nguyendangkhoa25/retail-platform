@@ -8,8 +8,11 @@ import com.knp.model.dto.tenant.ShopInfoDTO;
 import com.knp.model.dto.tenant.TenantDTO;
 import com.knp.model.dto.tenant.TenantStatsDTO;
 import com.knp.model.dto.tenant.UpdateTenantRequest;
+import com.knp.model.entity.notification.Notification;
+import com.knp.model.entity.tenant.Agent;
 import com.knp.model.entity.tenant.Tenant;
 import com.knp.multitenant.TenantContext;
+import com.knp.repository.tenant.AgentRepository;
 import com.knp.service.MessageService;
 import com.knp.service.notification.NotificationService;
 import com.knp.service.tenant.ShopInfoService;
@@ -23,9 +26,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Locale;
-
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * MultiTenantController - REST API endpoints for tenant management
@@ -46,6 +49,7 @@ public class MultiTenantController {
     private final TenantSeedService tenantSeedService;
     private final NotificationService notificationService;
     private final MessageService messageService;
+    private final AgentRepository agentRepository;
 
     /**
      * GET /api/multi-tenants/stats
@@ -128,7 +132,17 @@ public class MultiTenantController {
         String notifTitle = messageService.getMessage("notification.master.tenant.created.title", vi);
         String notifMsg = messageService.getMessage("notification.master.tenant.created.message", vi,
                 tenant.getName(), tenant.getTenantId(), createdBy);
-        notificationService.pushToMasterUsersAsync(notifTitle, notifMsg, "TENANT", tenantEntity.getId());
+        notificationService.pushToRolesAsync(Notification.NotificationType.SYSTEM, notifTitle, notifMsg,
+                "TENANT", tenantEntity.getId(), List.of("MASTER_TENANT"), null);
+
+        // Notify only the new shop's admin user directly — avoids cross-tenant fan-out
+        String subscriptionType = tenantEntity.getSubscriptionType() != null ? tenantEntity.getSubscriptionType() : "Trial";
+        String supportInfo = buildSupportInfo(tenantEntity.getVendorId());
+        String welcomeTitle = messageService.getMessage("notification.shop.welcome.title", vi);
+        String welcomeMsg = messageService.getMessage("notification.shop.welcome.message", vi,
+                tenant.getName(), subscriptionType, supportInfo);
+        notificationService.pushSystemAsync(request.getAdminUsername(), Notification.NotificationType.BILLING,
+                welcomeTitle, welcomeMsg, "TENANT", tenantEntity.getId(), tenant.getTenantId());
 
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(tenant, "Tenant created successfully"));
@@ -233,6 +247,17 @@ public class MultiTenantController {
         return ResponseEntity.ok(
             ApiResponse.success(tenant, "Tenant deactivated successfully")
         );
+    }
+
+    private String buildSupportInfo(Long vendorId) {
+        if (vendorId == null) return "";
+        return agentRepository.findById(vendorId).map(agent -> {
+            List<String> parts = new ArrayList<>();
+            if (agent.getName() != null) parts.add(agent.getName());
+            if (agent.getContactPhone() != null) parts.add("☎ " + agent.getContactPhone());
+            if (agent.getContactEmail() != null) parts.add("✉ " + agent.getContactEmail());
+            return parts.isEmpty() ? "" : "Liên hệ hỗ trợ: " + String.join(" · ", parts);
+        }).orElse("");
     }
 }
 

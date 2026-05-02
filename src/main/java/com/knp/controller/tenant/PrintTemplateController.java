@@ -6,7 +6,9 @@ import com.knp.model.dto.tenant.ReceiptPreviewRequest;
 import com.knp.model.dto.tenant.ReceiptTemplateConfig;
 import com.knp.model.dto.tenant.SavePrintTemplateRequest;
 import com.knp.model.dto.pawn.PawnStampTemplateConfig;
+import com.knp.model.entity.finance.BankAccount;
 import com.knp.model.entity.tenant.ShopInfo;
+import com.knp.repository.finance.BankAccountRepository;
 import com.knp.repository.tenant.ShopInfoRepository;
 import com.knp.service.tenant.PrintTemplateService;
 import com.knp.model.dto.ApiResponse;
@@ -30,6 +32,7 @@ public class PrintTemplateController {
 
     private final PrintTemplateService service;
     private final ShopInfoRepository shopInfoRepository;
+    private final BankAccountRepository bankAccountRepository;
     private final ObjectMapper objectMapper;
 
     /** List all templates for a given type. */
@@ -96,7 +99,8 @@ public class PrintTemplateController {
         cfg.setAutoClose(false);
 
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc().orElse(null);
-        return ResponseEntity.ok(ReceiptHtmlBuilder.buildPreview(buildSampleRequest(), shopInfo, cfg));
+        BankAccount bankAccount = cfg.isShowVietQr() ? bankAccountRepository.findDefault().orElse(null) : null;
+        return ResponseEntity.ok(ReceiptHtmlBuilder.buildPreview(buildSampleRequest(), shopInfo, cfg, bankAccount));
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
