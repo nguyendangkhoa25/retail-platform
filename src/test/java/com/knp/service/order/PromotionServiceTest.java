@@ -3,6 +3,7 @@ package com.knp.service.order;
 import com.knp.exception.BadRequestException;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.model.dto.promotion.ApplyPromotionResponse;
+import com.knp.model.dto.promotion.PromotionDTO;
 import com.knp.model.dto.promotion.SavePromotionRequest;
 import com.knp.model.entity.order.Promotion;
 import com.knp.model.enums.DiscountType;
@@ -16,9 +17,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -67,6 +72,89 @@ class PromotionServiceTest {
                 .thenAnswer(inv -> inv.getArgument(0));
         lenient().when(messageService.getMessage(eq("error.promotion.code.exists"), any(Object[].class)))
                 .thenReturn("Promotion code already exists.");
+    }
+
+    // ── getAll / getById ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getAll: returns page of active promotions")
+    void getAll_returnsPage() {
+        PageRequest pageable = PageRequest.of(0, 10);
+        when(promotionRepository.findAllActive(pageable)).thenReturn(new PageImpl<>(List.of(percentagePromo)));
+
+        Page<PromotionDTO> result = promotionService.getAll(pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getCode()).isEqualTo("SAVE10");
+    }
+
+    @Test
+    @DisplayName("getById: returns DTO for existing active promotion")
+    void getById_found() {
+        percentagePromo.setId(1L);
+        when(promotionRepository.findById(1L)).thenReturn(Optional.of(percentagePromo));
+
+        PromotionDTO result = promotionService.getById(1L);
+
+        assertThat(result.getCode()).isEqualTo("SAVE10");
+    }
+
+    @Test
+    @DisplayName("getById: throws ResourceNotFoundException for missing promotion")
+    void getById_notFound() {
+        when(promotionRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> promotionService.getById(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── update ────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("update: updates promotion fields and saves")
+    void update_success() {
+        percentagePromo.setId(1L);
+        when(promotionRepository.findById(1L)).thenReturn(Optional.of(percentagePromo));
+        when(promotionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        SavePromotionRequest req = new SavePromotionRequest();
+        req.setName("Updated Promo");
+        req.setCode("SAVE10");
+        req.setType(DiscountType.PERCENTAGE);
+        req.setValue(new BigDecimal("15"));
+
+        PromotionDTO result = promotionService.update(1L, req);
+
+        assertThat(result.getName()).isEqualTo("Updated Promo");
+        assertThat(result.getValue()).isEqualByComparingTo(new BigDecimal("15"));
+    }
+
+    @Test
+    @DisplayName("update: throws when code change conflicts with existing code")
+    void update_codeDuplicate() {
+        Promotion other = Promotion.builder().code("NEWCODE").isActive(true).build();
+        other.setId(2L);
+        percentagePromo.setId(1L);
+        when(promotionRepository.findById(1L)).thenReturn(Optional.of(percentagePromo));
+        when(promotionRepository.findByCode("NEWCODE")).thenReturn(Optional.of(other));
+
+        SavePromotionRequest req = new SavePromotionRequest();
+        req.setCode("NEWCODE");
+        req.setName("Test");
+        req.setType(DiscountType.AMOUNT);
+        req.setValue(BigDecimal.TEN);
+
+        assertThatThrownBy(() -> promotionService.update(1L, req))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("update: throws ResourceNotFoundException for missing promotion")
+    void update_notFound() {
+        when(promotionRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> promotionService.update(99L, new SavePromotionRequest()))
+                .isInstanceOf(Exception.class);
     }
 
     // ── validatePromotion ─────────────────────────────────────────────────────

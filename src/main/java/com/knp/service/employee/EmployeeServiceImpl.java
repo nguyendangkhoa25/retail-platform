@@ -87,6 +87,14 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .notes(request.getNotes())
                 .avatar(request.getAvatar())
                 .userId(request.getUserId())
+                .idCardNumber(request.getIdCardNumber())
+                .dateOfBirth(request.getDateOfBirth())
+                .gender(request.getGender())
+                .permanentAddress(request.getPermanentAddress())
+                .idCardIssuedDate(request.getIdCardIssuedDate())
+                .idCardIssuedPlace(request.getIdCardIssuedPlace())
+                .idCardFrontImage(request.getIdCardFrontImage())
+                .idCardBackImage(request.getIdCardBackImage())
                 .build();
 
         Employee saved = employeeRepository.save(employee);
@@ -110,6 +118,14 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (request.getCommissionRate() != null) employee.setCommissionRate(request.getCommissionRate());
         if (request.getNotes() != null) employee.setNotes(request.getNotes());
         if (request.getAvatar() != null) employee.setAvatar(request.getAvatar());
+        if (request.getIdCardNumber() != null) employee.setIdCardNumber(request.getIdCardNumber());
+        if (request.getDateOfBirth() != null) employee.setDateOfBirth(request.getDateOfBirth());
+        if (request.getGender() != null) employee.setGender(request.getGender());
+        if (request.getPermanentAddress() != null) employee.setPermanentAddress(request.getPermanentAddress());
+        if (request.getIdCardIssuedDate() != null) employee.setIdCardIssuedDate(request.getIdCardIssuedDate());
+        if (request.getIdCardIssuedPlace() != null) employee.setIdCardIssuedPlace(request.getIdCardIssuedPlace());
+        if (request.getIdCardFrontImage() != null) employee.setIdCardFrontImage(request.getIdCardFrontImage());
+        if (request.getIdCardBackImage() != null) employee.setIdCardBackImage(request.getIdCardBackImage());
 
         if (request.getUserId() != null) {
             Long newUserId = request.getUserId();
@@ -176,6 +192,14 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .username(username)
                 .createdAt(e.getCreatedAt())
                 .updatedAt(e.getUpdatedAt())
+                .idCardNumber(e.getIdCardNumber())
+                .dateOfBirth(e.getDateOfBirth())
+                .gender(e.getGender())
+                .permanentAddress(e.getPermanentAddress())
+                .idCardIssuedDate(e.getIdCardIssuedDate())
+                .idCardIssuedPlace(e.getIdCardIssuedPlace())
+                .idCardFrontImage(e.getIdCardFrontImage())
+                .idCardBackImage(e.getIdCardBackImage())
                 .build();
     }
 }

@@ -14,7 +14,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
 
 import static org.mockito.Mockito.*;
 
@@ -247,6 +249,68 @@ class JwtAuthenticationFilterTest {
         jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
 
         // Then - SecurityContext should have been populated, then filterChain called
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    @DisplayName("Should return 401 and not proceed when session is invalidated (device switched)")
+    void testDoFilterInternal_SessionInvalidated() throws ServletException, IOException {
+        String token = "valid.jwt.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        when(jwtTokenProvider.validateToken(token)).thenReturn(true);
+        when(jwtTokenProvider.getUsernameFromToken(token)).thenReturn(TEST_USERNAME);
+        when(sessionRegistry.isValid(anyString(), anyString(), anyString())).thenReturn(false);
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    @DisplayName("Should return 403 and not proceed when X-Tenant-ID does not match JWT tenant list")
+    void testDoFilterInternal_TenantMismatch() throws ServletException, IOException {
+        String token = "valid.jwt.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        when(request.getHeader("X-Tenant-ID")).thenReturn("tenant2");
+        when(jwtTokenProvider.validateToken(token)).thenReturn(true);
+        when(jwtTokenProvider.getUsernameFromToken(token)).thenReturn(TEST_USERNAME);
+        when(jwtTokenProvider.getTenantIdsFromToken(token)).thenReturn(List.of("tenant1"));
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        verify(response).setStatus(HttpServletResponse.SC_FORBIDDEN);
+        verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    @DisplayName("Should use MASTER_KEY for session lookup when isMasterUser is true")
+    void testDoFilterInternal_MasterUser() throws ServletException, IOException {
+        String token = "master.jwt.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        when(jwtTokenProvider.validateToken(token)).thenReturn(true);
+        when(jwtTokenProvider.getUsernameFromToken(token)).thenReturn("admin");
+        when(jwtTokenProvider.isMasterUserFromToken(token)).thenReturn(true);
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        verify(sessionRegistry).isValid(eq(SessionRegistry.MASTER_KEY), eq("admin"), anyString());
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    @DisplayName("Should pass when JWT tenant list is empty (backward compatibility)")
+    void testDoFilterInternal_EmptyTenantList_Passes() throws ServletException, IOException {
+        String token = "valid.jwt.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        when(request.getHeader("X-Tenant-ID")).thenReturn("some-tenant");
+        when(jwtTokenProvider.validateToken(token)).thenReturn(true);
+        when(jwtTokenProvider.getUsernameFromToken(token)).thenReturn(TEST_USERNAME);
+        // empty list = old token without tid claim → skip mismatch check
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        verify(response, never()).setStatus(HttpServletResponse.SC_FORBIDDEN);
         verify(filterChain).doFilter(request, response);
     }
 }

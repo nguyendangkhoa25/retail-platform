@@ -107,6 +107,33 @@ Features are enforced at three levels:
 
 **Do NOT use `@PreAuthorize`** — `@EnableMethodSecurity` is not configured; these annotations are silently ignored.
 
+### Granular Sub-Feature Pattern (row-level access control within a module)
+
+Some features need **within-module** access differentiation — e.g., all staff can access the Order module, but only shop owners should see every employee's orders. The standard approach is a **sub-feature flag** that gates the broader view; absence of the flag restricts to the user's own data.
+
+**Pattern:** `<MODULE>_VIEW_ALL` (or `<MODULE>_MANAGE_ALL` for write operations)
+
+**Implemented example: `ORDER` + `ORDER_VIEW_ALL`**
+- `ORDER` — required to open the Order module at all (route guard + `@RequiresFeature`)
+- `ORDER_VIEW_ALL` — within the module, determines query scope:
+  - Present → `findAllActive()` / `searchByKeyword()` — all tenant orders visible
+  - Absent → `findAllActiveByCreatedBy()` / `searchByKeywordAndCreatedBy()` — only `created_by = currentUsername`
+  - `getOrderById()` also enforces ownership when flag is absent (throws 404, not 403, to avoid leaking existence)
+
+**Backend implementation checklist** (service layer, never controller):
+1. Add the sub-feature to `FeatureEnum` with a Vietnamese name and description.
+2. Add a Flyway migration (`V0XX__...sql`) to insert it into the `features` table.
+3. Inject `FeatureContext` into the service (it is already a `@Component` bean).
+4. Branch on `featureContext.hasFeature("FEATURE_VIEW_ALL")` — call the scoped repository method when flag is absent.
+5. Add scoped repository queries (e.g. `findAllActiveByCreatedBy`, `findAllActiveByStatusAndCreatedBy`, `searchByKeywordAndCreatedBy`).
+6. For single-resource fetch (`getById`), throw `ResourceNotFoundException` (same as "not found") rather than 403 — never expose that the record exists but is owned by someone else.
+
+**Master admin setup:** assign the sub-feature to the shop at tenant creation; shop owner assigns it to the SHOP_OWNER role in `role_features`. Staff roles (CASHIER, etc.) do not get it.
+
+**Never** branch on role name, `tenantId`, or any heuristic — always read from `FeatureContext`. This keeps the auth model consistent: token is the single source of truth.
+
+**Apply this pattern to other modules** whenever you need the same owner-vs-all split (e.g. `EXPENSE_VIEW_ALL`, `SALARY_VIEW_ALL`).
+
 ### Async Side-Effect Pattern
 
 `@EnableAsync` is active. Any operation that is a side effect of the main flow (notifications, audit log) must be **fire-and-forget** — it must never block or fail the caller.

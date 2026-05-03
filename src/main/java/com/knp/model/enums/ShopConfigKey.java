@@ -27,6 +27,9 @@ public enum ShopConfigKey {
     PAWN_DUE_DATE("pawn_due_date", "PAWN", false),
     PAWN_EXCLUDE_VISIBLE_ITEM("pawn_exclude_visible_item", "PAWN", false),
 
+    // DASHBOARD
+    DASHBOARD_WIDGETS("dashboard_widgets", "DASHBOARD", false),
+
     // PRICING
     PRICE_BOARD_CODE("price_board_code", "PRICING", false);
 

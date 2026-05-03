@@ -185,6 +185,92 @@ class ShopConfigServiceTest {
         assertThat(cap.getValue().getConfigValue()).isEqualTo("encrypted-blob");
     }
 
+    // ── getDecimal ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getDecimal: returns parsed BigDecimal when key exists")
+    void getDecimal_valid() {
+        ShopConfig cfg = ShopConfig.builder().configKey("pawn_interest_rate")
+                .configValue("3.5").configGroup("PAWN").encrypted(false).build();
+        when(shopConfigRepository.findByConfigKey("pawn_interest_rate")).thenReturn(Optional.of(cfg));
+
+        java.math.BigDecimal result = shopConfigService.getDecimal(ShopConfigKey.PAWN_INTEREST_RATE);
+
+        assertThat(result).isEqualByComparingTo("3.5");
+    }
+
+    @Test
+    @DisplayName("getDecimal: returns null when key is absent")
+    void getDecimal_absent() {
+        when(shopConfigRepository.findByConfigKey("pawn_interest_rate")).thenReturn(Optional.empty());
+
+        assertThat(shopConfigService.getDecimal(ShopConfigKey.PAWN_INTEREST_RATE)).isNull();
+    }
+
+    @Test
+    @DisplayName("getDecimal: returns null when stored value is not a number")
+    void getDecimal_invalidNumber() {
+        ShopConfig cfg = ShopConfig.builder().configKey("pawn_interest_rate")
+                .configValue("not-a-number").configGroup("PAWN").encrypted(false).build();
+        when(shopConfigRepository.findByConfigKey("pawn_interest_rate")).thenReturn(Optional.of(cfg));
+
+        assertThat(shopConfigService.getDecimal(ShopConfigKey.PAWN_INTEREST_RATE)).isNull();
+    }
+
+    // ── set (typed overloads) ─────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("set Double: stores as string representation")
+    void set_double() {
+        when(shopConfigRepository.findByConfigKey("default_tax_rate")).thenReturn(Optional.empty());
+        when(shopConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        shopConfigService.set(ShopConfigKey.DEFAULT_TAX_RATE, 10.0);
+
+        ArgumentCaptor<ShopConfig> cap = ArgumentCaptor.forClass(ShopConfig.class);
+        verify(shopConfigRepository).save(cap.capture());
+        assertThat(cap.getValue().getConfigValue()).isEqualTo("10.0");
+    }
+
+    @Test
+    @DisplayName("set BigDecimal: stores plain string")
+    void set_bigDecimal() {
+        when(shopConfigRepository.findByConfigKey("pawn_interest_rate")).thenReturn(Optional.empty());
+        when(shopConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        shopConfigService.set(ShopConfigKey.PAWN_INTEREST_RATE, new java.math.BigDecimal("2.5"));
+
+        ArgumentCaptor<ShopConfig> cap = ArgumentCaptor.forClass(ShopConfig.class);
+        verify(shopConfigRepository).save(cap.capture());
+        assertThat(cap.getValue().getConfigValue()).isEqualTo("2.5");
+    }
+
+    @Test
+    @DisplayName("set Integer: stores as string")
+    void set_integer() {
+        when(shopConfigRepository.findByConfigKey("pos_mode")).thenReturn(Optional.empty());
+        when(shopConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        shopConfigService.set(ShopConfigKey.POS_MODE, (Integer) null);
+
+        ArgumentCaptor<ShopConfig> cap = ArgumentCaptor.forClass(ShopConfig.class);
+        verify(shopConfigRepository).save(cap.capture());
+        assertThat(cap.getValue().getConfigValue()).isNull();
+    }
+
+    @Test
+    @DisplayName("set Boolean: stores 'true' string")
+    void set_boolean() {
+        when(shopConfigRepository.findByConfigKey("pawn_exclude_visible_item")).thenReturn(Optional.empty());
+        when(shopConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        shopConfigService.set(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, true);
+
+        ArgumentCaptor<ShopConfig> cap = ArgumentCaptor.forClass(ShopConfig.class);
+        verify(shopConfigRepository).save(cap.capture());
+        assertThat(cap.getValue().getConfigValue()).isEqualTo("true");
+    }
+
     // ── seedIfAbsent ──────────────────────────────────────────────────────────
 
     @Test
@@ -204,6 +290,38 @@ class ShopConfigServiceTest {
         when(shopConfigRepository.findByConfigKey("pos_mode")).thenReturn(Optional.of(plainConfig));
 
         shopConfigService.seedIfAbsent(ShopConfigKey.POS_MODE, "TABLE");
+
+        verify(shopConfigRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("seedIfAbsent Double: saves when absent")
+    void seedIfAbsent_double_absent() {
+        when(shopConfigRepository.findByConfigKey("default_tax_rate")).thenReturn(Optional.empty());
+        when(shopConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        shopConfigService.seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 10.0);
+
+        verify(shopConfigRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("seedIfAbsent Integer: saves when absent")
+    void seedIfAbsent_integer_absent() {
+        when(shopConfigRepository.findByConfigKey("pos_mode")).thenReturn(Optional.empty());
+        when(shopConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        shopConfigService.seedIfAbsent(ShopConfigKey.POS_MODE, 1);
+
+        verify(shopConfigRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("seedIfAbsent Boolean: skips when already exists")
+    void seedIfAbsent_boolean_exists() {
+        when(shopConfigRepository.findByConfigKey("pawn_exclude_visible_item")).thenReturn(Optional.of(plainConfig));
+
+        shopConfigService.seedIfAbsent(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, false);
 
         verify(shopConfigRepository, never()).save(any());
     }

@@ -32,6 +32,7 @@ public class PrintTemplateService {
     private final PrintTemplateRepository repo;
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
+    private final com.knp.multitenant.TenantContext tenantContext;
 
     // ── queries ────────────────────────────────────────────────────────────
 
@@ -47,7 +48,11 @@ public class PrintTemplateService {
     public ReceiptTemplateConfig getReceiptConfig() {
         return repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(POS_RECEIPT)
                 .map(t -> deserialize(t.getConfigJson(), ReceiptTemplateConfig.class, ReceiptTemplateConfig.defaults()))
-                .orElseGet(ReceiptTemplateConfig::defaults);
+                .orElseGet(() -> {
+                    log.warn("No default POS_RECEIPT template found for tenant '{}', using hardcoded defaults",
+                            tenantContext.getCurrentTenantId());
+                    return ReceiptTemplateConfig.defaults();
+                });
     }
 
     public StampTemplateConfig getStampConfig(String type) {
@@ -71,6 +76,7 @@ public class PrintTemplateService {
         validateConfigJson(type, req.getConfigJson());
         boolean firstOfType = !repo.existsByTemplateTypeAndDeletedFalse(type);
         PrintTemplate tpl = PrintTemplate.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .templateType(type)
                 .name(req.getName().trim())
                 .configJson(req.getConfigJson())
@@ -81,8 +87,8 @@ public class PrintTemplateService {
 
     @Transactional
     public PrintTemplateDTO update(Long id, SavePrintTemplateRequest req) {
-        validateConfigJson(findActive(id).getTemplateType(), req.getConfigJson());
         PrintTemplate tpl = findActive(id);
+        validateConfigJson(tpl.getTemplateType(), req.getConfigJson());
         tpl.setName(req.getName().trim());
         tpl.setConfigJson(req.getConfigJson());
         return toDTO(repo.save(tpl));

@@ -1,5 +1,6 @@
 package com.knp.model.dto.tenant;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -13,6 +14,7 @@ public class PrintTemplateDTO {
     private String templateType;
     private String name;
     private String configJson;
+    @JsonProperty("isDefault")
     private boolean isDefault;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

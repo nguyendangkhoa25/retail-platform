@@ -1,5 +1,6 @@
 package com.knp.service.auth;
 
+import com.knp.model.dto.auth.PermissionsMatrixDTO;
 import com.knp.model.entity.auth.Feature;
 import com.knp.repository.auth.RoleFeatureRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,7 +16,8 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -622,6 +624,66 @@ class RoleFeatureServiceTest {
         // Then
         assertThat(result).hasSize(2);
         verify(roleFeatureRepository).findActiveFeaturesByRoleNames(manyRoles);
+    }
+
+    // ── getPermissionsMatrix ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getPermissionsMatrix: returns features and role permissions")
+    void testGetPermissionsMatrix_Success() {
+        when(roleFeatureRepository.findAllActiveFeatures()).thenReturn(List.of(dashboardFeature, orderFeature));
+        lenient().when(roleFeatureRepository.findActiveFeatureNamesByRoleName(anyString())).thenReturn(List.of("DASHBOARD"));
+
+        PermissionsMatrixDTO matrix = roleFeatureService.getPermissionsMatrix();
+
+        assertThat(matrix.getFeatures()).hasSize(2);
+        assertThat(matrix.getRoles()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("getPermissionsMatrix: SHOP_OWNER gets all features")
+    void testGetPermissionsMatrix_ShopOwnerGetsAll() {
+        when(roleFeatureRepository.findAllActiveFeatures()).thenReturn(List.of(dashboardFeature, orderFeature));
+        lenient().when(roleFeatureRepository.findActiveFeatureNamesByRoleName(anyString())).thenReturn(List.of());
+
+        PermissionsMatrixDTO matrix = roleFeatureService.getPermissionsMatrix();
+
+        PermissionsMatrixDTO.RolePermissions shopOwner = matrix.getRoles().stream()
+                .filter(r -> "SHOP_OWNER".equals(r.getRoleName()))
+                .findFirst().orElseThrow();
+        assertThat(shopOwner.getFeatureNames()).containsExactlyInAnyOrder("DASHBOARD", "ORDER");
+    }
+
+    // ── setRoleFeatures ───────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("setRoleFeatures: clears and assigns features to role")
+    void testSetRoleFeatures_Success() {
+        List<String> features = List.of("DASHBOARD", "ORDER");
+
+        roleFeatureService.setRoleFeatures("CASHIER", features);
+
+        verify(roleFeatureRepository).removeAllFeaturesFromRole("CASHIER");
+        verify(roleFeatureRepository).assignFeatureToRole("CASHIER", "DASHBOARD");
+        verify(roleFeatureRepository).assignFeatureToRole("CASHIER", "ORDER");
+    }
+
+    @Test
+    @DisplayName("setRoleFeatures: clears all features when list is empty")
+    void testSetRoleFeatures_EmptyList() {
+        roleFeatureService.setRoleFeatures("CASHIER", List.of());
+
+        verify(roleFeatureRepository).removeAllFeaturesFromRole("CASHIER");
+        verify(roleFeatureRepository, never()).assignFeatureToRole(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("setRoleFeatures: clears all features when null is passed")
+    void testSetRoleFeatures_NullList() {
+        roleFeatureService.setRoleFeatures("CASHIER", null);
+
+        verify(roleFeatureRepository).removeAllFeaturesFromRole("CASHIER");
+        verify(roleFeatureRepository, never()).assignFeatureToRole(anyString(), anyString());
     }
 
     // ============= Helper Methods =============

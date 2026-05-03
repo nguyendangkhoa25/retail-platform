@@ -110,5 +110,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     @Query("SELECT DISTINCT u.username FROM User u JOIN u.roles r WHERE r.name IN :roleNames AND u.active = true AND u.deletedAt IS NULL")
     java.util.List<String> findUsernamesByRoleNames(@Param("roleNames") java.util.List<String> roleNames);
+
+    /**
+     * Returns the subset of the given usernames whose roles grant the specified feature.
+     * Used to compute feature-based notification defaults for users without a pref row.
+     */
+    @Query(value = "SELECT DISTINCT u.username FROM users u " +
+           "INNER JOIN user_roles ur ON u.id = ur.user_id " +
+           "INNER JOIN roles r ON ur.role_id = r.id " +
+           "INNER JOIN role_features rf ON r.id = rf.role_id " +
+           "INNER JOIN features f ON rf.feature_id = f.id " +
+           "WHERE u.username IN :usernames AND f.name = :featureName " +
+           "AND u.active = TRUE AND u.deleted_at IS NULL " +
+           "AND f.deleted = FALSE AND f.active = TRUE " +
+           "AND r.tenant_id IS NOT DISTINCT FROM current_setting('app.current_tenant', true)",
+           nativeQuery = true)
+    java.util.Set<String> findUsernamesWithFeature(
+            @Param("usernames") java.util.List<String> usernames,
+            @Param("featureName") String featureName);
 }
 

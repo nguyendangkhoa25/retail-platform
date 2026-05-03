@@ -11,7 +11,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -82,6 +85,21 @@ public class ShopConfigService {
 
     public void set(ShopConfigKey key, Boolean value) {
         upsert(key, value == null ? null : value.toString());
+    }
+
+    // ── Dashboard widgets ───────────────────────────────────────────────────────
+
+    public List<String> getDashboardWidgets() {
+        String raw = getString(ShopConfigKey.DASHBOARD_WIDGETS);
+        if (raw == null || raw.isBlank()) return null;
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toList());
+    }
+
+    public void setDashboardWidgets(List<String> widgetIds) {
+        set(ShopConfigKey.DASHBOARD_WIDGETS, widgetIds == null ? null : String.join(",", widgetIds));
     }
 
     // ── Internal ────────────────────────────────────────────────────────────────

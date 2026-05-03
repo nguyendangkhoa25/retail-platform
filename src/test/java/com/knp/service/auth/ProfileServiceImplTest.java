@@ -665,5 +665,73 @@ class ProfileServiceImplTest {
         assertThat(result).isNotNull();
         assertThat(result.getRoles()).isEmpty();
     }
+
+    // ── updateProfileInfo ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("updateProfileInfo: updates fullName and email")
+    void testUpdateProfileInfo_Success() {
+        ProfileRequest request = ProfileRequest.builder()
+                .username("testuser").fullName("New Name").email("new@example.com").build();
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        UserProfile result = profileService.updateProfileInfo("testuser", request);
+
+        assertThat(result).isNotNull();
+        verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("updateProfileInfo: throws ForbiddenException when username mismatch")
+    void testUpdateProfileInfo_Forbidden() {
+        ProfileRequest request = ProfileRequest.builder()
+                .username("otheruser").fullName("New Name").build();
+        when(messageService.getMessage(anyString())).thenReturn("denied");
+
+        assertThatThrownBy(() -> profileService.updateProfileInfo("testuser", request))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    @DisplayName("updateProfileInfo: throws BadRequestException when email is invalid")
+    void testUpdateProfileInfo_InvalidEmail() {
+        ProfileRequest request = ProfileRequest.builder()
+                .username("testuser").email("not-an-email").build();
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(messageService.getMessage(anyString())).thenReturn("error");
+
+        assertThatThrownBy(() -> profileService.updateProfileInfo("testuser", request))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    // ── updateProfileLang ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("updateProfileLang: updates language preference")
+    void testUpdateProfileLang_Success() {
+        ProfileRequest request = ProfileRequest.builder()
+                .username("testuser").lang("vi").build();
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        UserProfile result = profileService.updateProfileLang("testuser", request);
+
+        assertThat(result).isNotNull();
+        assertThat(user.getLang()).isEqualTo("vi");
+    }
+
+    @Test
+    @DisplayName("updateProfileLang: throws ForbiddenException when username mismatch")
+    void testUpdateProfileLang_Forbidden() {
+        ProfileRequest request = ProfileRequest.builder().username("otheruser").lang("en").build();
+        when(messageService.getMessage(anyString())).thenReturn("denied");
+
+        assertThatThrownBy(() -> profileService.updateProfileLang("testuser", request))
+                .isInstanceOf(ForbiddenException.class);
+    }
 }
 

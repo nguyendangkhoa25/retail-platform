@@ -517,5 +517,52 @@ class CustomExceptionTest {
         }).isInstanceOf(BadRequestException.class)
                 .hasCauseInstanceOf(IllegalArgumentException.class);
     }
+
+    // ============= PawnStatusNotAllowException Tests =============
+
+    @Test
+    @DisplayName("PawnStatusNotAllowException default constructor has built-in message")
+    void testPawnStatusNotAllowException_DefaultMessage() {
+        PawnStatusNotAllowException ex = new PawnStatusNotAllowException();
+        assertThat(ex.getMessage()).isEqualTo("Pawn status does not allow this action");
+        assertThat(ex).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("PawnStatusNotAllowException accepts custom message")
+    void testPawnStatusNotAllowException_CustomMessage() {
+        PawnStatusNotAllowException ex = new PawnStatusNotAllowException("Hợp đồng đã thanh lý");
+        assertThat(ex.getMessage()).isEqualTo("Hợp đồng đã thanh lý");
+    }
+
+    @Test
+    @DisplayName("PawnStatusNotAllowException is throwable and catchable as BusinessException")
+    void testPawnStatusNotAllowException_IsThrowable() {
+        assertThatThrownBy(() -> { throw new PawnStatusNotAllowException(); })
+                .isInstanceOf(PawnStatusNotAllowException.class)
+                .isInstanceOf(BusinessException.class);
+    }
+
+    // ============= DeviceConflictException Tests =============
+
+    @Test
+    @DisplayName("DeviceConflictException has built-in message and stores session")
+    void testDeviceConflictException_SessionInfo() {
+        com.knp.service.auth.SessionInfo session = new com.knp.service.auth.SessionInfo(
+                "session-123", "192.168.1.1", "Mozilla/5.0", java.time.LocalDateTime.now());
+        DeviceConflictException ex = new DeviceConflictException(session);
+        assertThat(ex.getMessage()).contains("active");
+        assertThat(ex.getExistingSession()).isSameAs(session);
+    }
+
+    // ============= AccountLockedException Tests =============
+
+    @Test
+    @DisplayName("AccountLockedException wraps message")
+    void testAccountLockedException_Message() {
+        AccountLockedException ex = new AccountLockedException("Tài khoản bị khóa");
+        assertThat(ex.getMessage()).isEqualTo("Tài khoản bị khóa");
+        assertThat(ex).isInstanceOf(RuntimeException.class);
+    }
 }
 

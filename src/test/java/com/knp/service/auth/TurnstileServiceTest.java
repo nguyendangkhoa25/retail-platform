@@ -48,9 +48,32 @@ class TurnstileServiceTest {
         ReflectionTestUtils.setField(service, "enabled", true);
         ReflectionTestUtils.setField(service, "secretKey", "test-secret");
 
-        // This will fail with a network error since there's no real Cloudflare endpoint in tests
-        // The service should catch the exception and return false
+        // Will fail with a network error — service catches it and returns false
         boolean result = service.verify("test-token", "127.0.0.1");
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    @DisplayName("verify: null clientIp omits remoteip field and still returns false on network error")
+    void verify_nullClientIp() {
+        TurnstileService service = new TurnstileService();
+        ReflectionTestUtils.setField(service, "enabled", true);
+        ReflectionTestUtils.setField(service, "secretKey", "test-secret");
+
+        boolean result = service.verify("test-token", null);
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    @DisplayName("verify: blank clientIp omits remoteip field and still returns false on network error")
+    void verify_blankClientIp() {
+        TurnstileService service = new TurnstileService();
+        ReflectionTestUtils.setField(service, "enabled", true);
+        ReflectionTestUtils.setField(service, "secretKey", "test-secret");
+
+        boolean result = service.verify("test-token", "   ");
 
         assertThat(result).isFalse();
     }

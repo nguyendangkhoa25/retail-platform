@@ -1,20 +1,24 @@
 package com.knp.service.product;
 
+import com.knp.client.OpenFoodFactsClient;
 import com.knp.exception.DuplicateResourceException;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.model.dto.product.*;
 import com.knp.model.entity.product.Product;
+import com.knp.model.entity.product.ProductCatalog;
 import com.knp.model.entity.product.ProductType;
 import com.knp.model.entity.product.Category;
 import com.knp.model.entity.product.AttributeDefinition;
 import com.knp.model.entity.product.AttributeGroup;
 import com.knp.model.entity.product.ProductAttributeValue;
+import com.knp.repository.product.ProductCatalogRepository;
 import com.knp.repository.product.ProductRepository;
 import com.knp.repository.product.ProductTypeRepository;
 import com.knp.repository.product.CategoryRepository;
 import com.knp.repository.product.AttributeDefinitionRepository;
 import com.knp.repository.product.AttributeGroupRepository;
 import com.knp.repository.product.ProductAttributeValueRepository;
+import com.knp.repository.vendor.VendorRepository;
 import com.knp.service.MessageService;
 import com.knp.service.audit.ActivityLogService;
 import com.knp.multitenant.TenantContext;
@@ -69,6 +73,18 @@ class ProductServiceImplTest {
 
     @Mock
     private TenantContext tenantContext;
+
+    @Mock
+    private VendorRepository vendorRepository;
+
+    @Mock
+    private ProductCatalogRepository productCatalogRepository;
+
+    @Mock
+    private OpenFoodFactsClient openFoodFactsClient;
+
+    @Mock
+    private ProductCatalogService productCatalogService;
 
     @InjectMocks
     private ProductServiceImpl productService;
@@ -1541,6 +1557,112 @@ class ProductServiceImplTest {
 
         // Then
         assertThat(result).isNotNull();
+    }
+
+    // ── lookupByBarcode ───────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("lookupByBarcode: returns SHOP result when product found in shop inventory")
+    void lookupByBarcode_foundInShop() {
+        when(productRepository.findByBarcodeAndDeletedFalse("8936001810014")).thenReturn(Optional.of(product));
+
+        BarcodeLookupResult result = productService.lookupByBarcode("8936001810014");
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.SHOP);
+        assertThat(result.getProduct()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("lookupByBarcode: returns CATALOG result from master catalog when not in shop")
+    void lookupByBarcode_foundInCatalog() {
+        ProductCatalog catalog = ProductCatalog.builder()
+                .barcode("8936001810014").name("Coca Cola").brand("Coca-Cola")
+                .categoryHint("Beverages").source("OPEN_FOOD_FACTS").build();
+
+        when(productRepository.findByBarcodeAndDeletedFalse("8936001810014")).thenReturn(Optional.empty());
+        when(productCatalogRepository.findByBarcode("8936001810014")).thenReturn(Optional.of(catalog));
+
+        BarcodeLookupResult result = productService.lookupByBarcode("8936001810014");
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.CATALOG);
+        assertThat(result.getCatalog().getName()).isEqualTo("Coca Cola");
+    }
+
+    @Test
+    @DisplayName("lookupByBarcode: returns NONE when not found anywhere and OFF disabled")
+    void lookupByBarcode_notFound_offDisabled() {
+        when(productRepository.findByBarcodeAndDeletedFalse("9999999999")).thenReturn(Optional.empty());
+        when(productCatalogRepository.findByBarcode("9999999999")).thenReturn(Optional.empty());
+        when(openFoodFactsClient.isEnabled()).thenReturn(false);
+
+        BarcodeLookupResult result = productService.lookupByBarcode("9999999999");
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.NONE);
+    }
+
+    @Test
+    @DisplayName("lookupByBarcode: queries OFF and returns CATALOG when enabled and product found")
+    void lookupByBarcode_foundInOff() {
+        // 4006381333931 is a valid EAN-13 barcode (passes GS1 checksum)
+        String validBarcode = "4006381333931";
+        OpenFoodFactsClient.OffProduct offProduct = new OpenFoodFactsClient.OffProduct();
+        offProduct.code = validBarcode;
+        offProduct.product_name = "Test Product";
+        offProduct.brands = "Test Brand";
+
+        when(productRepository.findByBarcodeAndDeletedFalse(validBarcode)).thenReturn(Optional.empty());
+        when(productCatalogRepository.findByBarcode(validBarcode)).thenReturn(Optional.empty());
+        when(openFoodFactsClient.isEnabled()).thenReturn(true);
+        when(openFoodFactsClient.fetchByBarcode(validBarcode)).thenReturn(Optional.of(offProduct));
+
+        BarcodeLookupResult result = productService.lookupByBarcode(validBarcode);
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.CATALOG);
+        assertThat(result.getCatalog().getName()).isEqualTo("Test Product");
+        verify(productCatalogService).saveFromOffAsync(offProduct);
+    }
+
+    // ── generateSku ───────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("generateSku: generates SKU with type prefix and name abbreviation")
+    void generateSku_success() {
+        when(productRepository.findSkusByPrefix("FOOD-APPLE-")).thenReturn(List.of());
+
+        String sku = productService.generateSku("Apple", "FOOD");
+
+        assertThat(sku).startsWith("FOOD-APPLE-");
+        assertThat(sku).endsWith("001");
+    }
+
+    @Test
+    @DisplayName("generateSku: increments sequence based on existing SKUs")
+    void generateSku_withExisting() {
+        when(productRepository.findSkusByPrefix("FOOD-APPLE-")).thenReturn(List.of("FOOD-APPLE-001", "FOOD-APPLE-002"));
+
+        String sku = productService.generateSku("Apple", "FOOD");
+
+        assertThat(sku).isEqualTo("FOOD-APPLE-003");
+    }
+
+    @Test
+    @DisplayName("generateSku: handles multi-word product name with abbreviation")
+    void generateSku_multiWordName() {
+        when(productRepository.findSkusByPrefix("FOOD-COMJUI-")).thenReturn(List.of());
+
+        String sku = productService.generateSku("Combo Juice Pack", "FOOD");
+
+        assertThat(sku).startsWith("FOOD-COMJUI-");
+    }
+
+    @Test
+    @DisplayName("generateSku: truncates type code to 4 characters")
+    void generateSku_longTypeCode() {
+        when(productRepository.findSkusByPrefix(startsWith("ELEC-"))).thenReturn(List.of());
+
+        String sku = productService.generateSku("Phone", "ELECTRONICS");
+
+        assertThat(sku).startsWith("ELEC-");
     }
 }
 

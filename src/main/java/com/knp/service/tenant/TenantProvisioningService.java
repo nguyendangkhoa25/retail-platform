@@ -3,13 +3,17 @@ package com.knp.service.tenant;
 import com.knp.model.dto.tenant.RoleSetupRequest;
 import com.knp.model.entity.auth.Role;
 import com.knp.model.entity.customer.Customer;
+import com.knp.model.entity.employee.Employee;
 import com.knp.model.entity.tenant.ShopInfo;
 import com.knp.model.entity.tenant.Tenant;
 import com.knp.model.entity.auth.User;
+import com.knp.model.enums.EmployeePosition;
 import com.knp.model.enums.RoleEnum;
 import com.knp.model.enums.ShopConfigKey;
+import com.knp.model.enums.ShopType;
 import com.knp.repository.auth.RoleRepository;
 import com.knp.repository.customer.CustomerRepository;
+import com.knp.repository.employee.EmployeeRepository;
 import com.knp.repository.tenant.ShopInfoRepository;
 import com.knp.repository.auth.UserRepository;
 import com.knp.service.auth.RoleFeatureService;
@@ -18,7 +22,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,8 +48,26 @@ public class TenantProvisioningService {
     private final UserRepository userRepository;
     private final ShopInfoRepository shopInfoRepository;
     private final CustomerRepository customerRepository;
+    private final EmployeeRepository employeeRepository;
     private final ShopConfigService shopConfigService;
     private final PasswordEncoder passwordEncoder;
+
+    private static final Map<ShopType, String> SHOP_TYPE_WIDGET_DEFAULTS;
+    static {
+        Map<ShopType, String> m = new EnumMap<>(ShopType.class);
+        m.put(ShopType.JEWELRY,            "ORDERS,REVENUE,BUYBACK,PAWN,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.PAWN_SHOP,          "PAWN,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.CONVENIENCE_STORE,  "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.PHARMACY,           "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
+        m.put(ShopType.ELECTRONICS,        "ORDERS,REVENUE,INVENTORY,BUYBACK,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.FOOD_BEVERAGE,      "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
+        m.put(ShopType.FASHION,            "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.BARBER_SHOP,        "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.COFFEE_SHOP,        "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.RESTAURANT,         "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.OTHER,              "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
+        SHOP_TYPE_WIDGET_DEFAULTS = Collections.unmodifiableMap(m);
+    }
 
     // Role → list of feature keys the role receives by default
     private static final Map<String, List<String>> ROLE_FEATURES;
@@ -110,14 +135,17 @@ public class TenantProvisioningService {
         try { seedShopInfo(tenant, shopAddress, tenantId); }
         catch (Exception e) { log.warn("seedShopInfo failed for tenant {}: {}", tenantId, e.getMessage()); }
 
-        try { seedDefaultConfig(); }
+        try { seedDefaultConfig(tenant.getShopType()); }
         catch (Exception e) { log.warn("seedDefaultConfig failed for tenant {}: {}", tenantId, e.getMessage()); }
 
         try { seedWalkInCustomer(tenantId); }
         catch (Exception e) { log.warn("seedWalkInCustomer failed for tenant {}: {}", tenantId, e.getMessage()); }
 
         // Admin user must succeed — propagate failures to the caller.
-        seedShopOwnerUser(tenant, adminUsername, adminPassword, tenantId);
+        User adminUser = seedShopOwnerUser(tenant, adminUsername, adminPassword, tenantId);
+
+        try { seedShopOwnerEmployee(tenant, adminUser, tenantId); }
+        catch (Exception e) { log.warn("seedShopOwnerEmployee failed for tenant {}: {}", tenantId, e.getMessage()); }
 
         log.info("Provisioning complete for tenant: {}", tenantId);
     }
@@ -187,10 +215,13 @@ public class TenantProvisioningService {
         log.debug("Seeded shop_info for tenant: {}", tenantId);
     }
 
-    private void seedDefaultConfig() {
+    private void seedDefaultConfig(ShopType shopType) {
         shopConfigService.seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.0);
         shopConfigService.seedIfAbsent(ShopConfigKey.POS_MODE, "STANDARD");
-        log.debug("Seeded default shop_config");
+        String widgetDefault = SHOP_TYPE_WIDGET_DEFAULTS.getOrDefault(shopType,
+                "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
+        shopConfigService.seedIfAbsent(ShopConfigKey.DASHBOARD_WIDGETS, widgetDefault);
+        log.debug("Seeded default shop_config for shopType: {}", shopType);
     }
 
     private void seedWalkInCustomer(String tenantId) {
@@ -208,10 +239,10 @@ public class TenantProvisioningService {
         log.debug("Seeded walk-in customer for tenant: {}", tenantId);
     }
 
-    private void seedShopOwnerUser(Tenant tenant, String adminUsername, String adminPassword, String tenantId) {
+    private User seedShopOwnerUser(Tenant tenant, String adminUsername, String adminPassword, String tenantId) {
         if (userRepository.findByUsernameTenantScoped(adminUsername).isPresent()) {
             log.info("Admin user '{}' already exists in tenant: {}", adminUsername, tenantId);
-            return;
+            return userRepository.findByUsernameTenantScoped(adminUsername).get();
         }
 
         Role shopOwnerRole = roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), tenantId)
@@ -231,7 +262,30 @@ public class TenantProvisioningService {
                 .build();
         admin.setTenantId(tenantId);
         admin.getRoles().add(shopOwnerRole);
-        userRepository.save(admin);
+        User saved = userRepository.save(admin);
         log.info("Created admin user '{}' for tenant: {}", adminUsername, tenantId);
+        return saved;
+    }
+
+    private void seedShopOwnerEmployee(Tenant tenant, User adminUser, String tenantId) {
+        if (employeeRepository.existsByUserId(adminUser.getId())) {
+            log.debug("Employee already linked to admin user {} in tenant: {}", adminUser.getId(), tenantId);
+            return;
+        }
+        String name = tenant.getContactPersonName() != null && !tenant.getContactPersonName().isBlank()
+                ? tenant.getContactPersonName() : "Chủ cửa hàng";
+        Employee employee = Employee.builder()
+                .fullName(name)
+                .phone(tenant.getContactPersonPhone())
+                .email(tenant.getContactPersonEmail())
+                .position(EmployeePosition.SHOP_OWNER)
+                .hireDate(LocalDate.now())
+                .active(true)
+                .userId(adminUser.getId())
+                .build();
+        employee.setTenantId(tenantId);
+        employeeRepository.save(employee);
+        log.info("Seeded SHOP_OWNER employee '{}' linked to user '{}' for tenant: {}",
+                name, adminUser.getUsername(), tenantId);
     }
 }

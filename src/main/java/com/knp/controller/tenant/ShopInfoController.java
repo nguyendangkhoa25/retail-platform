@@ -3,12 +3,15 @@ package com.knp.controller.tenant;
 import com.knp.model.dto.ApiResponse;
 import com.knp.model.dto.tenant.PublicShopInfoDTO;
 import com.knp.model.dto.tenant.ShopInfoDTO;
+import com.knp.service.tenant.ShopConfigService;
 import com.knp.service.tenant.ShopInfoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.knp.annotation.RequiresFeature;
+
+import java.util.List;
 
 /**
  * ShopInfoController - REST API endpoints for shop information management
@@ -22,6 +25,7 @@ import com.knp.annotation.RequiresFeature;
 public class ShopInfoController {
 
     private final ShopInfoService shopInfoService;
+    private final ShopConfigService shopConfigService;
 
     /**
      * GET /api/shop-info
@@ -141,6 +145,20 @@ public class ShopInfoController {
      * Examples:
      * - GET /api/shop-info/public
      */
+    @GetMapping("/dashboard-widgets")
+    public ResponseEntity<ApiResponse<List<String>>> getDashboardWidgets() {
+        log.info("Endpoint: GET /shop-info/dashboard-widgets");
+        List<String> widgets = shopConfigService.getDashboardWidgets();
+        return ResponseEntity.ok(ApiResponse.success(widgets, "Dashboard widgets retrieved successfully"));
+    }
+
+    @PutMapping("/dashboard-widgets")
+    public ResponseEntity<ApiResponse<List<String>>> updateDashboardWidgets(@RequestBody List<String> widgetIds) {
+        log.info("Endpoint: PUT /shop-info/dashboard-widgets - count: {}", widgetIds == null ? 0 : widgetIds.size());
+        shopConfigService.setDashboardWidgets(widgetIds);
+        return ResponseEntity.ok(ApiResponse.success(widgetIds, "Dashboard widgets updated successfully"));
+    }
+
     @RequiresFeature("DASHBOARD")
     @GetMapping("/public")
     public ResponseEntity<ApiResponse<PublicShopInfoDTO>> getPublicShopInfo() {

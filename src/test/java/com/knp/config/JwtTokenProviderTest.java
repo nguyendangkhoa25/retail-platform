@@ -649,5 +649,63 @@ class JwtTokenProviderTest {
         assertThat(jwtTokenProvider.getFeaturesFromToken(token)).contains("READ");
         assertThat(jwtTokenProvider.isMasterUserFromToken(token)).isTrue();
     }
+
+    // ── generateTokenWithSession ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("generateTokenWithSession: embeds sessionId and extractable via getSessionIdFromToken")
+    void testGenerateTokenWithSession_Success() {
+        String token = jwtTokenProvider.generateTokenWithSession(
+                "user1", List.of("SHOP_OWNER"), List.of("ORDER"), false, "sess-123");
+
+        assertThat(jwtTokenProvider.getSessionIdFromToken(token)).isEqualTo("sess-123");
+        assertThat(jwtTokenProvider.getUsernameFromToken(token)).isEqualTo("user1");
+    }
+
+    @Test
+    @DisplayName("generateTokenWithSession: embeds shopType and tenantId when provided")
+    void testGenerateTokenWithSession_WithShopTypeAndTenant() {
+        String token = jwtTokenProvider.generateTokenWithSession(
+                "user1", List.of("SHOP_OWNER"), List.of("ORDER"), false, "sess-xyz", "PAWN_SHOP", "shop1");
+
+        assertThat(jwtTokenProvider.getSessionIdFromToken(token)).isEqualTo("sess-xyz");
+        assertThat(jwtTokenProvider.getTenantIdsFromToken(token)).contains("shop1");
+    }
+
+    @Test
+    @DisplayName("getTenantIdsFromToken: returns empty list when no tid claim")
+    void testGetTenantIdsFromToken_NoTid() {
+        String token = jwtTokenProvider.generateToken("user1");
+
+        assertThat(jwtTokenProvider.getTenantIdsFromToken(token)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("getSessionIdFromToken: returns null when no sid claim")
+    void testGetSessionIdFromToken_NoSid() {
+        String token = jwtTokenProvider.generateToken("user1");
+
+        assertThat(jwtTokenProvider.getSessionIdFromToken(token)).isNull();
+    }
+
+    @Test
+    @DisplayName("generateTokenWithRolesAndFeatures: embeds shopType and tenantId")
+    void testGenerateTokenWithRolesAndFeatures_WithTenantId() {
+        String token = jwtTokenProvider.generateTokenWithRolesAndFeatures(
+                "user1", List.of("SHOP_OWNER"), List.of("ORDER"), false, "GENERAL", "shop42");
+
+        assertThat(jwtTokenProvider.getTenantIdsFromToken(token)).contains("shop42");
+        assertThat(jwtTokenProvider.getUsernameFromToken(token)).isEqualTo("user1");
+    }
+
+    @Test
+    @DisplayName("generateRefreshToken no-arg: generates UUID (opaque token, not JWT)")
+    void testGenerateRefreshToken_NoArg() {
+        String token = jwtTokenProvider.generateRefreshToken();
+
+        assertThat(token).isNotBlank();
+        // UUID format: 8-4-4-4-12 hex groups
+        assertThat(token).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+    }
 }
 

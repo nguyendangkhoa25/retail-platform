@@ -2,15 +2,17 @@ package com.knp.service.auth;
 
 import com.knp.model.dto.auth.PermissionsMatrixDTO;
 import com.knp.model.entity.auth.Feature;
+import com.knp.model.entity.auth.Role;
 import com.knp.model.enums.RoleEnum;
 import com.knp.repository.auth.RoleFeatureRepository;
+import com.knp.repository.auth.RoleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -24,6 +26,7 @@ import java.util.stream.Collectors;
 public class RoleFeatureService {
 
     private final RoleFeatureRepository roleFeatureRepository;
+    private final RoleRepository roleRepository;
 
     /**
      * Get all active features accessible by a specific role
@@ -118,25 +121,23 @@ public class RoleFeatureService {
                         .build())
                 .collect(Collectors.toList());
 
-        List<String> roleNames = Arrays.stream(RoleEnum.values())
-                .filter(r -> r != RoleEnum.MASTER_TENANT)
-                .map(RoleEnum::getCode)
-                .collect(Collectors.toList());
-
         List<String> allFeatureNames = allFeatures.stream()
-                .map(f -> f.getName())
+                .map(Feature::getName)
                 .collect(Collectors.toList());
 
-        List<PermissionsMatrixDTO.RolePermissions> rolePerms = roleNames.stream()
-                .map(roleName -> {
-                    // SHOP_OWNER always owns every feature the tenant has
-                    List<String> assigned = RoleEnum.SHOP_OWNER.getCode().equals(roleName)
+        // Master-only roles must never appear in shop user management
+        Set<String> masterOnlyRoles = Set.of(
+                RoleEnum.MASTER_TENANT.getCode(), RoleEnum.AGENT.getCode());
+
+        List<PermissionsMatrixDTO.RolePermissions> rolePerms = roleRepository.findAll().stream()
+                .filter(r -> !masterOnlyRoles.contains(r.getName()))
+                .map(role -> {
+                    List<String> assigned = RoleEnum.SHOP_OWNER.getCode().equals(role.getName())
                             ? allFeatureNames
-                            : roleFeatureRepository.findActiveFeatureNamesByRoleName(roleName);
-                    RoleEnum roleEnum = RoleEnum.valueOf(roleName);
+                            : roleFeatureRepository.findActiveFeatureNamesByRoleName(role.getName());
                     return PermissionsMatrixDTO.RolePermissions.builder()
-                            .roleName(roleName)
-                            .description(roleEnum.getDescription())
+                            .roleName(role.getName())
+                            .description(role.getDescription())
                             .featureNames(assigned)
                             .build();
                 })
@@ -158,6 +159,23 @@ public class RoleFeatureService {
             for (String featureName : featureNames) {
                 roleFeatureRepository.assignFeatureToRole(roleName, featureName);
             }
+        }
+    }
+
+    /**
+     * Syncs role_features when master admin changes a tenant's feature set.
+     * Added features → assigned to SHOP_OWNER only (other roles stay as configured).
+     * Removed features → deleted from ALL roles so nobody retains a revoked feature.
+     * Must be called with the target tenant's RLS context already set.
+     */
+    public void syncTenantFeatureChanges(List<String> added, List<String> removed) {
+        for (String feature : added) {
+            roleFeatureRepository.assignFeatureToRole("SHOP_OWNER", feature);
+            log.info("Assigned feature {} to SHOP_OWNER", feature);
+        }
+        for (String feature : removed) {
+            roleFeatureRepository.removeFeatureFromAllRoles(feature);
+            log.info("Removed feature {} from all roles", feature);
         }
     }
 }

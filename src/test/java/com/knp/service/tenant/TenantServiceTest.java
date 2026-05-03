@@ -1,13 +1,18 @@
 package com.knp.service.tenant;
 
 import com.knp.config.AuthContext;
+import com.knp.exception.ForbiddenException;
 import com.knp.model.dto.tenant.CreateTenantRequest;
 import com.knp.model.dto.tenant.TenantDTO;
+import com.knp.model.dto.tenant.TenantStatsDTO;
 import com.knp.model.dto.tenant.UpdateTenantRequest;
+import com.knp.model.entity.auth.User;
+import com.knp.model.entity.tenant.Agent;
 import com.knp.model.entity.tenant.Tenant;
 import com.knp.repository.auth.UserRepository;
 import com.knp.repository.tenant.TenantRepository;
 import com.knp.repository.tenant.AgentRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,6 +20,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDate;
 import java.util.Collections;
@@ -47,6 +55,22 @@ class TenantServiceTest {
     private Tenant tenant;
     private CreateTenantRequest createRequest;
     private UpdateTenantRequest updateRequest;
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private void setAgentContext(String username) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(username, null,
+                        List.of(new SimpleGrantedAuthority("AGENT"))));
+    }
+
+    private void setMasterContext(String username) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(username, null, Collections.emptyList()));
+    }
 
     @BeforeEach
     void setUp() {
@@ -591,5 +615,170 @@ class TenantServiceTest {
 
         assertThat(result).isNotNull();
         assertThat(result.getFeatures()).isNotNull().hasSize(1);
+    }
+
+    // ── getStats ──────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getStats: returns correct counts for active and inactive tenants")
+    void testGetStats_BasicCounts() {
+        Tenant inactive = Tenant.builder().tenantId("t2").name("Inactive").active(false)
+                .subscriptionType("STANDARD").build();
+        inactive.setId(2L);
+
+        when(tenantRepository.findAll()).thenReturn(List.of(tenant, inactive));
+
+        TenantStatsDTO stats = tenantService.getStats();
+
+        assertThat(stats.getTotal()).isEqualTo(2);
+        assertThat(stats.getInactive()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("getStats: counts expired tenants correctly")
+    void testGetStats_ExpiredTenants() {
+        Tenant expired = Tenant.builder().tenantId("t-exp").name("Expired").active(true)
+                .expirationDate(LocalDate.now().minusDays(1)).subscriptionType("STANDARD").build();
+        expired.setId(3L);
+
+        when(tenantRepository.findAll()).thenReturn(List.of(expired));
+
+        TenantStatsDTO stats = tenantService.getStats();
+
+        assertThat(stats.getExpired()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("getStats: counts tenants expiring within 7 days")
+    void testGetStats_ExpiringSoon() {
+        Tenant expiringSoon = Tenant.builder().tenantId("t-soon").name("Expiring").active(true)
+                .expirationDate(LocalDate.now().plusDays(3)).subscriptionType("STANDARD").build();
+        expiringSoon.setId(4L);
+
+        when(tenantRepository.findAll()).thenReturn(List.of(expiringSoon));
+
+        TenantStatsDTO stats = tenantService.getStats();
+
+        assertThat(stats.getExpiringSoon()).isEqualTo(1);
+        assertThat(stats.getExpired()).isEqualTo(0);
+    }
+
+    // ==================== Agent-path Tests ====================
+
+    @Test
+    @DisplayName("deleteTenant: agent cannot delete — throws ForbiddenException")
+    void testDeleteTenant_AgentForbidden() {
+        setAgentContext("agent-user");
+
+        assertThatThrownBy(() -> tenantService.deleteTenant("test-tenant"))
+                .isInstanceOf(ForbiddenException.class);
+
+        verify(tenantRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("getAllTenants: agent sees only tenants assigned to their agent")
+    void testGetAllTenants_AgentFiltered() {
+        setAgentContext("agent-user");
+
+        User agentUser = new User();
+        agentUser.setId(20L);
+
+        Agent agent = new Agent();
+        agent.setId(5L);
+
+        Tenant agentTenant = Tenant.builder()
+                .tenantId("shop-a").name("Shop A").vendorId(5L)
+                .active(true).subscriptionType("STANDARD").build();
+        agentTenant.setId(10L);
+
+        when(userRepository.findByUsernameTenantScoped(anyString())).thenReturn(Optional.of(agentUser));
+        when(agentRepository.findByUserId(20L)).thenReturn(Optional.of(agent));
+        when(tenantRepository.findAllByVendorId(5L)).thenReturn(List.of(agentTenant));
+
+        List<TenantDTO> result = tenantService.getAllTenants(null);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getTenantId()).isEqualTo("shop-a");
+        verify(tenantRepository, never()).findAll();
+    }
+
+    @Test
+    @DisplayName("updateTenant: agent cannot update features/dbName/vendorId")
+    void testUpdateTenant_AgentCannotChangeFeatures() {
+        setAgentContext("agent-user");
+
+        User agentUser = new User();
+        agentUser.setId(20L);
+        Agent agent = new Agent();
+        agent.setId(5L);
+        tenant.setVendorId(5L);
+
+        UpdateTenantRequest req = UpdateTenantRequest.builder()
+                .name("New Name").features(List.of("EXTRA_FEATURE")).dbName("new_db").build();
+
+        when(tenantRepository.findByTenantId("test-tenant")).thenReturn(Optional.of(tenant));
+        when(userRepository.findByUsernameTenantScoped(anyString())).thenReturn(Optional.of(agentUser));
+        when(agentRepository.findByUserId(20L)).thenReturn(Optional.of(agent));
+        when(tenantRepository.save(any())).thenReturn(tenant);
+        when(authContext.getCurrentUsername()).thenReturn("agent-user");
+
+        TenantDTO result = tenantService.updateTenant("test-tenant", req);
+
+        assertThat(result).isNotNull();
+        // features should NOT have been changed by agent
+        assertThat(tenant.getFeatures()).isEqualTo("DASHBOARD,ORDER");
+        assertThat(tenant.getDbName()).isEqualTo("test_tenant_db");
+    }
+
+    @Test
+    @DisplayName("createTenant: agent uses their own vendorId automatically")
+    void testCreateTenant_AgentUsesOwnVendorId() {
+        setAgentContext("agent-user");
+
+        User agentUser = new User();
+        agentUser.setId(20L);
+        Agent agent = new Agent();
+        agent.setId(5L);
+
+        CreateTenantRequest req = CreateTenantRequest.builder()
+                .tenantId("new-shop").name("New Shop").subscriptionType("STANDARD")
+                .vendorId(99L) // agent provides a vendorId but it should be ignored
+                .build();
+
+        Tenant saved = Tenant.builder().tenantId("new-shop").name("New Shop")
+                .vendorId(5L).subscriptionType("STANDARD").active(true).build();
+        saved.setId(100L);
+
+        when(tenantRepository.findByTenantId("new-shop")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameTenantScoped(anyString())).thenReturn(Optional.of(agentUser));
+        when(agentRepository.findByUserId(20L)).thenReturn(Optional.of(agent));
+        when(tenantRepository.save(any())).thenReturn(saved);
+        when(authContext.getCurrentUsername()).thenReturn("agent-user");
+
+        TenantDTO result = tenantService.createTenant(req);
+
+        assertThat(result).isNotNull();
+        // agent's own vendorId (5L) should have been used, not 99L
+        assertThat(result.getVendorId()).isEqualTo(5L);
+    }
+
+    @Test
+    @DisplayName("assertVendorOwns: agent cannot access tenant they don't own")
+    void testGetTenantById_AgentForbidden_WrongTenant() {
+        setAgentContext("agent-user");
+
+        User agentUser = new User();
+        agentUser.setId(20L);
+        Agent agent = new Agent();
+        agent.setId(5L);
+        tenant.setVendorId(99L); // different agent owns this tenant
+
+        when(tenantRepository.findByTenantId("test-tenant")).thenReturn(Optional.of(tenant));
+        when(userRepository.findByUsernameTenantScoped(anyString())).thenReturn(Optional.of(agentUser));
+        when(agentRepository.findByUserId(20L)).thenReturn(Optional.of(agent));
+
+        assertThatThrownBy(() -> tenantService.getTenantById("test-tenant"))
+                .isInstanceOf(ForbiddenException.class);
     }
 }

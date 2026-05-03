@@ -6,6 +6,7 @@ import com.knp.model.entity.pawn.PawnQuery;
 import com.knp.model.entity.pawn.ReqMoneyEntity;
 import com.knp.model.enums.PawnStatus;
 import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.NoArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
@@ -105,19 +106,13 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> searchCustomer(String searchWord) {
-        Specification<PawnQuery> spec = Specification.where(null);
-        spec = spec.or((root, query, criteriaBuilder) -> {
-            Join<PawnQuery, Customer> customer = root.join("customer");
-            return criteriaBuilder.like(
-                    criteriaBuilder.lower(customer.get("name")),
-                    ANY_STRING + searchWord.toLowerCase() + ANY_STRING);
-        }).or((root, query, criteriaBuilder) -> {
-            Join<PawnQuery, Customer> customer = root.join("customer");
-            return criteriaBuilder.like(
-                    criteriaBuilder.lower(customer.get("phone")),
-                    ANY_STRING + searchWord.toLowerCase() + ANY_STRING);
-        });
-        return spec;
+        return (root, query, criteriaBuilder) -> {
+            Join<PawnQuery, Customer> customer = root.join("customer", JoinType.LEFT);
+            String pattern = ANY_STRING + searchWord.toLowerCase() + ANY_STRING;
+            Predicate byName = criteriaBuilder.like(criteriaBuilder.lower(customer.get("name")), pattern);
+            Predicate byPhone = criteriaBuilder.like(criteriaBuilder.lower(customer.get("phone")), pattern);
+            return criteriaBuilder.or(byName, byPhone);
+        };
     }
 
     public static Specification<PawnQuery> searchPawnDueDate(DateFilterRequest pawnDueDate) {

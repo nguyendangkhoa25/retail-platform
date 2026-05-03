@@ -11,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -57,7 +56,7 @@ public class ShopExpenseController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         log.info("Endpoint: GET /expenses - from:{} to:{} category:{}", from, to, category);
-        PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "expenseDate", "id"));
+        PageRequest pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(ApiResponse.success(expenseService.search(from, to, category, pageable), "Expenses retrieved"));
     }
 

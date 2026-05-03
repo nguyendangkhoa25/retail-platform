@@ -95,4 +95,14 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id()",
            nativeQuery = true)
     void removeAllFeaturesFromRole(@Param("roleName") String roleName);
+
+    @Transactional
+    @Modifying
+    @Query(value = "DELETE FROM role_features " +
+           "USING roles r, features f " +
+           "WHERE role_features.role_id = r.id AND role_features.feature_id = f.id " +
+           "AND f.name = :featureName " +
+           "AND r.tenant_id IS NOT DISTINCT FROM current_tenant_id()",
+           nativeQuery = true)
+    void removeFeatureFromAllRoles(@Param("featureName") String featureName);
 }

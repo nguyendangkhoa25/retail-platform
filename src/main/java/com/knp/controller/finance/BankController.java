@@ -17,7 +17,7 @@ import com.knp.annotation.RequiresFeature;
 @RestController
 @RequestMapping("/banks")
 @RequiredArgsConstructor
-@RequiresFeature("SHOP_INFO")
+@RequiresFeature("BANK_ACCOUNT")
 public class BankController {
 
     private final BankService bankService;

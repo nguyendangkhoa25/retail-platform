@@ -2,6 +2,7 @@ package com.knp.exception;
 
 import com.knp.model.dto.ApiResponse;
 import com.knp.service.MessageService;
+import com.knp.service.auth.SessionInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -725,6 +726,33 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody()).isNotNull();
+    }
+
+    // ── handleAccountLockedException ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("handleAccountLockedException: returns 403 with locked message")
+    void handleAccountLockedException() {
+        AccountLockedException ex = new AccountLockedException("Account locked");
+        ResponseEntity<ApiResponse<Void>> response = exceptionHandler.handleAccountLockedException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getBody()).isNotNull();
+    }
+
+    // ── handleDeviceConflictException ─────────────────────────────────────────
+
+    @Test
+    @DisplayName("handleDeviceConflictException: returns 409 with session info")
+    void handleDeviceConflictException() {
+        SessionInfo session = new SessionInfo("sess-1", "192.168.1.1", "Mozilla/5.0", java.time.LocalDateTime.now());
+        DeviceConflictException ex = new DeviceConflictException(session);
+
+        ResponseEntity<ApiResponse<java.util.Map<String, Object>>> response =
+                exceptionHandler.handleDeviceConflictException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).isNotNull();
     }
 }

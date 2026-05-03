@@ -57,4 +57,28 @@ public class Employee extends TenantAwareEntity {
 
     @Column(name = "user_id")
     private Long userId;
+
+    @Column(name = "id_card_number", length = 20)
+    private String idCardNumber;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(name = "gender", length = 10)
+    private String gender;
+
+    @Column(name = "permanent_address", columnDefinition = "TEXT")
+    private String permanentAddress;
+
+    @Column(name = "id_card_issued_date")
+    private LocalDate idCardIssuedDate;
+
+    @Column(name = "id_card_issued_place")
+    private String idCardIssuedPlace;
+
+    @Column(name = "id_card_front_image", columnDefinition = "TEXT")
+    private String idCardFrontImage;
+
+    @Column(name = "id_card_back_image", columnDefinition = "TEXT")
+    private String idCardBackImage;
 }

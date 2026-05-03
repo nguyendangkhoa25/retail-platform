@@ -1,6 +1,8 @@
 package com.knp.model.dto.tenant;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import lombok.*;
 
 /**
@@ -12,7 +14,11 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
+@JsonDeserialize(builder = ReceiptTemplateConfig.ReceiptTemplateConfigBuilder.class)
 public class ReceiptTemplateConfig {
+
+    @JsonPOJOBuilder(withPrefix = "")
+    public static class ReceiptTemplateConfigBuilder {}
 
     /** Extra line printed directly below the shop name. */
     @Builder.Default

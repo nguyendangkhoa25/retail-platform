@@ -13,6 +13,7 @@ import lombok.Getter;
 public enum FeatureEnum {
     DASHBOARD("Bảng Điều Khiển", "Xem tổng quan và thống kê chính của cửa hàng"),
     ORDER("Đơn Hàng", "Quản lý đơn hàng, theo dõi trạng thái và lịch sử đơn hàng"),
+    ORDER_VIEW_ALL("Xem Tất Cả Đơn Hàng", "Xem đơn hàng của tất cả nhân viên; nếu không có quyền này, chỉ xem được đơn hàng tự tạo"),
     MY_WORK("Công Việc Của Tôi", "Xem công việc được giao cho nhân viên hiện tại"),
     PRODUCT("Sản Phẩm & Dịch Vụ", "Quản lý danh sách sản phẩm, dịch vụ, giá cả và hoa hồng"),
     PROMOTION("Khuyến Mãi", "Tạo và quản lý các chương trình khuyến mãi, giảm giá"),

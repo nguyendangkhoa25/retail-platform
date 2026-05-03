@@ -14,7 +14,9 @@ import com.knp.model.entity.tenant.Tenant;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.tenant.AgentRepository;
 import com.knp.service.MessageService;
+import com.knp.service.auth.RoleFeatureService;
 import com.knp.service.notification.NotificationService;
+import com.knp.service.tenant.ShopConfigService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.tenant.TenantProvisioningService;
 import com.knp.service.tenant.TenantSeedService;
@@ -29,6 +31,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * MultiTenantController - REST API endpoints for tenant management
@@ -44,12 +48,14 @@ public class MultiTenantController {
 
     private final TenantService tenantService;
     private final ShopInfoService shopInfoService;
+    private final ShopConfigService shopConfigService;
     private final TenantContext tenantContext;
     private final TenantProvisioningService tenantProvisioningService;
     private final TenantSeedService tenantSeedService;
     private final NotificationService notificationService;
     private final MessageService messageService;
     private final AgentRepository agentRepository;
+    private final RoleFeatureService roleFeatureService;
 
     /**
      * GET /api/multi-tenants/stats
@@ -141,7 +147,7 @@ public class MultiTenantController {
         String welcomeTitle = messageService.getMessage("notification.shop.welcome.title", vi);
         String welcomeMsg = messageService.getMessage("notification.shop.welcome.message", vi,
                 tenant.getName(), subscriptionType, supportInfo);
-        notificationService.pushSystemAsync(request.getAdminUsername(), Notification.NotificationType.BILLING,
+        notificationService.pushSystemAsync(request.getAdminUsername(), Notification.NotificationType.SYSTEM,
                 welcomeTitle, welcomeMsg, "TENANT", tenantEntity.getId(), tenant.getTenantId());
 
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -150,20 +156,43 @@ public class MultiTenantController {
 
     /**
      * PUT /api/multi-tenants/{tenantId}
-     * Update an existing tenant
-     * Admin only
+     * Update an existing tenant. When features change, syncs role_features in the
+     * tenant DB: added features → SHOP_OWNER only; removed features → all roles.
      */
     @PutMapping("/{tenantId}")
     public ResponseEntity<ApiResponse<TenantDTO>> updateTenant(
             @PathVariable String tenantId,
             @RequestBody UpdateTenantRequest request) {
         log.info("Request: Update tenant: {}", tenantId);
+
+        // Capture current features before the update so we can diff them
+        List<String> oldFeatures = tenantService.getTenantById(tenantId).getFeatures();
+        if (oldFeatures == null) oldFeatures = List.of();
+
         TenantDTO tenant = tenantService.updateTenant(tenantId, request);
 
-        log.info("Updated tenant: {}", tenantId);
-        return ResponseEntity.ok(
-            ApiResponse.success(tenant, "Tenant updated successfully")
-        );
+        // Sync role_features only when master admin explicitly passes a new feature list
+        List<String> newFeatures = request.getFeatures();
+        if (newFeatures != null) {
+            Set<String> oldSet = Set.copyOf(oldFeatures);
+            Set<String> newSet = Set.copyOf(newFeatures);
+
+            List<String> added   = newFeatures.stream().filter(f -> !oldSet.contains(f)).collect(Collectors.toList());
+            List<String> removed = oldFeatures.stream().filter(f -> !newSet.contains(f)).collect(Collectors.toList());
+
+            if (!added.isEmpty() || !removed.isEmpty()) {
+                Tenant tenantEntity = tenantService.getTenantEntity(tenantId);
+                tenantContext.setCurrentTenant(tenantEntity);
+                try {
+                    roleFeatureService.syncTenantFeatureChanges(added, removed);
+                    log.info("Synced role_features for tenant {}: added={} removed={}", tenantId, added, removed);
+                } finally {
+                    tenantContext.clear();
+                }
+            }
+        }
+
+        return ResponseEntity.ok(ApiResponse.success(tenant, "Tenant updated successfully"));
     }
 
     /**
@@ -229,6 +258,42 @@ public class MultiTenantController {
             tenantContext.setCurrentTenant(tenant);
             ShopInfoDTO updated = shopInfoService.updateShopInfo(shopInfoDTO);
             return ResponseEntity.ok(ApiResponse.success(updated, "Shop info updated successfully"));
+        } finally {
+            tenantContext.clear();
+        }
+    }
+
+    /**
+     * GET /api/multi-tenants/{tenantId}/dashboard-widgets
+     * Get dashboard widget config for a specific tenant.
+     */
+    @GetMapping("/{tenantId}/dashboard-widgets")
+    public ResponseEntity<ApiResponse<List<String>>> getTenantDashboardWidgets(@PathVariable String tenantId) {
+        log.info("Request: Get dashboard widgets for tenant: {}", tenantId);
+        Tenant tenant = tenantService.getTenantEntity(tenantId);
+        try {
+            tenantContext.setCurrentTenant(tenant);
+            List<String> widgets = shopConfigService.getDashboardWidgets();
+            return ResponseEntity.ok(ApiResponse.success(widgets, "Dashboard widgets retrieved successfully"));
+        } finally {
+            tenantContext.clear();
+        }
+    }
+
+    /**
+     * PUT /api/multi-tenants/{tenantId}/dashboard-widgets
+     * Update dashboard widget config for a specific tenant.
+     */
+    @PutMapping("/{tenantId}/dashboard-widgets")
+    public ResponseEntity<ApiResponse<List<String>>> updateTenantDashboardWidgets(
+            @PathVariable String tenantId,
+            @RequestBody List<String> widgetIds) {
+        log.info("Request: Update dashboard widgets for tenant: {}", tenantId);
+        Tenant tenant = tenantService.getTenantEntity(tenantId);
+        try {
+            tenantContext.setCurrentTenant(tenant);
+            shopConfigService.setDashboardWidgets(widgetIds);
+            return ResponseEntity.ok(ApiResponse.success(widgetIds, "Dashboard widgets updated successfully"));
         } finally {
             tenantContext.clear();
         }

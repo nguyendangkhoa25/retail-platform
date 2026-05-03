@@ -7,6 +7,7 @@ import com.knp.model.dto.vendor.*;
 import com.knp.model.entity.vendor.PurchaseOrder;
 import com.knp.model.entity.vendor.PurchaseOrderItem;
 import com.knp.model.entity.vendor.Vendor;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.vendor.PurchaseOrderItemRepository;
 import com.knp.repository.vendor.PurchaseOrderRepository;
 import com.knp.repository.vendor.VendorRepository;
@@ -37,6 +38,7 @@ public class PurchaseOrderService {
     private final VendorRepository vendorRepository;
     private final InventoryService inventoryService;
     private final MessageService messageService;
+    private final TenantContext tenantContext;
 
     public Page<PurchaseOrderDTO> getAll(String status, Pageable pageable) {
         if (status != null && !status.isBlank()) {
@@ -62,6 +64,7 @@ public class PurchaseOrderService {
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.vendor.not.found", req.getVendorId())));
 
         String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
+        String tenantId = tenantContext.getCurrentTenantId();
         String poNumber = generatePoNumber();
 
         PurchaseOrder po = PurchaseOrder.builder()
@@ -73,6 +76,7 @@ public class PurchaseOrderService {
                 .createdBy(currentUser)
                 .totalAmount(BigDecimal.ZERO)
                 .build();
+        po.setTenantId(tenantId);
 
         List<PurchaseOrderItem> items = req.getItems().stream().map(i -> {
             PurchaseOrderItem item = PurchaseOrderItem.builder()
@@ -85,6 +89,7 @@ public class PurchaseOrderService {
                     .unitCost(i.getUnitCost())
                     .totalCost(i.getUnitCost().multiply(BigDecimal.valueOf(i.getQuantityOrdered())))
                     .build();
+            item.setTenantId(tenantId);
             return item;
         }).collect(Collectors.toList());
 

@@ -37,6 +37,7 @@ import com.knp.service.customer.LoyaltyService;
 import com.knp.service.inventory.InventoryService;
 import com.knp.service.tenant.PrintTemplateService;
 import com.knp.service.audit.ActivityLogService;
+import com.knp.config.FeatureContext;
 
 @Slf4j
 @Service
@@ -53,28 +54,38 @@ public class OrderServiceImpl implements OrderService {
     private final PrintTemplateService printTemplateService;
     private final ActivityLogService activityLogService;
     private final TenantContext tenantContext;
+    private final FeatureContext featureContext;
 
     @Override
     public Page<OrderDTO> getAllOrders(String status, Pageable pageable) {
         log.info("Request: Get all orders - status: {}, page: {}, size: {}",
                 status, pageable.getPageNumber(), pageable.getPageSize());
 
+        boolean canViewAll = featureContext.hasFeature("ORDER_VIEW_ALL");
         Page<Order> orders;
+
         if (status != null && !status.isBlank()) {
             Order.OrderStatus orderStatus = Order.OrderStatus.valueOf(status.toUpperCase());
-            orders = orderRepository.findAllActiveByStatus(orderStatus, pageable);
+            orders = canViewAll
+                    ? orderRepository.findAllActiveByStatus(orderStatus, pageable)
+                    : orderRepository.findAllActiveByStatusAndCreatedBy(orderStatus, getCurrentUsername(), pageable);
         } else {
-            orders = orderRepository.findAllActive(pageable);
+            orders = canViewAll
+                    ? orderRepository.findAllActive(pageable)
+                    : orderRepository.findAllActiveByCreatedBy(getCurrentUsername(), pageable);
         }
 
-        log.info("Retrieved {} orders", orders.getTotalElements());
+        log.info("Retrieved {} orders (viewAll={})", orders.getTotalElements(), canViewAll);
         return orders.map(this::mapToDTO);
     }
 
     @Override
     public Page<OrderDTO> searchOrders(String keyword, Pageable pageable) {
         log.info("Request: Search orders - keyword: {}, page: {}", keyword, pageable.getPageNumber());
-        return orderRepository.searchByKeyword(keyword, pageable).map(this::mapToDTO);
+        boolean canViewAll = featureContext.hasFeature("ORDER_VIEW_ALL");
+        return canViewAll
+                ? orderRepository.searchByKeyword(keyword, pageable).map(this::mapToDTO)
+                : orderRepository.searchByKeywordAndCreatedBy(keyword, getCurrentUsername(), pageable).map(this::mapToDTO);
     }
 
     @Override
@@ -87,6 +98,16 @@ public class OrderServiceImpl implements OrderService {
                     return new ResourceNotFoundException(
                             messageService.getMessage("error.order.not.found", id));
                 });
+
+        // Enforce row-level ownership when the user cannot view all orders
+        if (!featureContext.hasFeature("ORDER_VIEW_ALL")) {
+            String username = getCurrentUsername();
+            if (!username.equals(order.getCreatedBy())) {
+                log.warn("User {} attempted to access order {} owned by {}", username, id, order.getCreatedBy());
+                throw new ResourceNotFoundException(messageService.getMessage("error.order.not.found", id));
+            }
+        }
+
         return mapToDTO(order);
     }
 
@@ -299,7 +320,8 @@ public class OrderServiceImpl implements OrderService {
         long pendingCount = orderRepository.countActiveByCreatedBy(username, pendingStatuses);
 
         LocalDateTime[] period = resolvePeriod(filterType, day, month, year);
-        Object[] stats = orderRepository.getMyCompletedStats(username, period[0], period[1]);
+        List<Object[]> statRows = orderRepository.getMyCompletedStats(username, period[0], period[1]);
+        Object[] stats = statRows.isEmpty() ? new Object[]{0L, BigDecimal.ZERO} : statRows.get(0);
         long completedCount = ((Number) stats[0]).longValue();
         BigDecimal completedRevenue = (BigDecimal) stats[1];
 

@@ -19,4 +19,12 @@ public class UpdateEmployeeRequest {
     private String notes;
     private String avatar;
     private Long userId;
+    private String idCardNumber;
+    private LocalDate dateOfBirth;
+    private String gender;
+    private String permanentAddress;
+    private LocalDate idCardIssuedDate;
+    private String idCardIssuedPlace;
+    private String idCardFrontImage;
+    private String idCardBackImage;
 }

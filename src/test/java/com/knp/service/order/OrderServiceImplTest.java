@@ -25,9 +25,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.knp.repository.finance.BankAccountRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,6 +43,7 @@ import com.knp.service.MessageService;
 import com.knp.service.tenant.PrintTemplateService;
 import com.knp.service.audit.ActivityLogService;
 import com.knp.multitenant.TenantContext;
+import com.knp.config.FeatureContext;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OrderServiceImpl Unit Tests")
@@ -70,6 +73,12 @@ class OrderServiceImplTest {
     @Mock
     private TenantContext tenantContext;
 
+    @Mock
+    private BankAccountRepository bankAccountRepository;
+
+    @Mock
+    private FeatureContext featureContext;
+
     @InjectMocks
     private OrderServiceImpl orderService;
 
@@ -83,6 +92,9 @@ class OrderServiceImplTest {
     void setUp() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("cashier01", null, Collections.emptyList()));
+
+        // Default: user can view all orders (shop-owner scenario)
+        lenient().when(featureContext.hasFeature("ORDER_VIEW_ALL")).thenReturn(true);
 
         customer = Customer.builder()
                 .name("Nguyễn Văn A")
@@ -488,5 +500,140 @@ class OrderServiceImplTest {
         OrderDTO result = orderService.voidOrder(3L, req);
 
         assertThat(result).isNotNull();
+    }
+
+    // ── searchOrders ──────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("searchOrders delegates to repository")
+    void testSearchOrders() {
+        when(orderRepository.searchByKeyword("123", pageable))
+                .thenReturn(new PageImpl<>(List.of(completedOrder)));
+
+        Page<OrderDTO> result = orderService.searchOrders("123", pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository).searchByKeyword("123", pageable);
+    }
+
+    // ── ORDER_VIEW_ALL absent — scoped queries ────────────────────────────────
+
+    @Test
+    @DisplayName("getAllOrders: scoped to own orders when ORDER_VIEW_ALL absent")
+    void testGetAllOrders_ScopedToOwn() {
+        when(featureContext.hasFeature("ORDER_VIEW_ALL")).thenReturn(false);
+        Page<Order> page = new PageImpl<>(List.of(pendingOrder));
+        when(orderRepository.findAllActiveByCreatedBy("cashier01", pageable)).thenReturn(page);
+
+        Page<OrderDTO> result = orderService.getAllOrders(null, pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository).findAllActiveByCreatedBy("cashier01", pageable);
+        verify(orderRepository, never()).findAllActive(any());
+    }
+
+    @Test
+    @DisplayName("getOrderById: throws 404 when user does not own the order and ORDER_VIEW_ALL absent")
+    void testGetOrderById_NotOwned_ThrowsNotFound() {
+        when(featureContext.hasFeature("ORDER_VIEW_ALL")).thenReturn(false);
+        Order otherOrder = Order.builder()
+                .orderNumber("ORD-OTHER")
+                .status(OrderStatus.COMPLETED)
+                .totalAmount(BigDecimal.ZERO)
+                .createdBy("other_user")
+                .orderItems(new ArrayList<>())
+                .build();
+        otherOrder.setId(99L);
+        otherOrder.setDeleted(false);
+
+        when(orderRepository.findById(99L)).thenReturn(Optional.of(otherOrder));
+
+        assertThatThrownBy(() -> orderService.getOrderById(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── getOrdersByCustomerId ─────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getOrdersByCustomerId delegates to repository")
+    void testGetOrdersByCustomerId() {
+        when(orderRepository.findByCustomerId(1L, pageable))
+                .thenReturn(new PageImpl<>(List.of(completedOrder)));
+
+        Page<OrderDTO> result = orderService.getOrdersByCustomerId(1L, pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository).findByCustomerId(1L, pageable);
+    }
+
+    // ── getMyPendingOrders ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getMyPendingOrders uses current principal as username")
+    void testGetMyPendingOrders() {
+        when(orderRepository.findActiveByCreatedBy(eq("cashier01"), any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(pendingOrder)));
+
+        Page<OrderDTO> result = orderService.getMyPendingOrders(pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository).findActiveByCreatedBy(eq("cashier01"), any(), eq(pageable));
+    }
+
+    // ── getMyCompletedOrders ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getMyCompletedOrders uses DAY filter by default")
+    void testGetMyCompletedOrders_DayFilter() {
+        when(orderRepository.findCompletedByCreatedByAndPeriod(
+                eq("cashier01"), any(), any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(completedOrder)));
+
+        Page<OrderDTO> result = orderService.getMyCompletedOrders("DAY", null, null, null, pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository).findCompletedByCreatedByAndPeriod(
+                eq("cashier01"), any(), any(), eq(pageable));
+    }
+
+    @Test
+    @DisplayName("getMyCompletedOrders uses MONTH filter")
+    void testGetMyCompletedOrders_MonthFilter() {
+        when(orderRepository.findCompletedByCreatedByAndPeriod(
+                eq("cashier01"), any(), any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        Page<OrderDTO> result = orderService.getMyCompletedOrders("MONTH", null, null, null, pageable);
+
+        assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("getMyCompletedOrders uses YEAR filter")
+    void testGetMyCompletedOrders_YearFilter() {
+        when(orderRepository.findCompletedByCreatedByAndPeriod(
+                eq("cashier01"), any(), any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        orderService.getMyCompletedOrders("YEAR", null, null, 2024, pageable);
+
+        verify(orderRepository).findCompletedByCreatedByAndPeriod(
+                eq("cashier01"), any(), any(), eq(pageable));
+    }
+
+    // ── getMyWorkStats ────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getMyWorkStats returns pending and completed counts")
+    void testGetMyWorkStats() {
+        when(orderRepository.countActiveByCreatedBy(eq("cashier01"), any())).thenReturn(3L);
+        Object[] statsRow = new Object[]{ 10L, new BigDecimal("500000") };
+        when(orderRepository.getMyCompletedStats(eq("cashier01"), any(), any())).thenReturn(statsRow);
+
+        var result = orderService.getMyWorkStats("DAY", null, null, null);
+
+        assertThat(result.getPendingCount()).isEqualTo(3L);
+        assertThat(result.getCompletedCount()).isEqualTo(10L);
+        assertThat(result.getCompletedRevenue()).isEqualByComparingTo("500000");
     }
 }

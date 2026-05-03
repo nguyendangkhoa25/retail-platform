@@ -6,16 +6,24 @@ import com.knp.exception.ResourceNotFoundException;
 import com.knp.model.dto.order.CartItemResponse;
 import com.knp.model.dto.order.CartRequest;
 import com.knp.model.dto.order.CartResponse;
+import com.knp.model.dto.order.CheckoutRequest;
+import com.knp.model.dto.order.CheckoutResponse;
+import com.knp.model.dto.order.SendToKitchenRequest;
+import com.knp.model.dto.order.SendToKitchenResponse;
 import com.knp.model.dto.inventory.InventoryDTO;
 import com.knp.model.dto.product.ProductDTO;
+import com.knp.model.dto.tenant.ShopInfoDTO;
+import com.knp.model.entity.customer.Customer;
 import com.knp.model.entity.order.CartEntity;
 import com.knp.model.entity.order.CartItemEntity;
+import com.knp.model.entity.order.Order;
 import com.knp.model.enums.CartStatus;
 import com.knp.model.enums.DiscountType;
 import com.knp.repository.order.CartItemRepository;
 import com.knp.repository.order.CartRepository;
 import com.knp.repository.customer.CustomerRepository;
 import com.knp.repository.order.OrderRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +34,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -35,6 +46,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -84,6 +97,19 @@ class CartServiceImplTest {
 
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private void mockSecurityContext(String username) {
+        SecurityContext ctx = mock(SecurityContext.class);
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn(username);
+        when(ctx.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(ctx);
+    }
 
     @BeforeEach
     void setUp() {
@@ -1001,6 +1027,481 @@ class CartServiceImplTest {
         assertNotNull(response);
         assertEquals(1, response.getItems().size());
         assertNotNull(response.getItems().get(0).getVariants());
+    }
+
+    // ==================== Checkout Tests ====================
+
+    private CartEntity buildActiveCartWithItem() {
+        CartItemEntity item = CartItemEntity.builder()
+                .id(1L)
+                .productId(1L)
+                .productName("Coca Cola")
+                .sku("SKU-001")
+                .quantity(2)
+                .basePrice(new BigDecimal("15000"))
+                .unitPrice(new BigDecimal("15000"))
+                .unitCost(new BigDecimal("10000"))
+                .discountType(DiscountType.NONE)
+                .discountValue(BigDecimal.ZERO)
+                .variants("{}")
+                .build();
+        item.recalculateLineTotal();
+
+        CartEntity cart = CartEntity.builder()
+                .id(1L)
+                .cartId("cart-001")
+                .status(CartStatus.ACTIVE)
+                .items(new ArrayList<>(List.of(item)))
+                .subtotal(new BigDecimal("30000"))
+                .totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO)
+                .total(new BigDecimal("30000"))
+                .appliedCoupons("[]")
+                .appliedPromotions("[]")
+                .build();
+        return cart;
+    }
+
+    @Test
+    @DisplayName("checkout creates COMPLETED order and returns receipt")
+    void testCheckout_Success() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setPaymentMethod("CASH");
+        request.setAmountPaid(new BigDecimal("50000"));
+
+        Order savedOrder = new Order();
+        savedOrder.setId(100L);
+        savedOrder.setOrderNumber("ORD-20240101-12345");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+        savedOrder.setTotalAmount(new BigDecimal("33000"));
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+        when(inventoryService.getInventoryByProductId(eq(1L), any()))
+                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+        when(shopInfoService.getShopInfo()).thenReturn(ShopInfoDTO.builder().shopName("Test Shop").build());
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getOrderNumber()).isEqualTo("ORD-20240101-12345");
+        assertThat(response.getPaymentMethod()).isEqualTo("CASH");
+        verify(orderRepository).save(any(Order.class));
+        verify(cartRepository, atLeastOnce()).save(any(CartEntity.class));
+    }
+
+    @Test
+    @DisplayName("checkout throws BadRequestException when cart is empty")
+    void testCheckout_EmptyCart() {
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-001").status(CartStatus.ACTIVE)
+                .items(new ArrayList<>()).subtotal(BigDecimal.ZERO)
+                .totalDiscount(BigDecimal.ZERO).total(BigDecimal.ZERO)
+                .build();
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(messageService.getMessage("cart.empty")).thenReturn("Cart is empty");
+
+        assertThatThrownBy(() -> cartService.checkout("cart-001", new CheckoutRequest()))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("checkout throws BadRequestException when cart is not ACTIVE")
+    void testCheckout_NotActiveCart() {
+        CartEntity cart = buildActiveCartWithItem();
+        cart.setStatus(CartStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(messageService.getMessage("cart.not.active")).thenReturn("Cart not active");
+
+        assertThatThrownBy(() -> cartService.checkout("cart-001", new CheckoutRequest()))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("checkout applies percentage discount correctly")
+    void testCheckout_WithPercentageDiscount() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setDiscountAmount(new BigDecimal("10"));
+        request.setDiscountType(DiscountType.PERCENTAGE);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(100L);
+        savedOrder.setOrderNumber("ORD-TEST");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+        savedOrder.setTotalAmount(new BigDecimal("29700"));
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+        when(inventoryService.getInventoryByProductId(eq(1L), any()))
+                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getOrderDiscount()).isPositive();
+    }
+
+    @Test
+    @DisplayName("checkout applies fixed discount correctly")
+    void testCheckout_WithFixedDiscount() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setDiscountAmount(new BigDecimal("5000"));
+        request.setDiscountType(DiscountType.AMOUNT);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(100L);
+        savedOrder.setOrderNumber("ORD-FIXED");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+        savedOrder.setTotalAmount(new BigDecimal("27500"));
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+        when(inventoryService.getInventoryByProductId(eq(1L), any()))
+                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response.getOrderDiscount()).isEqualByComparingTo(new BigDecimal("5000.00"));
+    }
+
+    @Test
+    @DisplayName("checkout cancels pending kitchen order if provided")
+    void testCheckout_CancelsPendingOrder() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setPendingOrderId(50L);
+
+        Order pendingOrder = new Order();
+        pendingOrder.setId(50L);
+        pendingOrder.setOrderNumber("KITCHEN-001");
+        pendingOrder.setStatus(Order.OrderStatus.PENDING);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(100L);
+        savedOrder.setOrderNumber("ORD-FINAL");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+        when(inventoryService.getInventoryByProductId(eq(1L), any()))
+                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
+        when(orderRepository.findById(50L)).thenReturn(Optional.of(pendingOrder));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        cartService.checkout("cart-001", request);
+
+        verify(orderRepository, atLeastOnce()).save(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("checkout assigns customer when customerId is in request")
+    void testCheckout_WithCustomer() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        Customer customer = Customer.builder().name("Nguyễn Văn A").phone("0901234567").build();
+        customer.setId(10L);
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setCustomerId(10L);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(100L);
+        savedOrder.setOrderNumber("ORD-CUST");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByIdActive(10L)).thenReturn(Optional.of(customer));
+        when(inventoryService.getInventoryByProductId(eq(1L), any()))
+                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response.getCustomerName()).isEqualTo("Nguyễn Văn A");
+        assertThat(response.getCustomerId()).isEqualTo(10L);
+    }
+
+    // ==================== SendToKitchen Tests ====================
+
+    @Test
+    @DisplayName("sendToKitchen creates PENDING order and returns kitchen ticket")
+    void testSendToKitchen_Success() {
+        mockSecurityContext("waiter01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        SendToKitchenRequest request = new SendToKitchenRequest();
+        request.setTableLabel("Bàn 5");
+        request.setNotes("Ít cay");
+
+        Order savedOrder = new Order();
+        savedOrder.setId(200L);
+        savedOrder.setOrderNumber("KITCHEN-20240101-001");
+        savedOrder.setStatus(Order.OrderStatus.PENDING);
+        savedOrder.setTableLabel("Bàn 5");
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+
+        SendToKitchenResponse response = cartService.sendToKitchen("cart-001", request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getOrderNumber()).isEqualTo("KITCHEN-20240101-001");
+        assertThat(response.getTableLabel()).isEqualTo("Bàn 5");
+        assertThat(response.getStatus()).isEqualTo("PENDING");
+        verify(orderRepository).save(any(Order.class));
+    }
+
+    @Test
+    @DisplayName("sendToKitchen throws BadRequestException for empty cart")
+    void testSendToKitchen_EmptyCart() {
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-001").status(CartStatus.ACTIVE)
+                .items(new ArrayList<>()).build();
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(messageService.getMessage("cart.empty")).thenReturn("Cart is empty");
+
+        assertThatThrownBy(() -> cartService.sendToKitchen("cart-001", new SendToKitchenRequest()))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("sendToKitchen throws BadRequestException for non-ACTIVE cart")
+    void testSendToKitchen_NotActiveCart() {
+        CartEntity cart = buildActiveCartWithItem();
+        cart.setStatus(CartStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(messageService.getMessage("cart.not.active")).thenReturn("Not active");
+
+        assertThatThrownBy(() -> cartService.sendToKitchen("cart-001", new SendToKitchenRequest()))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("sendToKitchen resolves customer by ID when provided")
+    void testSendToKitchen_WithCustomer() {
+        mockSecurityContext("waiter01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        Customer customer = Customer.builder().name("Phòng VIP").phone("0900000001").build();
+        customer.setId(5L);
+
+        SendToKitchenRequest request = new SendToKitchenRequest();
+        request.setCustomerId(5L);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(201L);
+        savedOrder.setOrderNumber("KITCHEN-VIP");
+        savedOrder.setStatus(Order.OrderStatus.PENDING);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByIdActive(5L)).thenReturn(Optional.of(customer));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+
+        SendToKitchenResponse response = cartService.sendToKitchen("cart-001", request);
+
+        assertThat(response.getOrderId()).isEqualTo(201L);
+        verify(customerRepository).findByIdActive(5L);
+    }
+
+    // ── Checkout — promotion code path ────────────────────────────────────────
+
+    @Test
+    @DisplayName("checkout applies promotion discount when promotionCode is provided")
+    void testCheckout_WithPromotionCode() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setPromotionCode("PROMO10");
+
+        Order savedOrder = new Order();
+        savedOrder.setId(300L);
+        savedOrder.setOrderNumber("ORD-PROMO");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+        when(promotionService.applyAtCheckout(eq("PROMO10"), any())).thenReturn(new BigDecimal("3000"));
+        when(inventoryService.getInventoryByProductId(eq(1L), any()))
+                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response).isNotNull();
+        verify(promotionService).applyAtCheckout(eq("PROMO10"), any());
+    }
+
+    // ── Checkout — loyalty redemption path ────────────────────────────────────
+
+    @Test
+    @DisplayName("checkout redeems loyalty points when customer and points provided")
+    void testCheckout_WithLoyaltyRedemption() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+        cart.setCustomerId(10L);
+
+        Customer customer = Customer.builder().name("Loyal Customer").phone("0900000001").build();
+        customer.setId(10L);
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setLoyaltyPointsToRedeem(100);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(400L);
+        savedOrder.setOrderNumber("ORD-LOYAL");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByIdActive(10L)).thenReturn(Optional.of(customer));
+        when(loyaltyService.redeemPoints(eq(10L), eq(100), isNull())).thenReturn(new BigDecimal("5000"));
+        when(inventoryService.getInventoryByProductId(eq(1L), any()))
+                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response).isNotNull();
+        verify(loyaltyService).redeemPoints(eq(10L), eq(100), isNull());
+    }
+
+    // ── Checkout — fallback to Khách Lẻ ─────────────────────────────────────
+
+    @Test
+    @DisplayName("checkout falls back to Khách Lẻ customer when no customer in cart or request")
+    void testCheckout_FallbackToKhachLe() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        Customer khachLe = Customer.builder().name("Khách Lẻ").phone("0000000000").build();
+        khachLe.setId(1L);
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setCustomerName("Walk-in");
+
+        Order savedOrder = new Order();
+        savedOrder.setId(500L);
+        savedOrder.setOrderNumber("ORD-WALKIN");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.of(khachLe));
+        when(inventoryService.getInventoryByProductId(eq(1L), any()))
+                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response).isNotNull();
+        verify(customerRepository).findByName("Khách Lẻ");
+    }
+
+    // ── sendToKitchen — customer name from request ────────────────────────────
+
+    @Test
+    @DisplayName("sendToKitchen uses customerName from request when customerId not found")
+    void testSendToKitchen_CustomerNameFallback() {
+        mockSecurityContext("waiter01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        SendToKitchenRequest request = new SendToKitchenRequest();
+        request.setCustomerName("Table 3 Guest");
+
+        Order savedOrder = new Order();
+        savedOrder.setId(202L);
+        savedOrder.setOrderNumber("KITCHEN-TBL3");
+        savedOrder.setStatus(Order.OrderStatus.PENDING);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+
+        SendToKitchenResponse response = cartService.sendToKitchen("cart-001", request);
+
+        assertThat(response).isNotNull();
+    }
+
+    // ── parseCoupons/parsePromotions invalid JSON path ─────────────────────────
+
+    @Test
+    @DisplayName("applyCoupon handles existing invalid JSON in appliedCoupons gracefully")
+    void testApplyCoupon_InvalidJson_GracefulFallback() {
+        CartEntity cart = CartEntity.builder()
+            .id(1L).cartId("cart-001").status(CartStatus.ACTIVE)
+            .items(new ArrayList<>())
+            .appliedCoupons("not-valid-json")
+            .appliedPromotions("[]")
+            .build();
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.applyCoupon("cart-001", "NEWCODE");
+
+        assertThat(response).isNotNull();
+        verify(cartRepository).save(cart);
+    }
+
+    @Test
+    @DisplayName("removeCoupon handles invalid JSON in appliedCoupons gracefully")
+    void testRemoveCoupon_InvalidJson_GracefulFallback() {
+        CartEntity cart = CartEntity.builder()
+            .id(1L).cartId("cart-001").status(CartStatus.ACTIVE)
+            .items(new ArrayList<>())
+            .appliedCoupons("not-valid-json")
+            .appliedPromotions("[]")
+            .build();
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.removeCoupon("cart-001", "ANYCODE");
+
+        assertThat(response).isNotNull();
+    }
+
+    @Test
+    @DisplayName("applyPromotion handles invalid JSON in appliedPromotions gracefully")
+    void testApplyPromotion_InvalidJson_GracefulFallback() {
+        CartEntity cart = CartEntity.builder()
+            .id(1L).cartId("cart-001").status(CartStatus.ACTIVE)
+            .items(new ArrayList<>())
+            .appliedCoupons("[]")
+            .appliedPromotions("not-valid-json")
+            .build();
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.applyPromotion("cart-001", "PROMO1");
+
+        assertThat(response).isNotNull();
     }
 }
 

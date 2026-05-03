@@ -139,6 +139,24 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT COUNT(DISTINCT o.customer.id) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.customer IS NOT NULL")
     Long countDistinctCustomers();
 
+    // ── Scoped list (ORDER_VIEW_ALL absent — show only own orders) ─────────────
+
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.createdBy = :username ORDER BY o.createdAt DESC")
+    Page<Order> findAllActiveByCreatedBy(@Param("username") String username, Pageable pageable);
+
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status AND o.createdBy = :username ORDER BY o.createdAt DESC")
+    Page<Order> findAllActiveByStatusAndCreatedBy(@Param("status") Order.OrderStatus status, @Param("username") String username, Pageable pageable);
+
+    @Query("""
+            SELECT o FROM Order o LEFT JOIN o.customer c
+            WHERE o.deleted = false
+              AND o.createdBy = :username
+              AND (LOWER(o.orderNumber) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')))
+            ORDER BY o.createdAt DESC
+            """)
+    Page<Order> searchByKeywordAndCreatedBy(@Param("keyword") String keyword, @Param("username") String username, Pageable pageable);
+
     // ── My Work ────────────────────────────────────────────────────────────────
 
     @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status IN :statuses ORDER BY o.createdAt ASC")
@@ -148,7 +166,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findCompletedByCreatedByAndPeriod(@Param("username") String username, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to, Pageable pageable);
 
     @Query("SELECT COUNT(o), COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status = 'COMPLETED' AND o.completedAt >= :from AND o.completedAt < :to")
-    Object[] getMyCompletedStats(@Param("username") String username, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+    List<Object[]> getMyCompletedStats(@Param("username") String username, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status IN :statuses")
     Long countActiveByCreatedBy(@Param("username") String username, @Param("statuses") Collection<Order.OrderStatus> statuses);

@@ -503,7 +503,9 @@ public class CartServiceImpl implements CartService {
         }
 
         String orderNumber = generateOrderNumber();
+        String tenantId = tenantContext.getCurrentTenantId();
         Order order = new Order();
+        order.setTenantId(tenantId);
         order.setOrderNumber(orderNumber);
         order.setStatus(Order.OrderStatus.PENDING);
         order.setTotalAmount(cart.getTotal());
@@ -520,6 +522,7 @@ public class CartServiceImpl implements CartService {
         List<OrderItem> orderItems = new ArrayList<>();
         for (CartItemEntity cartItem : cart.getItems()) {
             OrderItem oi = new OrderItem();
+            oi.setTenantId(tenantId);
             oi.setOrder(order);
             oi.setProductId(cartItem.getProductId());
             oi.setProductName(cartItem.getProductName());
@@ -659,7 +662,9 @@ public class CartServiceImpl implements CartService {
 
         // --- Build Order ---
         String orderNumber = generateOrderNumber();
+        String tenantId = tenantContext.getCurrentTenantId();
         Order order = new Order();
+        order.setTenantId(tenantId);
         order.setOrderNumber(orderNumber);
         order.setStatus(Order.OrderStatus.COMPLETED);
         order.setTotalAmount(total);
@@ -685,6 +690,7 @@ public class CartServiceImpl implements CartService {
 
         for (CartItemEntity cartItem : cart.getItems()) {
             OrderItem oi = new OrderItem();
+            oi.setTenantId(tenantId);
             oi.setOrder(order);
             oi.setProductId(cartItem.getProductId());
             oi.setProductName(cartItem.getProductName());

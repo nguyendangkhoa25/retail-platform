@@ -1,5 +1,6 @@
 package com.knp.service.notification;
 
+import com.knp.config.FeatureContext;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.service.MessageService;
 import com.knp.model.dto.notification.CreateNotificationRequest;
@@ -24,9 +25,14 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -42,6 +48,19 @@ public class NotificationService {
     private final TenantRepository tenantRepository;
     private final TenantContext tenantContext;
     private final MessageService messageService;
+    private final FeatureContext featureContext;
+
+    /**
+     * Maps notification types that require a specific feature to receive by default.
+     * Types not in this map are always delivered to users who have no preference row.
+     */
+    private static final Map<Notification.NotificationType, String> TYPE_TO_REQUIRED_FEATURE;
+    static {
+        Map<Notification.NotificationType, String> m = new EnumMap<>(Notification.NotificationType.class);
+        m.put(Notification.NotificationType.ORDER,     "ORDER");
+        m.put(Notification.NotificationType.LOW_STOCK, "INVENTORY");
+        TYPE_TO_REQUIRED_FEATURE = Collections.unmodifiableMap(m);
+    }
 
     public Page<NotificationDTO> getForCurrentUser(Pageable pageable, Notification.NotificationType type) {
         String username = currentUsername();
@@ -92,7 +111,22 @@ public class NotificationService {
                 .map(p -> "ALL".equals(p.getEnabledTypes())
                         ? List.of("ALL")
                         : Arrays.asList(p.getEnabledTypes().split(",")))
-                .orElse(List.of("ALL"));
+                .orElseGet(this::defaultTypesForCurrentUser);
+    }
+
+    /**
+     * Computes feature-based default notification types for a user with no saved preferences.
+     * Always includes the base types; adds feature-gated types only when the JWT grants that feature.
+     */
+    private List<String> defaultTypesForCurrentUser() {
+        List<String> defaults = new ArrayList<>(
+                Arrays.asList("SYSTEM", "ANNOUNCEMENT", "INFO", "MARKETING", "BILLING"));
+        TYPE_TO_REQUIRED_FEATURE.forEach((type, feature) -> {
+            if (featureContext.hasFeature(feature)) {
+                defaults.add(type.name());
+            }
+        });
+        return defaults;
     }
 
     @Transactional
@@ -249,11 +283,17 @@ public class NotificationService {
     }
 
     /**
-     * Push a notification to a single user. Type is explicit so callers can use SYSTEM, BILLING, etc.
+     * Push a notification to a single user. Respects the user's preference row and
+     * feature-based defaults — skips the insert if the user has opted out of this type.
      */
     @Transactional
     public void pushSystem(String userId, Notification.NotificationType type, String title, String message,
                            String referenceType, Long referenceId) {
+        Set<String> optedOut = optedOutUsers(List.of(userId), type);
+        if (optedOut.contains(userId)) {
+            log.debug("pushSystem: skipped — user {} opted out of type {}", userId, type);
+            return;
+        }
         Notification n = Notification.builder()
                 .userId(userId)
                 .title(title)
@@ -294,15 +334,40 @@ public class NotificationService {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Returns user IDs from the given list who have opted out of the specified type.
-     * Single batch query — avoids N+1.
+     * Returns user IDs from the given list who should NOT receive the specified type.
+     * Two sources of opt-out:
+     *   1. Explicit pref row — type is not in the user's enabled list.
+     *   2. No pref row + feature-gated type — user's roles don't grant the required feature.
      */
     private Set<String> optedOutUsers(List<String> userIds, Notification.NotificationType type) {
-        return preferenceRepository.findByUserIdIn(userIds).stream()
+        List<NotificationPreference> prefs = preferenceRepository.findByUserIdIn(userIds);
+        Map<String, NotificationPreference> prefMap = prefs.stream()
+                .collect(Collectors.toMap(NotificationPreference::getUserId, p -> p));
+
+        Set<String> optedOut = new HashSet<>();
+
+        // Explicit opt-out: pref row exists but type not in enabled list
+        prefs.stream()
                 .filter(p -> !"ALL".equals(p.getEnabledTypes())
                         && !Arrays.asList(p.getEnabledTypes().split(",")).contains(type.name()))
                 .map(NotificationPreference::getUserId)
-                .collect(Collectors.toSet());
+                .forEach(optedOut::add);
+
+        // Default opt-out: no pref row + type requires a feature the user's roles don't grant
+        String requiredFeature = TYPE_TO_REQUIRED_FEATURE.get(type);
+        if (requiredFeature != null) {
+            List<String> usersWithoutPref = userIds.stream()
+                    .filter(id -> !prefMap.containsKey(id))
+                    .collect(Collectors.toList());
+            if (!usersWithoutPref.isEmpty()) {
+                Set<String> usersWithFeature = userRepository.findUsernamesWithFeature(usersWithoutPref, requiredFeature);
+                usersWithoutPref.stream()
+                        .filter(id -> !usersWithFeature.contains(id))
+                        .forEach(optedOut::add);
+            }
+        }
+
+        return optedOut;
     }
 
     private String currentUsername() {

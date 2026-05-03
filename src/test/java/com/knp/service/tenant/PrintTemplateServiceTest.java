@@ -3,8 +3,11 @@ package com.knp.service.tenant;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.knp.exception.BadRequestException;
 import com.knp.exception.ResourceNotFoundException;
+import com.knp.model.dto.pawn.PawnStampTemplateConfig;
 import com.knp.model.dto.tenant.PrintTemplateDTO;
+import com.knp.model.dto.tenant.ReceiptTemplateConfig;
 import com.knp.model.dto.tenant.SavePrintTemplateRequest;
+import com.knp.model.dto.tenant.StampTemplateConfig;
 import com.knp.model.entity.tenant.PrintTemplate;
 import com.knp.repository.tenant.PrintTemplateRepository;
 import com.knp.service.MessageService;
@@ -54,6 +57,136 @@ class PrintTemplateServiceTest {
                 .build();
     }
 
+    // ── getTemplates ──────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getTemplates: returns mapped DTOs for all templates of type")
+    void getTemplates_returnsList() {
+        PrintTemplate t1 = buildTemplate(PrintTemplateService.POS_RECEIPT, "Default", true);
+        PrintTemplate t2 = buildTemplate(PrintTemplateService.POS_RECEIPT, "Custom", false);
+        when(repo.findAllByTemplateTypeAndDeletedFalseOrderByIsDefaultDescNameAsc(PrintTemplateService.POS_RECEIPT))
+                .thenReturn(List.of(t1, t2));
+
+        List<PrintTemplateDTO> result = service.getTemplates(PrintTemplateService.POS_RECEIPT);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getName()).isEqualTo("Default");
+    }
+
+    @Test
+    @DisplayName("getTemplate: returns DTO for existing template")
+    void getTemplate_found() {
+        PrintTemplate t = buildTemplate(PrintTemplateService.POS_RECEIPT, "T1", true);
+        when(repo.findById(1L)).thenReturn(Optional.of(t));
+
+        PrintTemplateDTO dto = service.getTemplate(1L);
+
+        assertThat(dto.getName()).isEqualTo("T1");
+    }
+
+    @Test
+    @DisplayName("getTemplate: throws when template not found")
+    void getTemplate_notFound() {
+        when(repo.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getTemplate(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── getReceiptConfig ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getReceiptConfig: returns defaults when no template exists")
+    void getReceiptConfig_noTemplate() {
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.POS_RECEIPT))
+                .thenReturn(Optional.empty());
+
+        ReceiptTemplateConfig cfg = service.getReceiptConfig();
+
+        assertThat(cfg).isNotNull();
+        assertThat(cfg).isEqualTo(ReceiptTemplateConfig.defaults());
+    }
+
+    @Test
+    @DisplayName("getReceiptConfig: deserializes config from stored template")
+    void getReceiptConfig_fromTemplate() throws Exception {
+        String json = new ObjectMapper().writeValueAsString(ReceiptTemplateConfig.defaults());
+        PrintTemplate t = PrintTemplate.builder().templateType(PrintTemplateService.POS_RECEIPT)
+                .name("R").configJson(json).isDefault(true).build();
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.POS_RECEIPT))
+                .thenReturn(Optional.of(t));
+
+        ReceiptTemplateConfig cfg = service.getReceiptConfig();
+
+        assertThat(cfg).isNotNull();
+    }
+
+    // ── getStampConfig ────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getStampConfig: returns inventory defaults when no template and type is INVENTORY_STAMP")
+    void getStampConfig_inventoryDefault() {
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.INVENTORY_STAMP))
+                .thenReturn(Optional.empty());
+
+        StampTemplateConfig cfg = service.getStampConfig(PrintTemplateService.INVENTORY_STAMP);
+
+        assertThat(cfg).isNotNull();
+        assertThat(cfg).isEqualTo(StampTemplateConfig.inventoryDefaults());
+    }
+
+    @Test
+    @DisplayName("getStampConfig: returns product defaults when type is PRODUCT_STAMP")
+    void getStampConfig_productDefault() {
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.PRODUCT_STAMP))
+                .thenReturn(Optional.empty());
+
+        StampTemplateConfig cfg = service.getStampConfig(PrintTemplateService.PRODUCT_STAMP);
+
+        assertThat(cfg).isEqualTo(StampTemplateConfig.defaults());
+    }
+
+    // ── getPawnStampConfig ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getPawnStampConfig: returns defaults when no template exists")
+    void getPawnStampConfig_default() {
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.PAWN_STAMP))
+                .thenReturn(Optional.empty());
+
+        PawnStampTemplateConfig cfg = service.getPawnStampConfig();
+
+        assertThat(cfg).isNotNull();
+        assertThat(cfg).isEqualTo(PawnStampTemplateConfig.defaults());
+    }
+
+    // ── getDefaultConfigJson ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getDefaultConfigJson: returns stored JSON when default template exists")
+    void getDefaultConfigJson_found() {
+        PrintTemplate t = buildTemplate(PrintTemplateService.POS_RECEIPT, "R", true);
+        t.setConfigJson("{\"paperWidth\":\"80mm\"}");
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.POS_RECEIPT))
+                .thenReturn(Optional.of(t));
+
+        String json = service.getDefaultConfigJson(PrintTemplateService.POS_RECEIPT);
+
+        assertThat(json).contains("80mm");
+    }
+
+    @Test
+    @DisplayName("getDefaultConfigJson: returns generated default when no template exists")
+    void getDefaultConfigJson_notFound() {
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.PAWN_STAMP))
+                .thenReturn(Optional.empty());
+
+        String json = service.getDefaultConfigJson(PrintTemplateService.PAWN_STAMP);
+
+        assertThat(json).isNotEmpty();
+        assertThat(json).isNotEqualTo("{}");
+    }
+
     // ── create ────────────────────────────────────────────────────────────────
 
     @Test
@@ -64,7 +197,7 @@ class PrintTemplateServiceTest {
 
         SavePrintTemplateRequest req = new SavePrintTemplateRequest();
         req.setName("Receipt");
-        req.setConfigJson("{\"paperSize\":\"80mm\"}");
+        req.setConfigJson("{\"paperWidth\":\"80mm\"}");
 
         PrintTemplateDTO dto = service.create(PrintTemplateService.POS_RECEIPT, req);
 
@@ -81,7 +214,7 @@ class PrintTemplateServiceTest {
 
         SavePrintTemplateRequest req = new SavePrintTemplateRequest();
         req.setName("Custom Receipt");
-        req.setConfigJson("{\"paperSize\":\"58mm\"}");
+        req.setConfigJson("{\"paperWidth\":\"58mm\"}");
 
         service.create(PrintTemplateService.POS_RECEIPT, req);
 
@@ -113,7 +246,7 @@ class PrintTemplateServiceTest {
 
         SavePrintTemplateRequest req = new SavePrintTemplateRequest();
         req.setName("New Name");
-        req.setConfigJson("{\"paperSize\":\"80mm\"}");
+        req.setConfigJson("{\"paperWidth\":\"80mm\"}");
 
         PrintTemplateDTO dto = service.update(1L, req);
 

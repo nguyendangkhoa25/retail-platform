@@ -293,6 +293,146 @@ class NotificationServiceTest {
         assertThat(cap.getValue().get(0).getUserId()).isEqualTo("owner1");
     }
 
+    // ── pushToMasterUsersAsync ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("pushToMasterUsersAsync: sends notification and catches exceptions silently")
+    void pushToMasterUsersAsync_callsDelegate() {
+        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1"));
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+
+        notificationService.pushToMasterUsersAsync("T", "M", "TENANT", 1L);
+
+        verify(notificationRepository).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("pushToMasterUsersAsync: swallows exceptions without propagating")
+    void pushToMasterUsersAsync_swallowsException() {
+        when(userRepository.findUsernamesByRoleNames(anyList())).thenThrow(new RuntimeException("db error"));
+
+        // must not throw
+        notificationService.pushToMasterUsersAsync("T", "M", "TENANT", 1L);
+    }
+
+    // ── pushSystemAsync ───────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("pushSystemAsync: sets tenant context and sends notification when tenantId provided")
+    void pushSystemAsync_withTenantId() {
+        Tenant tenant = new Tenant();
+        tenant.setTenantId("shop1");
+        when(tenantRepository.findByTenantId("shop1")).thenReturn(Optional.of(tenant));
+        when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        notificationService.pushSystemAsync("user1", Notification.NotificationType.SYSTEM,
+                "Title", "Body", "ORDER", 1L, "shop1");
+
+        verify(tenantContext).setCurrentTenant(tenant);
+        verify(tenantContext).clear();
+        verify(notificationRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("pushSystemAsync: skips tenant context when tenantId is null")
+    void pushSystemAsync_nullTenantId() {
+        when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        notificationService.pushSystemAsync("user1", Notification.NotificationType.INFO,
+                "T", "M", null, null, null);
+
+        verify(tenantRepository, never()).findByTenantId(anyString());
+        verify(tenantContext, never()).clear();
+        verify(notificationRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("pushSystemAsync: swallows exception without propagating")
+    void pushSystemAsync_swallowsException() {
+        when(tenantRepository.findByTenantId("shop1")).thenThrow(new RuntimeException("db error"));
+
+        notificationService.pushSystemAsync("user1", Notification.NotificationType.SYSTEM,
+                "T", "M", null, null, "shop1");
+
+        verify(tenantContext).clear();
+    }
+
+    // ── getForCurrentUser ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getForCurrentUser: returns paged notifications without type filter")
+    void getForCurrentUser_noTypeFilter() {
+        Notification n = Notification.builder().userId("testuser").title("Hello")
+                .type(Notification.NotificationType.INFO).isRead(false).createdBy("SYSTEM").build();
+        when(notificationRepository.findByUserId(eq("testuser"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(n)));
+
+        Page<NotificationDTO> result = notificationService.getForCurrentUser(Pageable.unpaged(), null);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(notificationRepository, never()).findByUserIdAndType(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getForCurrentUser: filters by type when provided")
+    void getForCurrentUser_withTypeFilter() {
+        Notification n = Notification.builder().userId("testuser").title("Order")
+                .type(Notification.NotificationType.ORDER).isRead(false).createdBy("SYSTEM").build();
+        when(notificationRepository.findByUserIdAndType(eq("testuser"), eq("ORDER"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(n)));
+
+        Page<NotificationDTO> result = notificationService.getForCurrentUser(Pageable.unpaged(), Notification.NotificationType.ORDER);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(notificationRepository, never()).findByUserId(any(), any());
+    }
+
+    // ── pushToRoles ───────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("pushToRoles: saves notifications for all matching role users")
+    void pushToRoles_success() {
+        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+
+        notificationService.pushToRoles(Notification.NotificationType.INFO, "Title", "Msg",
+                "ORDER", 1L, List.of("SHOP_OWNER"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Notification>> cap = ArgumentCaptor.forClass(List.class);
+        verify(notificationRepository).saveAll(cap.capture());
+        assertThat(cap.getValue()).hasSize(2);
+        assertThat(cap.getValue().get(0).getType()).isEqualTo(Notification.NotificationType.INFO);
+    }
+
+    @Test
+    @DisplayName("pushToRoles: skips save when no users hold the role")
+    void pushToRoles_noUsers() {
+        when(userRepository.findUsernamesByRoleNames(List.of("CASHIER"))).thenReturn(Collections.emptyList());
+
+        notificationService.pushToRoles(Notification.NotificationType.INFO, "T", "M",
+                null, null, List.of("CASHIER"));
+
+        verify(notificationRepository, never()).saveAll(any());
+    }
+
+    // ── pushSystem ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("pushSystem: saves single notification for the given userId")
+    void pushSystem_success() {
+        when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        notificationService.pushSystem("user1", Notification.NotificationType.SYSTEM,
+                "Title", "Body", "ORDER", 42L);
+
+        ArgumentCaptor<Notification> cap = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(cap.capture());
+        assertThat(cap.getValue().getUserId()).isEqualTo("user1");
+        assertThat(cap.getValue().getReferenceId()).isEqualTo(42L);
+        assertThat(cap.getValue().getCreatedBy()).isEqualTo("SYSTEM");
+    }
+
     // ── pushToMasterUsers ─────────────────────────────────────────────────────
 
     @Test

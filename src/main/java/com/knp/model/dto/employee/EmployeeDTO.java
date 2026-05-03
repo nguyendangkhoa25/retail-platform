@@ -27,4 +27,12 @@ public class EmployeeDTO {
     private String username;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private String idCardNumber;
+    private LocalDate dateOfBirth;
+    private String gender;
+    private String permanentAddress;
+    private LocalDate idCardIssuedDate;
+    private String idCardIssuedPlace;
+    private String idCardFrontImage;
+    private String idCardBackImage;
 }

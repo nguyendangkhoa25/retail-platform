@@ -74,4 +74,47 @@ class EncryptionServiceTest {
         assertThatThrownBy(bad::init).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("APP_ENCRYPTION_KEY");
     }
+
+    @Test
+    void invalid_base64_key_throws_on_init() {
+        // Not valid Base64
+        EncryptionService bad = new EncryptionService("not-valid-base64!!!");
+        assertThatThrownBy(bad::init).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not valid Base64");
+    }
+
+    @Test
+    void isEncrypted_returns_true_for_enc_prefix() {
+        assertThat(service.isEncrypted("{enc}somedata")).isTrue();
+    }
+
+    @Test
+    void isEncrypted_returns_false_for_plain_value() {
+        assertThat(service.isEncrypted("plaintext")).isFalse();
+    }
+
+    @Test
+    void isEncrypted_returns_false_for_null() {
+        assertThat(service.isEncrypted(null)).isFalse();
+    }
+
+    @Test
+    void decrypt_throws_on_tampered_ciphertext() {
+        String encrypted = service.encrypt("original");
+        // Corrupt the ciphertext portion
+        String tampered = encrypted.substring(0, encrypted.length() - 4) + "XXXX";
+        assertThatThrownBy(() -> service.decrypt(tampered))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Decryption failed");
+    }
+
+    @Test
+    void blank_value_passes_through_unchanged_for_encrypt() {
+        assertThat(service.encrypt("   ")).isEqualTo("   ");
+    }
+
+    @Test
+    void blank_value_passes_through_unchanged_for_decrypt() {
+        assertThat(service.decrypt("   ")).isEqualTo("   ");
+    }
 }
