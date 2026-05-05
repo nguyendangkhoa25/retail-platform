@@ -67,6 +67,10 @@ public class CartEntity {
     private BigDecimal total = BigDecimal.ZERO;
 
     @Builder.Default
+    @Column(name = "tax_rate", nullable = false, precision = 5, scale = 4)
+    private BigDecimal taxRate = new BigDecimal("0.10");
+
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private CartStatus status = CartStatus.ACTIVE;
@@ -174,8 +178,9 @@ public class CartEntity {
         // Calculate taxable amount
         BigDecimal taxableAmount = subtotal.subtract(totalDiscount);
 
-        // Calculate tax (10% - configurable)
-        totalTax = taxableAmount.multiply(new BigDecimal("0.10"));
+        // Calculate tax using the shop-configured rate
+        BigDecimal rate = taxRate != null ? taxRate : BigDecimal.ZERO;
+        totalTax = taxableAmount.multiply(rate);
 
         // Calculate grand total
         total = taxableAmount.add(totalTax);

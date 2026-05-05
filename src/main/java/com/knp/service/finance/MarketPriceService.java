@@ -28,10 +28,8 @@ public class MarketPriceService {
     @Transactional
     public MarketPriceDTO create(SaveMarketPriceRequest req) {
         MarketPrice mp = MarketPrice.builder()
-                .name(req.getName())
-                .unit(req.getUnit())
-                .buyPrice(req.getBuyPrice())
-                .sellPrice(req.getSellPrice())
+                .name(req.getName()).unit(req.getUnit())
+                .buyPrice(req.getBuyPrice()).sellPrice(req.getSellPrice())
                 .isActive(req.getIsActive() != null ? req.getIsActive() : true)
                 .notes(req.getNotes())
                 .sortOrder(req.getSortOrder() != null ? req.getSortOrder() : 999)
@@ -42,10 +40,8 @@ public class MarketPriceService {
     @Transactional
     public MarketPriceDTO update(Long id, SaveMarketPriceRequest req) {
         MarketPrice mp = findActive(id);
-        mp.setName(req.getName());
-        mp.setUnit(req.getUnit());
-        mp.setBuyPrice(req.getBuyPrice());
-        mp.setSellPrice(req.getSellPrice());
+        mp.setName(req.getName()); mp.setUnit(req.getUnit());
+        mp.setBuyPrice(req.getBuyPrice()); mp.setSellPrice(req.getSellPrice());
         if (req.getIsActive() != null) mp.setIsActive(req.getIsActive());
         mp.setNotes(req.getNotes());
         if (req.getSortOrder() != null) mp.setSortOrder(req.getSortOrder());
@@ -67,14 +63,10 @@ public class MarketPriceService {
 
     private MarketPriceDTO mapToDTO(MarketPrice m) {
         return MarketPriceDTO.builder()
-                .id(m.getId())
-                .name(m.getName())
-                .unit(m.getUnit())
-                .buyPrice(m.getBuyPrice())
-                .sellPrice(m.getSellPrice())
-                .isActive(m.getIsActive())
-                .notes(m.getNotes())
-                .sortOrder(m.getSortOrder())
+                .id(m.getId()).name(m.getName()).unit(m.getUnit())
+                .buyPrice(m.getBuyPrice()).sellPrice(m.getSellPrice())
+                .isActive(m.getIsActive()).notes(m.getNotes())
+                .sortOrder(m.getSortOrder()).updatedAt(m.getUpdatedAt())
                 .build();
     }
 }

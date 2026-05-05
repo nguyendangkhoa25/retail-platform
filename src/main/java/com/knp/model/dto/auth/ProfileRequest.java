@@ -20,5 +20,6 @@ public class ProfileRequest {
     private String lang;
     private String oldPassword;
     private String newPassword;
+    private String preferences;
 }
 

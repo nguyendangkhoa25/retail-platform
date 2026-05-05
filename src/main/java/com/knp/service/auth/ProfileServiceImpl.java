@@ -226,6 +226,30 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     /**
+     * Get user preferences JSON
+     */
+    @Override
+    public String getPreferences(String username) {
+        User user = userRepository.findByUsernameActive(username)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.user.not.found", username)));
+        return user.getPreferences() != null ? user.getPreferences() : "{}";
+    }
+
+    /**
+     * Save user preferences JSON
+     */
+    @Override
+    public void updatePreferences(String username, String preferences) {
+        User user = userRepository.findByUsernameActive(username)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.user.not.found", username)));
+        user.setPreferences(preferences);
+        userRepository.save(user);
+        log.info("Preferences updated for user: {}", username);
+    }
+
+    /**
      * Map User entity to UserProfile DTO
      */
     private UserProfile mapToUserProfile(User user) {

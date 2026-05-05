@@ -56,11 +56,11 @@ public class TenantProvisioningService {
     private static final Map<ShopType, String> SHOP_TYPE_WIDGET_DEFAULTS;
     static {
         Map<ShopType, String> m = new EnumMap<>(ShopType.class);
-        m.put(ShopType.JEWELRY,            "ORDERS,REVENUE,BUYBACK,PAWN,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.JEWELRY,            "ORDERS,REVENUE,PAWN,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.PAWN_SHOP,          "PAWN,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.CONVENIENCE_STORE,  "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.PHARMACY,           "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
-        m.put(ShopType.ELECTRONICS,        "ORDERS,REVENUE,INVENTORY,BUYBACK,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.ELECTRONICS,        "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.FOOD_BEVERAGE,      "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
         m.put(ShopType.FASHION,            "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.BARBER_SHOP,        "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
@@ -238,7 +238,9 @@ public class TenantProvisioningService {
     }
 
     private void seedDefaultConfig(ShopType shopType) {
-        shopConfigService.seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.0);
+        // Jewellery shops are VAT-exempt in Vietnam; all other shop types default to 10 %.
+        double defaultTaxRate = (shopType == ShopType.JEWELRY) ? 0.0 : 0.10;
+        shopConfigService.seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, defaultTaxRate);
         shopConfigService.seedIfAbsent(ShopConfigKey.POS_MODE, "STANDARD");
         String widgetDefault = SHOP_TYPE_WIDGET_DEFAULTS.getOrDefault(shopType,
                 "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");

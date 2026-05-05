@@ -57,22 +57,37 @@ public class OrderServiceImpl implements OrderService {
     private final FeatureContext featureContext;
 
     @Override
-    public Page<OrderDTO> getAllOrders(String status, Pageable pageable) {
-        log.info("Request: Get all orders - status: {}, page: {}, size: {}",
-                status, pageable.getPageNumber(), pageable.getPageSize());
+    public Page<OrderDTO> getAllOrders(String status, String orderType, Pageable pageable) {
+        log.info("Request: Get all orders - status: {}, orderType: {}, page: {}, size: {}",
+                status, orderType, pageable.getPageNumber(), pageable.getPageSize());
 
         boolean canViewAll = featureContext.hasFeature("ORDER_VIEW_ALL");
+        String username = getCurrentUsername();
         Page<Order> orders;
 
-        if (status != null && !status.isBlank()) {
-            Order.OrderStatus orderStatus = Order.OrderStatus.valueOf(status.toUpperCase());
+        boolean hasStatus    = status != null && !status.isBlank();
+        boolean hasOrderType = orderType != null && !orderType.isBlank();
+
+        if (hasStatus && hasOrderType) {
+            Order.OrderStatus  os = Order.OrderStatus.valueOf(status.toUpperCase());
+            Order.OrderType    ot = Order.OrderType.valueOf(orderType.toUpperCase());
             orders = canViewAll
-                    ? orderRepository.findAllActiveByStatus(orderStatus, pageable)
-                    : orderRepository.findAllActiveByStatusAndCreatedBy(orderStatus, getCurrentUsername(), pageable);
+                    ? orderRepository.findAllActiveByStatusAndOrderType(os, ot, pageable)
+                    : orderRepository.findAllActiveByStatusAndOrderTypeAndCreatedBy(os, ot, username, pageable);
+        } else if (hasStatus) {
+            Order.OrderStatus os = Order.OrderStatus.valueOf(status.toUpperCase());
+            orders = canViewAll
+                    ? orderRepository.findAllActiveByStatus(os, pageable)
+                    : orderRepository.findAllActiveByStatusAndCreatedBy(os, username, pageable);
+        } else if (hasOrderType) {
+            Order.OrderType ot = Order.OrderType.valueOf(orderType.toUpperCase());
+            orders = canViewAll
+                    ? orderRepository.findAllActiveByOrderType(ot, pageable)
+                    : orderRepository.findAllActiveByOrderTypeAndCreatedBy(ot, username, pageable);
         } else {
             orders = canViewAll
                     ? orderRepository.findAllActive(pageable)
-                    : orderRepository.findAllActiveByCreatedBy(getCurrentUsername(), pageable);
+                    : orderRepository.findAllActiveByCreatedBy(username, pageable);
         }
 
         log.info("Retrieved {} orders (viewAll={})", orders.getTotalElements(), canViewAll);
@@ -120,6 +135,7 @@ public class OrderServiceImpl implements OrderService {
                 .id(order.getId())
                 .orderNumber(order.getOrderNumber())
                 .status(order.getStatus().name())
+                .orderType(order.getOrderType() != null ? order.getOrderType().name() : Order.OrderType.SELL.name())
                 .customerId(order.getCustomer() != null ? order.getCustomer().getId() : null)
                 .customerName(order.getCustomer() != null ? order.getCustomer().getName() : null)
                 .totalAmount(order.getTotalAmount())
@@ -371,6 +387,8 @@ public class OrderServiceImpl implements OrderService {
                 .amount(item.getAmount())
                 .taxPercentage(item.getTaxPercentage())
                 .taxAmount(item.getTaxAmount())
+                .itemType(item.getItemType())
+                .metadata(item.getMetadata())
                 .build();
     }
 }

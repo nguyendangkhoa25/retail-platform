@@ -159,7 +159,7 @@ class OrderServiceImplTest {
         Page<Order> page = new PageImpl<>(java.util.List.of(pendingOrder));
         when(orderRepository.findAllActive(pageable)).thenReturn(page);
 
-        Page<OrderDTO> result = orderService.getAllOrders(null, pageable);
+        Page<OrderDTO> result = orderService.getAllOrders(null, null, pageable);
 
         assertThat(result.getContent()).hasSize(1);
         verify(orderRepository).findAllActive(pageable);
@@ -171,7 +171,7 @@ class OrderServiceImplTest {
         Page<Order> page = new PageImpl<>(java.util.List.of(completedOrder));
         when(orderRepository.findAllActiveByStatus(OrderStatus.COMPLETED, pageable)).thenReturn(page);
 
-        Page<OrderDTO> result = orderService.getAllOrders("COMPLETED", pageable);
+        Page<OrderDTO> result = orderService.getAllOrders("COMPLETED", null, pageable);
 
         assertThat(result.getContent()).hasSize(1);
         verify(orderRepository).findAllActiveByStatus(OrderStatus.COMPLETED, pageable);
@@ -183,7 +183,7 @@ class OrderServiceImplTest {
         Page<Order> page = new PageImpl<>(java.util.List.of(pendingOrder));
         when(orderRepository.findAllActive(pageable)).thenReturn(page);
 
-        orderService.getAllOrders("  ", pageable);
+        orderService.getAllOrders("  ", null, pageable);
 
         verify(orderRepository).findAllActive(pageable);
     }
@@ -525,7 +525,7 @@ class OrderServiceImplTest {
         Page<Order> page = new PageImpl<>(List.of(pendingOrder));
         when(orderRepository.findAllActiveByCreatedBy("cashier01", pageable)).thenReturn(page);
 
-        Page<OrderDTO> result = orderService.getAllOrders(null, pageable);
+        Page<OrderDTO> result = orderService.getAllOrders(null, null, pageable);
 
         assertThat(result.getContent()).hasSize(1);
         verify(orderRepository).findAllActiveByCreatedBy("cashier01", pageable);

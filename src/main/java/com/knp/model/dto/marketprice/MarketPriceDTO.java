@@ -1,12 +1,10 @@
 package com.knp.model.dto.marketprice;
 
-import lombok.Builder;
-import lombok.Data;
-
+import lombok.*;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
-@Data
-@Builder
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class MarketPriceDTO {
     private Long id;
     private String name;
@@ -16,4 +14,5 @@ public class MarketPriceDTO {
     private Boolean isActive;
     private String notes;
     private Integer sortOrder;
+    private LocalDateTime updatedAt;
 }

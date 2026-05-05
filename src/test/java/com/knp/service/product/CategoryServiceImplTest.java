@@ -8,6 +8,7 @@ import com.knp.model.entity.product.Category;
 import com.knp.model.entity.product.Product;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.product.CategoryRepository;
+import com.knp.repository.tenant.GoldPriceRepository;
 import com.knp.service.MessageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +40,9 @@ class CategoryServiceImplTest {
 
     @Mock
     private CategoryRepository categoryRepository;
+
+    @Mock
+    private GoldPriceRepository goldPriceRepository;
 
     @Mock
     private MessageService messageService;

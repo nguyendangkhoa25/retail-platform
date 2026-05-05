@@ -19,6 +19,7 @@ public class ProductDTO {
     private Long id;
     private Long productTypeId;
     private String productTypeName;
+    private String productTypeCode;
     private String sku;
     private String barcode;
     private String name;
@@ -28,6 +29,7 @@ public class ProductDTO {
     private String unit;
     private Long vendorId;
     private String vendorName;
+    private String shelfLocation;
     private String status;
     private Set<Long> categoryIds;
     private Map<String, Object> attributes;

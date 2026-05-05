@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.knp.exception.BadRequestException;
 import com.knp.service.MessageService;
 import com.knp.exception.ResourceNotFoundException;
+import com.knp.model.dto.order.AddGoldItemRequest;
 import com.knp.model.dto.order.CartItemResponse;
 import com.knp.model.dto.order.CartRequest;
 import com.knp.model.dto.order.CartResponse;
@@ -45,10 +46,12 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import com.knp.service.inventory.InventoryService;
 import com.knp.service.product.ProductService;
+import com.knp.service.tenant.ShopConfigService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
 import com.knp.service.audit.ActivityLogService;
 import com.knp.model.enums.ActivityAction;
+import com.knp.model.enums.ShopConfigKey;
 import com.knp.multitenant.TenantContext;
 
 /**
@@ -78,6 +81,7 @@ public class CartServiceImpl implements CartService {
     private final ObjectMapper objectMapper;
     private final InventoryService inventoryService;
     private final ProductService productService;
+    private final ShopConfigService shopConfigService;
     private final ShopInfoService shopInfoService;
     private final PromotionService promotionService;
     private final LoyaltyService loyaltyService;
@@ -92,10 +96,14 @@ public class CartServiceImpl implements CartService {
     public CartResponse initializeCart() {
         log.info("Initializing new cart");
 
+        Double configuredRate = shopConfigService.getDouble(ShopConfigKey.DEFAULT_TAX_RATE, 0.10);
+        BigDecimal taxRate = BigDecimal.valueOf(configuredRate).setScale(4, RoundingMode.HALF_UP);
+
         CartEntity cart = CartEntity.builder()
                 .tenantId(tenantContext.getCurrentTenantId())
                 .cartId(UUID.randomUUID().toString())
                 .status(CartStatus.ACTIVE)
+                .taxRate(taxRate)
                 .subtotal(BigDecimal.ZERO)
                 .totalDiscount(BigDecimal.ZERO)
                 .totalTax(BigDecimal.ZERO)
@@ -254,6 +262,7 @@ public class CartServiceImpl implements CartService {
                     .discountType(DiscountType.NONE)
                     .discountValue(BigDecimal.ZERO)
                     .variants(variantsJson)
+                    .taxRate(cart.getTaxRate())
                     .build();
 
             newItem.recalculateLineTotal();
@@ -532,6 +541,8 @@ public class CartServiceImpl implements CartService {
             oi.setQuantity(cartItem.getQuantity());
             oi.setUnitPrice(cartItem.getUnitPrice());
             oi.setUnitCost(cartItem.getUnitCost());
+            oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
+            oi.setMetadata(cartItem.getMetadata());
             oi.setStatus(OrderItem.ItemStatus.PENDING);
             orderItems.add(oi);
         }
@@ -549,12 +560,77 @@ public class CartServiceImpl implements CartService {
     }
 
     /**
+     * Add a gold item (GOLD_IN or GOLD_OUT) to the cart without catalog/inventory checks.
+     * Line total = goldWeight × (unitPrice + procPrice), then 10% tax on top.
+     */
+    @Override
+    public CartResponse addGoldItem(String cartId, AddGoldItemRequest request) {
+        CartEntity cart = cartRepository.findByCartId(cartId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("cart.not.found")));
+
+        if (cart.getStatus() != CartStatus.ACTIVE) {
+            throw new BadRequestException(messageService.getMessage("cart.not.active"));
+        }
+        if (request.getItemType() == CartItemEntity.ItemType.STANDARD) {
+            throw new BadRequestException("Item type must be GOLD_IN or GOLD_OUT");
+        }
+
+        BigDecimal weight   = request.getGoldWeight();
+        BigDecimal procFee  = request.getProcPrice() != null ? request.getProcPrice() : BigDecimal.ZERO;
+        BigDecimal pricePerUnit = request.getUnitPrice();
+        // effective base price for the lot = weight × (pricePerUnit + procFee)
+        BigDecimal effectiveBase = weight.multiply(pricePerUnit.add(procFee)).setScale(2, RoundingMode.HALF_UP);
+
+        String sku = "GOLD-" + request.getItemType().name() + "-" + System.currentTimeMillis();
+
+        String metadata;
+        try {
+            Map<String, Object> meta = new java.util.LinkedHashMap<>();
+            meta.put("goldType",   request.getGoldType());
+            meta.put("goldBrand",  request.getGoldBrand() != null ? request.getGoldBrand() : "");
+            meta.put("goldWeight", weight);
+            meta.put("gemWeight",  request.getGemWeight() != null ? request.getGemWeight() : BigDecimal.ZERO);
+            meta.put("procPrice",  procFee);
+            meta.put("unitPricePerUnit", pricePerUnit);
+            metadata = objectMapper.writeValueAsString(meta);
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to serialize gold item metadata: {}", e.getMessage());
+            metadata = "{}";
+        }
+
+        CartItemEntity goldItem = CartItemEntity.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
+                .cart(cart)
+                .productId(null)
+                .productName(request.getGoldType() + (request.getGoldBrand() != null ? " - " + request.getGoldBrand() : ""))
+                .sku(sku)
+                .quantity(1)
+                .basePrice(effectiveBase)
+                .unitPrice(pricePerUnit)
+                .unitCost(BigDecimal.ZERO)
+                .discountType(DiscountType.NONE)
+                .discountValue(BigDecimal.ZERO)
+                .itemType(request.getItemType())
+                .metadata(metadata)
+                .notes(request.getNotes())
+                .taxRate(cart.getTaxRate())
+                .build();
+
+        goldItem.recalculateLineTotal();
+        cart.addItem(goldItem);
+        cart.recalculateTotals();
+        CartEntity saved = cartRepository.save(cart);
+        log.info("Gold item {} added to cart {}: weight={}, base={}", request.getItemType(), cartId, weight, effectiveBase);
+        return mapToResponse(saved);
+    }
+
+    /**
      * Complete checkout:
      * 1. Validate cart is active and non-empty
-     * 2. Apply order-level discount
+     * 2. Apply order-level discount (SELL only)
      * 3. Cancel pending kitchen order (if pendingOrderId is provided)
      * 4. Create Order + OrderItems
-     * 5. Deduct inventory stock for each item
+     * 5. Deduct inventory stock for STANDARD items only
      * 6. Mark cart COMPLETED
      * 7. Return receipt data
      */
@@ -572,27 +648,29 @@ public class CartServiceImpl implements CartService {
             throw new BadRequestException(messageService.getMessage("cart.not.active"));
         }
 
-        // --- Totals ---
+        Order.OrderType orderType = request.getOrderType() != null ? request.getOrderType() : Order.OrderType.SELL;
+        boolean isStandardSell = orderType == Order.OrderType.SELL;
+
+        // --- Totals (SELL-only logic for discount / promotion / loyalty) ---
         BigDecimal itemsSubtotal = cart.getSubtotal();
         BigDecimal itemDiscount  = cart.getTotalDiscount();
         BigDecimal orderDiscount = BigDecimal.ZERO;
 
-        if (request.getDiscountAmount() != null
+        if (isStandardSell && request.getDiscountAmount() != null
                 && request.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
             if (request.getDiscountType() == DiscountType.PERCENTAGE) {
                 orderDiscount = itemsSubtotal.subtract(itemDiscount)
                         .multiply(request.getDiscountAmount())
                         .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
             } else {
-                orderDiscount = request.getDiscountAmount()
-                        .setScale(2, RoundingMode.HALF_UP);
+                orderDiscount = request.getDiscountAmount().setScale(2, RoundingMode.HALF_UP);
             }
         }
 
-        // --- Promotion discount ---
+        // --- Promotion discount (SELL only) ---
         BigDecimal promotionDiscount = BigDecimal.ZERO;
         String appliedPromotionCode = null;
-        if (request.getPromotionCode() != null && !request.getPromotionCode().isBlank()) {
+        if (isStandardSell && request.getPromotionCode() != null && !request.getPromotionCode().isBlank()) {
             try {
                 promotionDiscount = promotionService.applyAtCheckout(
                         request.getPromotionCode(), itemsSubtotal.subtract(itemDiscount).max(BigDecimal.ZERO));
@@ -603,16 +681,43 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        BigDecimal totalDiscount = itemDiscount.add(orderDiscount).add(promotionDiscount);
-        BigDecimal taxableAmount = itemsSubtotal.subtract(totalDiscount).max(BigDecimal.ZERO);
-        BigDecimal totalTax      = taxableAmount.multiply(new BigDecimal("0.10")).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal total         = taxableAmount.add(totalTax);
+        // --- Compute total based on order type ---
+        BigDecimal totalDiscount;
+        BigDecimal taxableAmount;
+        BigDecimal totalTax;
+        BigDecimal total;
 
-        // --- Loyalty points redemption (applied after tax) ---
+        if (orderType == Order.OrderType.EXCHANGE) {
+            // Net = SUM(GOLD_OUT lineGrandTotal) - SUM(GOLD_IN lineGrandTotal); tax already in line totals
+            BigDecimal sellSum = cart.getItems().stream()
+                    .filter(i -> i.getItemType() == CartItemEntity.ItemType.GOLD_OUT)
+                    .map(CartItemEntity::getLineGrandTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal buySum = cart.getItems().stream()
+                    .filter(i -> i.getItemType() == CartItemEntity.ItemType.GOLD_IN)
+                    .map(CartItemEntity::getLineGrandTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            total        = sellSum.subtract(buySum);
+            totalDiscount = BigDecimal.ZERO;
+            totalTax     = BigDecimal.ZERO;
+        } else if (orderType == Order.OrderType.BUY) {
+            // Shop pays customer — tax already in line totals from gold item calculation
+            total        = cart.getTotal();
+            totalDiscount = BigDecimal.ZERO;
+            totalTax     = cart.getTotalTax();
+        } else {
+            // SELL — full flow
+            totalDiscount = itemDiscount.add(orderDiscount).add(promotionDiscount);
+            taxableAmount = itemsSubtotal.subtract(totalDiscount).max(BigDecimal.ZERO);
+            totalTax      = taxableAmount.multiply(cart.getTaxRate()).setScale(2, RoundingMode.HALF_UP);
+            total         = taxableAmount.add(totalTax);
+        }
+
+        // --- Loyalty points redemption (SELL only, applied after tax) ---
         BigDecimal loyaltyDiscount = BigDecimal.ZERO;
         int loyaltyPointsRedeemed = 0;
 
-        // --- Resolve customer (needed for loyalty) ---
+        // --- Resolve customer ---
         Long resolvedCustomerId = cart.getCustomerId() != null ? cart.getCustomerId() : request.getCustomerId();
         Customer resolvedCustomer = null;
         String resolvedCustomerName = null;
@@ -630,8 +735,8 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        // --- Loyalty redemption (requires a real customer, applied after other discounts) ---
-        if (resolvedCustomer != null && resolvedCustomerId != null
+        // --- Loyalty redemption (SELL only) ---
+        if (isStandardSell && resolvedCustomer != null && resolvedCustomerId != null
                 && request.getLoyaltyPointsToRedeem() != null
                 && request.getLoyaltyPointsToRedeem() > 0) {
             try {
@@ -648,8 +753,8 @@ public class CartServiceImpl implements CartService {
         // --- Payment ---
         String paymentMethod = (request.getPaymentMethod() != null && !request.getPaymentMethod().isBlank())
                 ? request.getPaymentMethod() : "CASH";
-        BigDecimal amountPaid    = request.getAmountPaid() != null ? request.getAmountPaid() : total;
-        BigDecimal changeAmount  = amountPaid.subtract(total).max(BigDecimal.ZERO);
+        BigDecimal amountPaid   = request.getAmountPaid() != null ? request.getAmountPaid() : total.max(BigDecimal.ZERO);
+        BigDecimal changeAmount = amountPaid.subtract(total.max(BigDecimal.ZERO)).max(BigDecimal.ZERO);
 
         // --- Cancel pending kitchen order if provided ---
         if (request.getPendingOrderId() != null) {
@@ -670,9 +775,10 @@ public class CartServiceImpl implements CartService {
         order.setTenantId(tenantId);
         order.setOrderNumber(orderNumber);
         order.setStatus(Order.OrderStatus.COMPLETED);
+        order.setOrderType(orderType);
         order.setTotalAmount(total);
         order.setDiscountAmount(totalDiscount);
-        order.setTaxPercentage(new BigDecimal("10.00"));
+        order.setTaxPercentage(cart.getTaxRate().multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
         order.setTaxAmount(totalTax);
         order.setPaymentMethod(paymentMethod);
         order.setAmountPaid(amountPaid);
@@ -687,7 +793,7 @@ public class CartServiceImpl implements CartService {
         order.setCreatedBy(currentUser);
         order.complete(currentUser);
 
-        // --- Build OrderItems + deduct inventory ---
+        // --- Build OrderItems + deduct inventory for STANDARD items only ---
         List<OrderItem> orderItems = new ArrayList<>();
         List<CheckoutResponse.CheckoutItemSummary> summaries = new ArrayList<>();
 
@@ -700,22 +806,26 @@ public class CartServiceImpl implements CartService {
             oi.setQuantity(cartItem.getQuantity());
             oi.setUnitPrice(cartItem.getUnitPrice());
             oi.setUnitCost(cartItem.getUnitCost());
+            oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
+            oi.setMetadata(cartItem.getMetadata());
             oi.setStatus(OrderItem.ItemStatus.COMPLETED);
             orderItems.add(oi);
 
-            // Deduct stock — log warning on failure, never abort the sale
-            try {
-                var inventoryPage = inventoryService.getInventoryByProductId(
-                        cartItem.getProductId(),
-                        org.springframework.data.domain.PageRequest.of(0, 1));
-                if (!inventoryPage.isEmpty()) {
-                    Long inventoryId = inventoryPage.getContent().get(0).getId();
-                    inventoryService.removeStock(inventoryId, (long) cartItem.getQuantity().intValue());
-                } else {
-                    log.warn("No inventory found for product {} — stock not deducted", cartItem.getProductId());
+            // Deduct stock only for catalog items; gold items have no inventory
+            if (cartItem.getItemType() == CartItemEntity.ItemType.STANDARD) {
+                try {
+                    var inventoryPage = inventoryService.getInventoryByProductId(
+                            cartItem.getProductId(),
+                            org.springframework.data.domain.PageRequest.of(0, 1));
+                    if (!inventoryPage.isEmpty()) {
+                        Long inventoryId = inventoryPage.getContent().get(0).getId();
+                        inventoryService.removeStock(inventoryId, (long) cartItem.getQuantity().intValue());
+                    } else {
+                        log.warn("No inventory found for product {} — stock not deducted", cartItem.getProductId());
+                    }
+                } catch (Exception e) {
+                    log.warn("Inventory deduction failed for product {}: {}", cartItem.getProductId(), e.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("Inventory deduction failed for product {}: {}", cartItem.getProductId(), e.getMessage());
             }
 
             summaries.add(CheckoutResponse.CheckoutItemSummary.builder()
@@ -730,7 +840,7 @@ public class CartServiceImpl implements CartService {
 
         order.setOrderItems(orderItems);
         Order savedOrder = orderRepository.save(order);
-        log.info("Order created: {} (total={})", orderNumber, total);
+        log.info("Order created: {} type={} (total={})", orderNumber, orderType, total);
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
                 ActivityAction.ORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
@@ -749,7 +859,7 @@ public class CartServiceImpl implements CartService {
             log.warn("Could not load shop info for receipt: {}", e.getMessage());
         }
 
-        // Back-fill loyalty transaction's orderId now that we have the saved order ID
+        // Back-fill loyalty transaction's orderId
         if (loyaltyPointsRedeemed > 0 && resolvedCustomerId != null) {
             try {
                 loyaltyService.backfillRedemptionOrderId(resolvedCustomerId, savedOrder.getId());
@@ -828,6 +938,7 @@ public class CartServiceImpl implements CartService {
                 .totalDiscount(cart.getTotalDiscount())
                 .totalTax(cart.getTotalTax())
                 .total(cart.getTotal())
+                .taxRate(cart.getTaxRate())
                 .status(cart.getStatus())
                 .appliedCoupons(parseCoupons(cart.getAppliedCoupons()))
                 .appliedPromotions(parsePromotions(cart.getAppliedPromotions()))
@@ -862,6 +973,8 @@ public class CartServiceImpl implements CartService {
                 .tax(item.getTax())
                 .lineGrandTotal(item.getLineGrandTotal())
                 .variants(variants)
+                .itemType(item.getItemType())
+                .metadata(item.getMetadata())
                 .notes(item.getNotes())
                 .build();
     }

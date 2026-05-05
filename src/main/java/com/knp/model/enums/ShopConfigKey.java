@@ -7,6 +7,7 @@ public enum ShopConfigKey {
 
     // GENERAL
     DEFAULT_TAX_RATE("default_tax_rate", "GENERAL", false),
+    SHOP_LOCATIONS("shop_locations", "GENERAL", false),
 
     // EINVOICE
     EINVOICE_USERNAME("einvoice_username", "EINVOICE", false),
@@ -27,6 +28,7 @@ public enum ShopConfigKey {
     PAWN_DUE_DATE("pawn_due_date", "PAWN", false),
     PAWN_EXCLUDE_VISIBLE_ITEM("pawn_exclude_visible_item", "PAWN", false),
     PAWN_CATEGORY_CONFIG("pawn_category_config", "PAWN", false),
+    PAWN_DENOMINATIONS("pawn_denominations", "PAWN", false),
 
     // DASHBOARD
     DASHBOARD_WIDGETS("dashboard_widgets", "DASHBOARD", false),

@@ -2,6 +2,7 @@ package com.knp.controller.order;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.knp.model.dto.ApiResponse;
+import com.knp.model.dto.order.AddGoldItemRequest;
 import com.knp.model.dto.order.CartRequest;
 import com.knp.model.dto.order.CartResponse;
 import com.knp.model.dto.order.CheckoutRequest;
@@ -283,6 +284,22 @@ public class CartController {
         
         CartResponse cart = cartService.clearCart(cartId);
         return ResponseEntity.ok(ApiResponse.success(cart, "Cart cleared successfully"));
+    }
+
+    /**
+     * Add a gold item (GOLD_IN or GOLD_OUT) to the cart.
+     * No catalog lookup or inventory check — gold weight + price supplied directly.
+     *
+     * POST /api/v1/carts/{cartId}/gold-items
+     */
+    @PostMapping("/{cartId}/gold-items")
+    @RequiresFeature("POS")
+    public ResponseEntity<ApiResponse<CartResponse>> addGoldItem(
+            @PathVariable String cartId,
+            @RequestBody @Valid AddGoldItemRequest request) {
+        log.info("POST /api/v1/carts/{}/gold-items - type={}", cartId, request.getItemType());
+        CartResponse cart = cartService.addGoldItem(cartId, request);
+        return ResponseEntity.ok(ApiResponse.success(cart, "Gold item added to cart successfully"));
     }
 
     /**

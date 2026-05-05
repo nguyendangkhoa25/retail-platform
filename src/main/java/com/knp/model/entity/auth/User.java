@@ -79,6 +79,9 @@ public class User extends UnifiedTenantEntity {
     @Column(length = 255)
     private String notes;
 
+    @Column(columnDefinition = "TEXT")
+    private String preferences;
+
     // Add a role to this user
     public void addRole(Role role) {
         this.roles.add(role);

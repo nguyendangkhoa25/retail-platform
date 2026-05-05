@@ -12,6 +12,9 @@ import java.time.LocalDateTime;
 @Builder
 public class GoldPriceDTO {
     private Long id;
+    private Long categoryId;
+    private String categoryName;
+    private String parentCategoryName;
     private String code;
     private String label;
     private BigDecimal buy;

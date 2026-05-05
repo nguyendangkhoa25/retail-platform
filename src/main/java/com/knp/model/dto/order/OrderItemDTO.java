@@ -1,5 +1,6 @@
 package com.knp.model.dto.order;
 
+import com.knp.model.entity.order.OrderItem;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -18,4 +19,6 @@ public class OrderItemDTO {
     private BigDecimal amount;
     private BigDecimal taxPercentage;
     private BigDecimal taxAmount;
+    private OrderItem.ItemType itemType;
+    private String metadata;
 }

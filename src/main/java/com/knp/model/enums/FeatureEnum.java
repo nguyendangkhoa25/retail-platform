@@ -35,7 +35,9 @@ public enum FeatureEnum {
     FEEDBACK("Góp Ý", "Gửi phản hồi và đề xuất đến quản trị hệ thống"),
     PRINT_TEMPLATE("Mẫu In", "Quản lý mẫu in biên nhận và hóa đơn"),
     BANK_ACCOUNT("Tài Khoản Ngân Hàng", "Quản lý tài khoản ngân hàng của cửa hàng"),
-    ACCOUNTING("Kế Toán", "Xem báo cáo kế toán tổng hợp");
+    ACCOUNTING("Kế Toán", "Xem báo cáo kế toán tổng hợp"),
+    GOLD_PRICE("Bảng Giá Vàng", "Quản lý bảng giá vàng theo tuổi, dùng cho tính giá mua/bán và cầm đồ"),
+    GOLD_PRICE_CHART("Biểu Đồ Giá Vàng", "Xem biểu đồ giá vàng thế giới (XAU/USD) theo thời gian thực");
 
     /**
      * -- GETTER --

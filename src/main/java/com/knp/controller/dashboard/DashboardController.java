@@ -3,7 +3,6 @@ package com.knp.controller.dashboard;
 import com.knp.model.dto.dashboard.DashboardKpiDTO;
 import com.knp.model.dto.dashboard.DashboardSummaryDTO;
 import com.knp.model.entity.order.Order;
-import com.knp.repository.buyback.BuybackOrderRepository;
 import com.knp.repository.customer.CustomerRepository;
 import com.knp.repository.employee.EmployeeRepository;
 import com.knp.repository.order.OrderItemRepository;
@@ -37,7 +36,6 @@ public class DashboardController {
     private final OrderItemRepository orderItemRepository;
     private final CustomerRepository customerRepository;
     private final EmployeeRepository employeeRepository;
-    private final BuybackOrderRepository buybackOrderRepository;
     private final PawnRepository pawnRepository;
 
     @GetMapping("/summary")
@@ -67,15 +65,6 @@ public class DashboardController {
         BigDecimal monthNewPawnAmount    = pawnRepository.sumNewPawnAmountByMonth(year, month);
         Long       monthInterestEarned   = pawnRepository.sumInterestEarnedByMonth(year, month);
 
-        // Buyback (purchases from customers)
-        Long       totalItemsBought   = buybackOrderRepository.sumTotalItemsBought();
-        Long       monthItemsBought   = buybackOrderRepository.sumItemsBoughtByMonth(year, month);
-        Long       yearItemsBought    = buybackOrderRepository.sumItemsBoughtByYear(year);
-        BigDecimal totalBuybackSpent  = buybackOrderRepository.sumTotalBuybackSpent();
-        BigDecimal monthBuybackSpent  = buybackOrderRepository.sumBuybackSpentByMonth(year, month);
-        BigDecimal yearBuybackSpent   = buybackOrderRepository.sumBuybackSpentByYear(year);
-        Long       totalBuybackOrders = buybackOrderRepository.countCompletedBuyOrders();
-
         List<Order> recent = orderRepository.findRecentCompleted(PageRequest.of(0, 10));
         List<DashboardSummaryDTO.RecentOrderDTO> recentDTOs = recent.stream()
                 .map(o -> DashboardSummaryDTO.RecentOrderDTO.builder()
@@ -101,13 +90,6 @@ public class DashboardController {
                 .totalItemsSold(totalItemsSold)
                 .monthItemsSold(monthItemsSold)
                 .yearItemsSold(yearItemsSold)
-                .totalItemsBought(totalItemsBought)
-                .monthItemsBought(monthItemsBought)
-                .yearItemsBought(yearItemsBought)
-                .totalBuybackSpent(totalBuybackSpent)
-                .monthBuybackSpent(monthBuybackSpent)
-                .yearBuybackSpent(yearBuybackSpent)
-                .totalBuybackOrders(totalBuybackOrders)
                 .activePawnContracts(activePawnContracts)
                 .activePawnAmount(activePawnAmount)
                 .monthNewPawnContracts(monthNewPawnContracts)
@@ -134,8 +116,6 @@ public class DashboardController {
 
         Long       itemsSold      = orderItemRepository.sumItemsSoldByDateRange(fromDt, toDt);
         BigDecimal revenue        = orderRepository.sumRevenueByDateRange(fromDt, toDt);
-        Long       itemsBought    = buybackOrderRepository.sumItemsBoughtByDateRange(fromDt, toDt);
-        BigDecimal buybackSpent   = buybackOrderRepository.sumBuybackSpentByDateRange(fromDt, toDt);
         Long       newPawnContracts  = pawnRepository.countNewPawnsByDateRange(fromDt, toDt);
         BigDecimal newPawnAmount     = pawnRepository.sumNewPawnAmountByDateRange(fromDt, toDt);
         Long       interestEarned    = pawnRepository.sumInterestEarnedByDateRange(fromDt, toDt);
@@ -143,8 +123,6 @@ public class DashboardController {
         return ResponseEntity.ok(DashboardKpiDTO.builder()
                 .itemsSold(itemsSold)
                 .revenue(revenue)
-                .itemsBought(itemsBought)
-                .buybackSpent(buybackSpent)
                 .newPawnContracts(newPawnContracts)
                 .newPawnAmount(newPawnAmount)
                 .interestEarned(interestEarned)

@@ -4,6 +4,8 @@ import com.knp.exception.DuplicateResourceException;
 import com.knp.service.MessageService;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.model.enums.ActivityAction;
+import com.knp.model.entity.inventory.Inventory;
+import com.knp.repository.inventory.InventoryRepository;
 import com.knp.multitenant.TenantContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import com.knp.model.dto.product.*;
@@ -43,6 +45,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductCatalogRepository productCatalogRepository;
     private final OpenFoodFactsClient openFoodFactsClient;
     private final ProductCatalogService productCatalogService;
+    private final InventoryRepository inventoryRepository;
 
     @Override
     public ProductDTO createProduct(CreateProductRequest request) {
@@ -79,6 +82,7 @@ public class ProductServiceImpl implements ProductService {
                 .price(request.getPrice())
                 .costPrice(request.getCostPrice() != null ? request.getCostPrice() : java.math.BigDecimal.ZERO)
                 .unit(request.getUnit())
+                .shelfLocation(request.getShelfLocation())
                 .vendor(vendor)
                 .status(Product.ProductStatus.valueOf(request.getStatus()))
                 .deleted(false)
@@ -147,6 +151,29 @@ public class ProductServiceImpl implements ProductService {
             log.info("Product attributes saved for product id: {}", savedProduct.getId());
         }
 
+        // Jewelry items are unique pieces — auto-create 1-unit inventory on product creation.
+        if ("JEWELRY".equals(productType.getCode())) {
+            String location = "Quầy";
+            if (request.getAttributes() != null) {
+                Object counterCode = request.getAttributes().get("counter_code");
+                if (counterCode instanceof String s && !s.isBlank()) {
+                    location = s;
+                }
+            }
+            Inventory inventory = Inventory.builder()
+                    .tenantId(tenantContext.getCurrentTenantId())
+                    .product(savedProduct)
+                    .quantityInStock(1L)
+                    .reorderLevel(0L)
+                    .reorderQuantity(1L)
+                    .unitCost(savedProduct.getCostPrice())
+                    .warehouseLocation(location)
+                    .deleted(false)
+                    .build();
+            inventoryRepository.save(inventory);
+            log.info("Auto-created 1-unit inventory for jewelry product {}", savedProduct.getId());
+        }
+
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_CREATED, "PRODUCT", savedProduct.getId().toString(),
@@ -186,6 +213,7 @@ public class ProductServiceImpl implements ProductService {
             product.setCostPrice(request.getCostPrice());
         }
         product.setUnit(request.getUnit());
+        product.setShelfLocation(request.getShelfLocation());
         product.setStatus(Product.ProductStatus.valueOf(request.getStatus()));
 
         if (request.getVendorId() != null) {
@@ -352,6 +380,7 @@ public class ProductServiceImpl implements ProductService {
                             .collect(Collectors.toList());
                     return AttributeGroupDTO.builder()
                             .id(group.getId())
+                            .code(group.getCode())
                             .name(group.getName())
                             .displayOrder(group.getDisplayOrder())
                             .attributes(attrDTOs)
@@ -429,6 +458,7 @@ public class ProductServiceImpl implements ProductService {
                 .id(product.getId())
                 .productTypeId(product.getProductType().getId())
                 .productTypeName(product.getProductType().getName())
+                .productTypeCode(product.getProductType().getCode())
                 .sku(product.getSku())
                 .barcode(product.getBarcode())
                 .name(product.getName())
@@ -438,6 +468,7 @@ public class ProductServiceImpl implements ProductService {
                 .unit(product.getUnit())
                 .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
                 .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
+                .shelfLocation(product.getShelfLocation())
                 .status(product.getStatus().toString())
                 .categoryIds(categoryIds)
                 .attributes(attributes)

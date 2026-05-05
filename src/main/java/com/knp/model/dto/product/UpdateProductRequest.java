@@ -44,6 +44,9 @@ public class UpdateProductRequest {
 
     private Long vendorId;
 
+    @Size(max = 100, message = "Shelf location must not exceed 100 characters")
+    private String shelfLocation;
+
     private Set<Long> categoryIds;
 
     private Map<String, Object> attributes;

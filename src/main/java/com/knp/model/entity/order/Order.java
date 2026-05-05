@@ -100,6 +100,11 @@ public class Order extends TenantAwareEntity {
     @Column(name = "source", length = 20, nullable = false)
     private String source = "POS";
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "order_type", length = 20, nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'SELL'")
+    private OrderType orderType = OrderType.SELL;
+
     @Column(name = "promotion_code", length = 50)
     private String promotionCode;
 
@@ -125,6 +130,12 @@ public class Order extends TenantAwareEntity {
         COMPLETED,
         CANCELLED,
         VOIDED
+    }
+
+    public enum OrderType {
+        SELL,
+        BUY,
+        EXCHANGE
     }
 
     public void complete() {

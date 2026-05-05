@@ -7,6 +7,9 @@ import java.util.List;
 
 public interface GoldPriceService {
     List<GoldPriceDTO> getAllPrices();
+    GoldPriceDTO createPrice(GoldPriceDTO dto);
     GoldPriceDTO updatePrice(Long id, GoldPriceDTO dto);
+    void deletePrice(Long id);
     PriceBoardResponse getPriceBoard(String code);
+    GoldPriceDTO getPriceForCategory(Long categoryId);
 }

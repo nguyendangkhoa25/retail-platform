@@ -47,6 +47,9 @@ public class Product extends TenantAwareEntity {
     @Column(length = 20)
     private String unit;
 
+    @Column(name = "shelf_location", length = 100)
+    private String shelfLocation;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendor_id")
     private Vendor vendor;

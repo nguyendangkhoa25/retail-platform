@@ -10,7 +10,7 @@ import org.springframework.data.domain.Pageable;
 
 public interface OrderService {
 
-    Page<OrderDTO> getAllOrders(String status, Pageable pageable);
+    Page<OrderDTO> getAllOrders(String status, String orderType, Pageable pageable);
 
     Page<OrderDTO> searchOrders(String keyword, Pageable pageable);
 

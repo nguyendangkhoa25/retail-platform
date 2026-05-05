@@ -1,6 +1,7 @@
 package com.knp.service.order;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.knp.model.dto.order.AddGoldItemRequest;
 import com.knp.model.dto.order.CartRequest;
 import com.knp.model.dto.order.CartResponse;
 import com.knp.model.dto.order.CheckoutRequest;
@@ -32,6 +33,12 @@ public interface CartService {
      * Validates stock, handles duplicates (merges quantity)
      */
     CartResponse addItemToCart(String cartId, CartRequest request) throws JsonProcessingException;
+
+    /**
+     * Add a gold item (GOLD_IN or GOLD_OUT) to the cart.
+     * Bypasses catalog lookup and inventory checks.
+     */
+    CartResponse addGoldItem(String cartId, AddGoldItemRequest request);
     
     /**
      * Update cart item quantity

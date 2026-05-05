@@ -5,7 +5,9 @@ import com.knp.model.dto.category.CategoryDTO;
 import com.knp.model.dto.category.CreateCategoryRequest;
 import com.knp.model.dto.category.UpdateCategoryRequest;
 import com.knp.model.entity.product.Category;
+import com.knp.model.entity.tenant.GoldPrice;
 import com.knp.repository.product.CategoryRepository;
+import com.knp.repository.tenant.GoldPriceRepository;
 import com.knp.service.MessageService;
 import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ import java.util.stream.Collectors;
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final GoldPriceRepository goldPriceRepository;
     private final MessageService messageService;
     private final TenantContext tenantContext;
 
@@ -73,6 +76,7 @@ public class CategoryServiceImpl implements CategoryService {
         Category category = categoryRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + id));
 
+        String oldName = category.getName();
         category.setName(request.getName());
 
         if (request.getParentId() != null) {
@@ -87,6 +91,12 @@ public class CategoryServiceImpl implements CategoryService {
         }
 
         Category updated = categoryRepository.save(category);
+
+        // Keep gold_price denormalized cache in sync when name changes.
+        if (!oldName.equals(request.getName())) {
+            syncGoldPriceLabel(updated);
+        }
+
         log.info("Category updated: {} (id={})", updated.getName(), updated.getId());
         return mapToDTO(updated);
     }
@@ -107,6 +117,13 @@ public class CategoryServiceImpl implements CategoryService {
             throw new IllegalStateException(messageService.getMessage("error.category.hasProducts"));
         }
 
+        // Soft-delete any linked gold price so it doesn't become a ghost record.
+        goldPriceRepository.findByCategoryIdAndDeletedFalse(id).ifPresent(price -> {
+            price.softDelete();
+            goldPriceRepository.save(price);
+            log.info("Gold price {} soft-deleted because category {} was deleted", price.getId(), id);
+        });
+
         category.softDelete();
         categoryRepository.save(category);
         log.info("Category deleted: {} (id={})", category.getName(), id);
@@ -122,6 +139,16 @@ public class CategoryServiceImpl implements CategoryService {
                 .stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
+    }
+
+    private void syncGoldPriceLabel(Category category) {
+        goldPriceRepository.findByCategoryIdAndDeletedFalse(category.getId()).ifPresent(price -> {
+            String parentName = category.getParent() != null ? category.getParent().getName() : "";
+            price.setCode(category.getName());
+            price.setLabel(parentName.isBlank() ? category.getName() : parentName + " " + category.getName());
+            goldPriceRepository.save(price);
+            log.info("Gold price {} label synced after category {} rename", price.getId(), category.getId());
+        });
     }
 
     private CategoryDTO mapToDTO(Category category) {

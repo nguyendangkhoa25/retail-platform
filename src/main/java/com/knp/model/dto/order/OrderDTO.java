@@ -50,6 +50,7 @@ public class OrderDTO {
 
     private String tableLabel;
     private String source;
+    private String orderType;
 
     private List<OrderItemDTO> items;
 }

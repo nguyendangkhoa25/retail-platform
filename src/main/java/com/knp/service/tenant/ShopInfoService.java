@@ -62,8 +62,11 @@ public class ShopInfoService {
         if (dto.getPawnDueDate() != null)      shopConfigService.set(ShopConfigKey.PAWN_DUE_DATE, dto.getPawnDueDate());
         if (dto.getExcludeVisibleItem() != null) shopConfigService.set(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, dto.getExcludeVisibleItem());
         if (dto.getPawnCategoryConfig() != null)  shopConfigService.set(ShopConfigKey.PAWN_CATEGORY_CONFIG, dto.getPawnCategoryConfig());
+        shopConfigService.set(ShopConfigKey.PAWN_DENOMINATIONS, dto.getPawnDenominations());
         // priceBoardCode may be explicitly cleared — always write
         shopConfigService.set(ShopConfigKey.PRICE_BOARD_CODE, dto.getPriceBoardCode());
+        // shopLocations may be explicitly cleared — always write
+        shopConfigService.set(ShopConfigKey.SHOP_LOCATIONS, dto.getShopLocations());
 
         log.info("Shop info updated successfully - id: {}, shopName: {}", saved.getId(), saved.getShopName());
         return mapToDTO(saved);
@@ -150,7 +153,9 @@ public class ShopInfoService {
                 .pawnDueDate(shopConfigService.getInt(ShopConfigKey.PAWN_DUE_DATE, 30))
                 .excludeVisibleItem(shopConfigService.getBoolean(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, false))
                 .pawnCategoryConfig(shopConfigService.getString(ShopConfigKey.PAWN_CATEGORY_CONFIG))
+                .pawnDenominations(shopConfigService.getString(ShopConfigKey.PAWN_DENOMINATIONS))
                 .priceBoardCode(shopConfigService.getString(ShopConfigKey.PRICE_BOARD_CODE))
+                .shopLocations(shopConfigService.getString(ShopConfigKey.SHOP_LOCATIONS))
                 .createdAt(shopInfo.getCreatedAt())
                 .updatedAt(shopInfo.getUpdatedAt())
                 .build();

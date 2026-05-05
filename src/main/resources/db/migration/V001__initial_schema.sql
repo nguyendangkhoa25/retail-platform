@@ -100,38 +100,7 @@ CREATE TABLE IF NOT EXISTS banks (
     CONSTRAINT uq_banks_code UNIQUE (code)
 );
 
--- 2.2 gold_types — tuổi vàng / purity catalog
-CREATE TABLE IF NOT EXISTS gold_types (
-    id         BIGSERIAL    PRIMARY KEY,
-    code       VARCHAR(50)  NOT NULL,
-    label      VARCHAR(250) NOT NULL,
-    is_silver  BOOLEAN      NOT NULL DEFAULT FALSE,
-    sort_order INT          NOT NULL DEFAULT 0,
-    active     BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP    DEFAULT NOW(),
-    updated_at TIMESTAMP    DEFAULT NOW(),
-    CONSTRAINT uq_gold_types_code UNIQUE (code)
-);
-
--- 2.3 gold_brands — chành vàng / jewelry brand catalog
-CREATE TABLE IF NOT EXISTS gold_brands (
-    id         BIGSERIAL    PRIMARY KEY,
-    code       VARCHAR(50)  NOT NULL,
-    label      VARCHAR(250) NOT NULL,
-    name       VARCHAR(250) DEFAULT NULL,
-    short_name VARCHAR(250) DEFAULT NULL,
-    pub_stand  VARCHAR(250) DEFAULT NULL,
-    address    VARCHAR(500) DEFAULT NULL,
-    phone      VARCHAR(15)  DEFAULT NULL,
-    origin     VARCHAR(50)  DEFAULT NULL,
-    is_silver  BOOLEAN      NOT NULL DEFAULT FALSE,
-    favourite  BOOLEAN      NOT NULL DEFAULT FALSE,
-    sort_order INT          NOT NULL DEFAULT 0,
-    active     BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP    DEFAULT NOW(),
-    updated_at TIMESTAMP    DEFAULT NOW(),
-    CONSTRAINT uq_gold_brands_code UNIQUE (code)
-);
+-- 2.2 gold_types and gold_brands removed: gold types → product categories, brands → vendors.
 
 -- ════════════════════════════════════════════════════════════
 -- SECTION 3: Unified tables (tenant_id nullable)
@@ -186,6 +155,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar                  TEXT         DEFAULT NULL,
     color_preference        VARCHAR(50)  DEFAULT NULL,
     lang                    VARCHAR(10)  DEFAULT 'vi',
+    preferences             TEXT         DEFAULT NULL,
     created_at              TIMESTAMP    DEFAULT NOW(),
     updated_at              TIMESTAMP    DEFAULT NOW(),
     deleted                 BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -394,6 +364,7 @@ CREATE TABLE IF NOT EXISTS product (
     deleted         BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at      TIMESTAMP      DEFAULT NULL,
     barcode         VARCHAR(100)   DEFAULT NULL,
+    shelf_location  VARCHAR(100)   DEFAULT NULL,
     CONSTRAINT uq_product_sku_tenant     UNIQUE (sku, tenant_id),
     CONSTRAINT fk_product_type           FOREIGN KEY (product_type_id) REFERENCES product_type (id),
     CONSTRAINT fk_product_vendor         FOREIGN KEY (vendor_id)       REFERENCES vendors       (id)
@@ -584,13 +555,15 @@ CREATE TABLE IF NOT EXISTS orders (
     table_label             VARCHAR(100)   DEFAULT NULL,
     source                  VARCHAR(20)    NOT NULL DEFAULT 'POS',
     legacy_id               BIGINT         DEFAULT NULL,
+    order_type              VARCHAR(20)    NOT NULL DEFAULT 'SELL',
     created_at              TIMESTAMP      DEFAULT NOW(),
     updated_at              TIMESTAMP      DEFAULT NOW(),
     deleted                 BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at              TIMESTAMP      DEFAULT NULL,
-    CONSTRAINT uq_orders_number_tenant UNIQUE (order_number, tenant_id),
-    CONSTRAINT chk_orders_status       CHECK  (status IN ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED','VOIDED')),
-    CONSTRAINT fk_orders_customer      FOREIGN KEY (customer_id) REFERENCES customers (id)
+    CONSTRAINT uq_orders_number_tenant  UNIQUE (order_number, tenant_id),
+    CONSTRAINT chk_orders_status        CHECK  (status IN ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED','VOIDED')),
+    CONSTRAINT chk_orders_order_type    CHECK  (order_type IN ('SELL', 'BUY', 'EXCHANGE')),
+    CONSTRAINT fk_orders_customer       FOREIGN KEY (customer_id) REFERENCES customers (id)
 );
 
 -- 4.16 order_items
@@ -598,7 +571,7 @@ CREATE TABLE IF NOT EXISTS order_items (
     id                    BIGSERIAL      PRIMARY KEY,
     tenant_id             VARCHAR(100)   NOT NULL,
     order_id              BIGINT         NOT NULL,
-    product_id            BIGINT         NOT NULL,
+    product_id            BIGINT         DEFAULT NULL,
     product_name          VARCHAR(255)   DEFAULT NULL,
     quantity              INT            NOT NULL DEFAULT 1,
     unit_price            DECIMAL(10,2)  NOT NULL,
@@ -614,13 +587,16 @@ CREATE TABLE IF NOT EXISTS order_items (
     cost_amount           DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
     included_in_salary_id BIGINT         DEFAULT NULL,
     is_salary_calculated  BOOLEAN        NOT NULL DEFAULT FALSE,
+    item_type             VARCHAR(20)    NOT NULL DEFAULT 'STANDARD',
+    metadata              JSONB          DEFAULT NULL,
     completed_at          TIMESTAMP      DEFAULT NULL,
     created_at            TIMESTAMP      DEFAULT NOW(),
     updated_at            TIMESTAMP      DEFAULT NOW(),
     deleted               BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at            TIMESTAMP      DEFAULT NULL,
-    CONSTRAINT chk_oi_status CHECK (status IN ('PENDING','IN_PROGRESS','COMPLETED')),
-    CONSTRAINT fk_oi_order   FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+    CONSTRAINT chk_oi_status    CHECK (status IN ('PENDING','IN_PROGRESS','COMPLETED')),
+    CONSTRAINT chk_oi_item_type CHECK (item_type IN ('STANDARD', 'GOLD_IN', 'GOLD_OUT')),
+    CONSTRAINT fk_oi_order      FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
 );
 
 -- 4.17 invoices
@@ -712,6 +688,7 @@ CREATE TABLE IF NOT EXISTS carts (
     updated_at         TIMESTAMP      NOT NULL DEFAULT NOW(),
     abandoned_at       TIMESTAMP      DEFAULT NULL,
     completed_at       TIMESTAMP      DEFAULT NULL,
+    tax_rate           NUMERIC(5,4)   NOT NULL DEFAULT 0.10,
     CONSTRAINT uq_carts_id_tenant UNIQUE (cart_id, tenant_id)
 );
 
@@ -720,9 +697,9 @@ CREATE TABLE IF NOT EXISTS cart_items (
     id              BIGSERIAL      PRIMARY KEY,
     tenant_id       VARCHAR(100)   NOT NULL,
     cart_id         BIGINT         NOT NULL,
-    product_id      BIGINT         NOT NULL,
-    product_name    VARCHAR(255)   NOT NULL,
-    sku             VARCHAR(100)   NOT NULL,
+    product_id      BIGINT         DEFAULT NULL,
+    product_name    VARCHAR(255)   DEFAULT NULL,
+    sku             VARCHAR(100)   DEFAULT NULL,
     barcode         VARCHAR(100)   DEFAULT NULL,
     quantity        INT            NOT NULL DEFAULT 1,
     unit_price      DECIMAL(19,2)  NOT NULL DEFAULT 0.00,
@@ -735,11 +712,15 @@ CREATE TABLE IF NOT EXISTS cart_items (
     tax             DECIMAL(19,2)  NOT NULL DEFAULT 0.00,
     line_grand_total DECIMAL(19,2) NOT NULL DEFAULT 0.00,
     unit_cost       DECIMAL(19,2)  NOT NULL DEFAULT 0.00,
+    item_type       VARCHAR(20)    NOT NULL DEFAULT 'STANDARD',
+    metadata        JSONB          DEFAULT NULL,
     variants        JSONB          DEFAULT NULL,
     notes           TEXT           DEFAULT NULL,
+    tax_rate        NUMERIC(5,4)   NOT NULL DEFAULT 0.10,
     added_at        TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP      NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_ci_cart FOREIGN KEY (cart_id) REFERENCES carts (id) ON DELETE CASCADE
+    CONSTRAINT chk_ci_item_type CHECK (item_type IN ('STANDARD', 'GOLD_IN', 'GOLD_OUT')),
+    CONSTRAINT fk_ci_cart       FOREIGN KEY (cart_id) REFERENCES carts (id) ON DELETE CASCADE
 );
 
 -- 4.21 promotions
@@ -949,6 +930,12 @@ CREATE TABLE IF NOT EXISTS buyback_order_items (
     quantity         INT            DEFAULT NULL,
     unit_price       DECIMAL(15,2)  DEFAULT NULL,
     total_price      DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
+    gold_type        VARCHAR(50)    DEFAULT NULL,
+    gold_brand       VARCHAR(100)   DEFAULT NULL,
+    gold_weight      DECIMAL(10,3)  DEFAULT NULL,
+    gem_weight       DECIMAL(10,3)  DEFAULT NULL,
+    proc_price       DECIMAL(15,2)  DEFAULT NULL,
+    item_mode        VARCHAR(20)    DEFAULT NULL,
     notes            VARCHAR(500)   DEFAULT NULL,
     created_at       TIMESTAMP      DEFAULT NOW(),
     updated_at       TIMESTAMP      DEFAULT NOW(),
@@ -990,7 +977,8 @@ CREATE TABLE IF NOT EXISTS pawn (
     pawned_days              INT            DEFAULT NULL,
     visible                  BOOLEAN        NOT NULL DEFAULT TRUE,
     pawn_category            VARCHAR(50)    DEFAULT NULL,
-    legacy_id                BIGINT         DEFAULT NULL
+    legacy_id                BIGINT         DEFAULT NULL,
+    customer_name            VARCHAR(255)   DEFAULT NULL
 );
 
 -- 4.32 pawn_audit
@@ -1239,13 +1227,13 @@ CREATE TABLE IF NOT EXISTS gold_price (
     display_order INT            NOT NULL DEFAULT 10,
     note          VARCHAR(500)   DEFAULT NULL,
     show_in_board BOOLEAN        NOT NULL DEFAULT TRUE,
+    category_id   BIGINT         DEFAULT NULL REFERENCES category(id) ON DELETE SET NULL,
     created_by    VARCHAR(100)   DEFAULT NULL,
     updated_by    VARCHAR(100)   DEFAULT NULL,
     created_at    TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMP      NOT NULL DEFAULT NOW(),
     deleted       BOOLEAN        NOT NULL DEFAULT FALSE,
-    deleted_at    TIMESTAMP      DEFAULT NULL,
-    CONSTRAINT uq_gold_price_code_tenant UNIQUE (code, tenant_id)
+    deleted_at    TIMESTAMP      DEFAULT NULL
 );
 
 -- 4.42 jewelry_counters (per-shop display case configuration)
@@ -1390,18 +1378,22 @@ CREATE INDEX IF NOT EXISTS idx_orders_tenant_id   ON orders (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status      ON orders (status);
 CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders (customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_deleted_at  ON orders (deleted_at);
+CREATE INDEX IF NOT EXISTS idx_orders_order_type  ON orders (order_type);
 
 -- order_items
 CREATE INDEX IF NOT EXISTS idx_oi_tenant_id    ON order_items (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_oi_order_id     ON order_items (order_id);
 CREATE INDEX IF NOT EXISTS idx_oi_status       ON order_items (status);
 CREATE INDEX IF NOT EXISTS idx_oi_employee     ON order_items (assigned_employee_id);
+CREATE INDEX IF NOT EXISTS idx_oi_item_type    ON order_items (item_type);
 
 -- invoices
 CREATE INDEX IF NOT EXISTS idx_inv_tenant_id   ON invoices (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_inv_order_id    ON invoices (order_id);
 CREATE INDEX IF NOT EXISTS idx_inv_status      ON invoices (status);
 CREATE INDEX IF NOT EXISTS idx_inv_deleted     ON invoices (deleted);
+
+CREATE INDEX IF NOT EXISTS idx_ci_item_type    ON cart_items (item_type);
 
 -- carts
 CREATE INDEX IF NOT EXISTS idx_carts_tenant_id   ON carts (tenant_id);
@@ -1476,10 +1468,9 @@ CREATE INDEX IF NOT EXISTS idx_aal_created_at  ON api_audit_log (created_at);
 
 -- gold_price
 CREATE INDEX IF NOT EXISTS idx_gp_tenant_id ON gold_price (tenant_id);
-
--- gold_types / gold_brands
-CREATE INDEX IF NOT EXISTS idx_gt_active ON gold_types (active);
-CREATE INDEX IF NOT EXISTS idx_gb_active ON gold_brands (active);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_gold_price_category_tenant
+    ON gold_price (category_id, tenant_id)
+    WHERE category_id IS NOT NULL;
 
 -- contact_leads
 CREATE INDEX IF NOT EXISTS idx_contact_leads_created_at ON contact_leads (created_at DESC);
@@ -1496,7 +1487,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'agents','banks','gold_types','gold_brands',
+    'agents','banks',
     'features','roles','users','role_features','notifications','notification_preferences',
     'product_type','attribute_group','attribute_definition','category',
     'vendors','product','product_attribute_value','variant_types','variant_type_options',
@@ -1624,8 +1615,7 @@ $$;
 -- in master context (no tenant session variable set). No policies added.
 
 -- ── Global reference tables: no RLS needed ────────────────────
--- banks, gold_types, gold_brands are read-only reference data
--- accessible from any context.
+-- banks is a read-only global reference table accessible from any context.
 
 -- ════════════════════════════════════════════════════════════
 -- SECTION 8: Master seed data
@@ -1672,10 +1662,13 @@ VALUES
     (202601029, 'CONTACT_LEAD_MGMT','Đăng Ký Dùng Thử',          'Xem và quản lý các yêu cầu đăng ký dùng thử từ trang chủ',       TRUE, FALSE),
     (202601030, 'PRODUCT_CATALOG',  'Danh Mục Sản Phẩm',         'Quản lý danh mục sản phẩm dùng chung toàn hệ thống',             TRUE, FALSE),
     -- Sub-feature: granular order visibility within the ORDER module
-    (202601031, 'ORDER_VIEW_ALL',   'Xem Tất Cả Đơn Hàng',       'Xem đơn hàng của tất cả nhân viên; nếu không có quyền này, chỉ xem được đơn hàng tự tạo', TRUE, FALSE)
+    (202601031, 'ORDER_VIEW_ALL',   'Xem Tất Cả Đơn Hàng',       'Xem đơn hàng của tất cả nhân viên; nếu không có quyền này, chỉ xem được đơn hàng tự tạo', TRUE, FALSE),
+    -- Gold price management (used by jewelry shops and pawn shops)
+    (202601033, 'GOLD_PRICE',       'Bảng Giá Vàng',              'Quản lý bảng giá vàng theo tuổi, dùng cho tính giá mua/bán và cầm đồ',                    TRUE, FALSE),
+    (202601034, 'GOLD_PRICE_CHART', 'Biểu Đồ Giá Vàng',           'Xem biểu đồ giá vàng thế giới (XAU/USD) theo thời gian thực',                              TRUE, FALSE)
 ON CONFLICT (id) DO NOTHING;
 
-SELECT setval(pg_get_serial_sequence('features', 'id'), 202601031, true);
+SELECT setval(pg_get_serial_sequence('features', 'id'), 202601034, true);
 
 -- ── 2. Master roles ───────────────────────────────────────────
 INSERT INTO roles (id, tenant_id, name, description, deleted)
@@ -1839,3 +1832,19 @@ INSERT INTO product_catalog (barcode, name, brand, category_hint, unit, descript
     ('8934868202099', 'Cà Phê Trung Nguyên 1 500g',             'Trung Nguyên', 'Đồ uống',          'Gói',  'Cà phê rang xay Trung Nguyên loại 1',         'SEED'),
     ('8936014130006', 'Cà Phê Nescafé Classic 200g',            'Nestlé',        'Đồ uống',          'Hộp',  'Cà phê hoà tan Nescafé Classic',              'SEED')
 ON CONFLICT (barcode) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════
+-- SECTION 9: Schema cleanup
+-- Removed redundant jewelry EAV attributes (gold type and brand
+-- are captured by category and vendor; silver derived from category).
+-- Safe no-op on fresh installs where these were never seeded.
+-- ════════════════════════════════════════════════════════════
+
+DELETE FROM product_attribute_value
+WHERE attribute_id IN (
+    SELECT id FROM attribute_definition
+    WHERE code IN ('gold_type_code', 'gold_brand_code', 'is_silver')
+);
+
+DELETE FROM attribute_definition
+WHERE code IN ('gold_type_code', 'gold_brand_code', 'is_silver');

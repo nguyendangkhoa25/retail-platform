@@ -37,5 +37,15 @@ public interface ProfileService {
      * Update user language preference
      */
     UserProfile updateProfileLang(String username, ProfileRequest request);
+
+    /**
+     * Get user preferences JSON (autocomplete history, etc.)
+     */
+    String getPreferences(String username);
+
+    /**
+     * Save user preferences JSON
+     */
+    void updatePreferences(String username, String preferences);
 }
 

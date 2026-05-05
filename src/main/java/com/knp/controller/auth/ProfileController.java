@@ -146,6 +146,26 @@ public class ProfileController {
     }
 
     /**
+     * GET /profiles/preferences
+     * Get the current user's preferences JSON (autocomplete history, etc.)
+     */
+    @GetMapping("/preferences")
+    public ResponseEntity<ApiResponse<String>> getPreferences() {
+        String prefs = profileService.getPreferences(getCurrentUsername());
+        return ResponseEntity.ok(ApiResponse.success(prefs, "Preferences retrieved"));
+    }
+
+    /**
+     * PUT /profiles/preferences
+     * Save the current user's preferences JSON
+     */
+    @PutMapping("/preferences")
+    public ResponseEntity<ApiResponse<Void>> updatePreferences(@RequestBody ProfileRequest request) {
+        profileService.updatePreferences(getCurrentUsername(), request.getPreferences());
+        return ResponseEntity.ok(ApiResponse.success(null, "Preferences saved"));
+    }
+
+    /**
      * Get the current authenticated username
      */
     private String getCurrentUsername() {

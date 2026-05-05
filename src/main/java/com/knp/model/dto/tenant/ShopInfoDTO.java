@@ -38,7 +38,9 @@ public class ShopInfoDTO {
     private Integer pawnDueDate;
     private Boolean excludeVisibleItem;
     private String pawnCategoryConfig;
+    private String pawnDenominations;
 
     private String priceBoardCode;
+    private String shopLocations;
 }
 

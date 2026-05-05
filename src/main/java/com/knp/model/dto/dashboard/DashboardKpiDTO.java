@@ -14,8 +14,6 @@ import java.math.BigDecimal;
 public class DashboardKpiDTO {
     private Long itemsSold;
     private BigDecimal revenue;
-    private Long itemsBought;
-    private BigDecimal buybackSpent;
     private Long newPawnContracts;
     private BigDecimal newPawnAmount;
     private Long interestEarned;

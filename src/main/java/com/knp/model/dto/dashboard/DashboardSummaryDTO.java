@@ -32,15 +32,6 @@ public class DashboardSummaryDTO {
     private Long monthItemsSold;
     private Long yearItemsSold;
 
-    // Buyback: items purchased from customers & money spent
-    private Long totalItemsBought;
-    private Long monthItemsBought;
-    private Long yearItemsBought;
-    private BigDecimal totalBuybackSpent;
-    private BigDecimal monthBuybackSpent;
-    private BigDecimal yearBuybackSpent;
-    private Long totalBuybackOrders;
-
     // Pawn KPIs (jewelry shops)
     private Long activePawnContracts;
     private BigDecimal activePawnAmount;

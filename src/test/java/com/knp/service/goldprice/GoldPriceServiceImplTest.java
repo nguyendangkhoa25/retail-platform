@@ -7,6 +7,7 @@ import com.knp.model.dto.goldprice.PriceBoardResponse;
 import com.knp.model.entity.tenant.GoldPrice;
 import com.knp.model.entity.tenant.ShopInfo;
 import com.knp.model.enums.ShopConfigKey;
+import com.knp.repository.product.CategoryRepository;
 import com.knp.repository.tenant.GoldPriceRepository;
 import com.knp.repository.tenant.ShopInfoRepository;
 import com.knp.service.MessageService;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.*;
 class GoldPriceServiceImplTest {
 
     @Mock private GoldPriceRepository goldPriceRepository;
+    @Mock private CategoryRepository categoryRepository;
     @Mock private ShopInfoRepository shopInfoRepository;
     @Mock private ShopConfigService shopConfigService;
     @Mock private MessageService messageService;

@@ -2,28 +2,16 @@ package com.knp.model.dto.marketprice;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
-import lombok.Data;
-
+import lombok.*;
 import java.math.BigDecimal;
 
-@Data
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class SaveMarketPriceRequest {
-
-    @NotBlank
-    private String name;
-
-    @NotBlank
-    private String unit;
-
-    @NotNull
-    @PositiveOrZero
-    private BigDecimal buyPrice;
-
-    @PositiveOrZero
+    @NotBlank private String name;
+    @NotBlank private String unit;
+    @NotNull  private BigDecimal buyPrice;
     private BigDecimal sellPrice;
-
-    private Boolean isActive = true;
+    private Boolean isActive;
     private String notes;
-    private Integer sortOrder = 999;
+    private Integer sortOrder;
 }

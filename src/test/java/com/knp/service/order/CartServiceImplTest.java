@@ -54,6 +54,7 @@ import static org.mockito.Mockito.*;
 import com.knp.service.MessageService;
 import com.knp.service.audit.ActivityLogService;
 import com.knp.service.inventory.InventoryService;
+import com.knp.service.tenant.ShopConfigService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
 import com.knp.service.product.ProductService;
@@ -80,6 +81,9 @@ class CartServiceImplTest {
 
     @Mock
     private CustomerRepository customerRepository;
+
+    @Mock
+    private ShopConfigService shopConfigService;
 
     @Mock
     private ShopInfoService shopInfoService;
@@ -118,6 +122,7 @@ class CartServiceImplTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        when(shopConfigService.getDouble(any(), anyDouble())).thenReturn(0.10);
         cartService = new CartServiceImpl(
             cartRepository,
             cartItemRepository,
@@ -127,6 +132,7 @@ class CartServiceImplTest {
             objectMapper,
             inventoryService,
             productService,
+            shopConfigService,
             shopInfoService,
             promotionService,
             loyaltyService,

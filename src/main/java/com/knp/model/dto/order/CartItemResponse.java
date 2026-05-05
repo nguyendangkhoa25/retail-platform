@@ -1,5 +1,6 @@
 package com.knp.model.dto.order;
 
+import com.knp.model.entity.order.CartItemEntity;
 import com.knp.model.enums.DiscountType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -35,6 +36,8 @@ public class CartItemResponse {
     private BigDecimal tax;
     private BigDecimal lineGrandTotal;
     private Map<String, String> variants;
+    private CartItemEntity.ItemType itemType;
+    private String metadata;
     private String notes;
 }
 

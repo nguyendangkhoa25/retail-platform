@@ -1,5 +1,6 @@
 package com.knp.model.dto.order;
 
+import com.knp.model.entity.order.Order;
 import com.knp.model.enums.DiscountType;
 import jakarta.validation.constraints.DecimalMin;
 import lombok.Data;
@@ -50,4 +51,10 @@ public class CheckoutRequest {
      * If provided, this order will be cancelled before creating the final COMPLETED order.
      */
     private Long pendingOrderId;
+
+    /**
+     * Order type: SELL (default), BUY (shop buys from customer), EXCHANGE (net gold swap).
+     * Null defaults to SELL to preserve backward compatibility.
+     */
+    private Order.OrderType orderType;
 }

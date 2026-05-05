@@ -81,21 +81,23 @@ public class OrderController {
 
     /**
      * GET /api/orders
-     * Returns a paginated list of all orders, optionally filtered by status.
+     * Returns a paginated list of all orders, optionally filtered by status and/or orderType.
      *
      * Query params:
-     *   page   (default 0)
-     *   size   (default 20)
-     *   status (optional) — PENDING | IN_PROGRESS | COMPLETED | CANCELLED
+     *   page      (default 0)
+     *   size      (default 20)
+     *   status    (optional) — PENDING | IN_PROGRESS | COMPLETED | CANCELLED | VOIDED
+     *   orderType (optional) — SELL | BUY | EXCHANGE
      */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<OrderDTO>>> getAllOrders(
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String orderType,
             @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "20") int size) {
-        log.info("Endpoint: GET /orders - status: {}, page: {}, size: {}", status, page, size);
+        log.info("Endpoint: GET /orders - status: {}, orderType: {}, page: {}, size: {}", status, orderType, page, size);
         Pageable pageable = PageRequest.of(page, size);
-        Page<OrderDTO> orders = orderService.getAllOrders(status, pageable);
+        Page<OrderDTO> orders = orderService.getAllOrders(status, orderType, pageable);
         return ResponseEntity.ok(ApiResponse.success(orders, "Orders retrieved successfully"));
     }
 

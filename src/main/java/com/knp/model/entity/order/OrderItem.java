@@ -5,6 +5,8 @@ import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.entity.product.Product;
 import jakarta.validation.constraints.Positive;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -78,6 +80,21 @@ public class OrderItem extends TenantAwareEntity {
     @Builder.Default
     @Column(name = "is_salary_calculated", nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
     private Boolean salaryCalculated = false;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "item_type", length = 20, nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'STANDARD'")
+    private ItemType itemType = ItemType.STANDARD;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "metadata", columnDefinition = "jsonb")
+    private String metadata;
+
+    public enum ItemType {
+        STANDARD,
+        GOLD_IN,
+        GOLD_OUT
+    }
 
     public enum ItemStatus {
         PENDING,
