@@ -18,6 +18,7 @@ import com.knp.repository.product.CategoryRepository;
 import com.knp.repository.product.AttributeDefinitionRepository;
 import com.knp.repository.product.AttributeGroupRepository;
 import com.knp.repository.product.ProductAttributeValueRepository;
+import com.knp.repository.product.ProductVariantRepository;
 import com.knp.repository.vendor.VendorRepository;
 import com.knp.service.MessageService;
 import com.knp.service.audit.ActivityLogService;
@@ -85,6 +86,9 @@ class ProductServiceImplTest {
 
     @Mock
     private ProductCatalogService productCatalogService;
+
+    @Mock
+    private ProductVariantRepository productVariantRepository;
 
     @InjectMocks
     private ProductServiceImpl productService;

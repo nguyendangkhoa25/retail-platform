@@ -46,6 +46,7 @@ public class ProductServiceImpl implements ProductService {
     private final OpenFoodFactsClient openFoodFactsClient;
     private final ProductCatalogService productCatalogService;
     private final InventoryRepository inventoryRepository;
+    private final ProductVariantRepository productVariantRepository;
 
     @Override
     public ProductDTO createProduct(CreateProductRequest request) {
@@ -81,6 +82,7 @@ public class ProductServiceImpl implements ProductService {
                 .description(request.getDescription())
                 .price(request.getPrice())
                 .costPrice(request.getCostPrice() != null ? request.getCostPrice() : java.math.BigDecimal.ZERO)
+                .commissionRate(request.getCommissionRate())
                 .unit(request.getUnit())
                 .shelfLocation(request.getShelfLocation())
                 .vendor(vendor)
@@ -213,6 +215,8 @@ public class ProductServiceImpl implements ProductService {
         if (request.getCostPrice() != null) {
             product.setCostPrice(request.getCostPrice());
         }
+        // commissionRate: null = inherit employee default; explicit value (incl. 0) = override
+        product.setCommissionRate(request.getCommissionRate());
         product.setUnit(request.getUnit());
         product.setShelfLocation(request.getShelfLocation());
         product.setStatus(Product.ProductStatus.valueOf(request.getStatus()));
@@ -326,7 +330,16 @@ public class ProductServiceImpl implements ProductService {
         log.info("Getting all products with status: {}", status);
         Product.ProductStatus productStatus = Product.ProductStatus.valueOf(status.toUpperCase());
         Page<Product> products = productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(productStatus, pageable);
-        return products.map(this::mapToDTO);
+
+        // Batch-load variant presence to avoid N+1 queries
+        List<Long> productIds = products.getContent().stream()
+                .map(Product::getId)
+                .collect(Collectors.toList());
+        Set<Long> productIdsWithVariants = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productVariantRepository.findProductIdsWithActiveVariants(productIds);
+
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
     }
 
     @Override
@@ -334,7 +347,11 @@ public class ProductServiceImpl implements ProductService {
     public Page<ProductDTO> getProductsByType(Long productTypeId, Pageable pageable) {
         log.info("Getting products by type: {}", productTypeId);
         Page<Product> products = productRepository.findByProductTypeIdAndDeletedFalseOrderByCreatedAtDesc(productTypeId, pageable);
-        return products.map(this::mapToDTO);
+        List<Long> productIds = products.getContent().stream().map(Product::getId).collect(Collectors.toList());
+        Set<Long> productIdsWithVariants = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productVariantRepository.findProductIdsWithActiveVariants(productIds);
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
     }
 
     @Override
@@ -342,7 +359,11 @@ public class ProductServiceImpl implements ProductService {
     public Page<ProductDTO> searchProducts(String searchTerm, Pageable pageable) {
         log.info("Searching products with term: {}", searchTerm);
         Page<Product> products = productRepository.searchByKeyword(searchTerm.toLowerCase(), pageable);
-        return products.map(this::mapToDTO);
+        List<Long> productIds = products.getContent().stream().map(Product::getId).collect(Collectors.toList());
+        Set<Long> productIdsWithVariants = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productVariantRepository.findProductIdsWithActiveVariants(productIds);
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
     }
 
     @Override
@@ -446,7 +467,7 @@ public class ProductServiceImpl implements ProductService {
         return max + 1;
     }
 
-    private ProductDTO mapToDTO(Product product) {
+    private ProductDTO mapToDTOWithVariantFlag(Product product, boolean hasVariants) {
         Map<String, Object> attributes = new HashMap<>();
         for (ProductAttributeValue attrValue : product.getAttributeValues()) {
             attributes.put(attrValue.getAttribute().getCode(), attrValue.getValue());
@@ -471,6 +492,7 @@ public class ProductServiceImpl implements ProductService {
                 .description(product.getDescription())
                 .price(product.getPrice())
                 .costPrice(product.getCostPrice())
+                .commissionRate(product.getCommissionRate())
                 .unit(product.getUnit())
                 .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
                 .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
@@ -479,6 +501,49 @@ public class ProductServiceImpl implements ProductService {
                 .categoryIds(categoryIds)
                 .categoryNames(categoryNames)
                 .attributes(attributes)
+                .hasVariants(hasVariants)
+                .createdAt(product.getCreatedAt())
+                .updatedAt(product.getUpdatedAt())
+                .build();
+    }
+
+    private ProductDTO mapToDTO(Product product) {
+        Map<String, Object> attributes = new HashMap<>();
+        for (ProductAttributeValue attrValue : product.getAttributeValues()) {
+            attributes.put(attrValue.getAttribute().getCode(), attrValue.getValue());
+        }
+
+        Set<Long> categoryIds = product.getCategories().stream()
+                .map(Category::getId)
+                .collect(Collectors.toSet());
+
+        Set<String> categoryNames = product.getCategories().stream()
+                .map(Category::getName)
+                .collect(Collectors.toSet());
+
+        boolean hasVariants = productVariantRepository.existsByProductIdAndDeletedAtIsNull(product.getId());
+
+        return ProductDTO.builder()
+                .id(product.getId())
+                .productTypeId(product.getProductType().getId())
+                .productTypeName(product.getProductType().getName())
+                .productTypeCode(product.getProductType().getCode())
+                .sku(product.getSku())
+                .barcode(product.getBarcode())
+                .name(product.getName())
+                .description(product.getDescription())
+                .price(product.getPrice())
+                .costPrice(product.getCostPrice())
+                .commissionRate(product.getCommissionRate())
+                .unit(product.getUnit())
+                .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
+                .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
+                .shelfLocation(product.getShelfLocation())
+                .status(product.getStatus().toString())
+                .categoryIds(categoryIds)
+                .categoryNames(categoryNames)
+                .attributes(attributes)
+                .hasVariants(hasVariants)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();

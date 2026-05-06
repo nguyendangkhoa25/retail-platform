@@ -128,6 +128,12 @@ public class MultiTenantController {
                 log.warn("Shop-type DML seed failed for tenant {} (non-fatal): {}",
                         tenant.getTenantId(), e.getMessage());
             }
+            try {
+                tenantSeedService.seedShopTypeTemplates(request.getShopType());
+            } catch (Exception e) {
+                log.warn("Shop-type print-template seed failed for tenant {} (non-fatal): {}",
+                        tenant.getTenantId(), e.getMessage());
+            }
         } catch (Exception e) {
             log.error("Provisioning failed for tenant {}: {}", tenant.getTenantId(), e.getMessage(), e);
             throw new RuntimeException("Tenant created but admin user provisioning failed: " + e.getMessage(), e);

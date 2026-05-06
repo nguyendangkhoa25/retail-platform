@@ -47,6 +47,10 @@ public class CartRequest {
     
     private String discountReason;
     
+    // Commission (COMMISSION feature)
+    private Long assignedEmployeeId;
+    private BigDecimal commissionAmount;
+
     // Coupon/Promotion
     private String couponCode;
     private String promotionId;

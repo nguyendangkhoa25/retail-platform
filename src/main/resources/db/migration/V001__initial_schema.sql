@@ -363,9 +363,10 @@ CREATE TABLE IF NOT EXISTS product (
     updated_at      TIMESTAMP      NOT NULL DEFAULT NOW(),
     deleted         BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at      TIMESTAMP      DEFAULT NULL,
-    barcode         VARCHAR(100)   DEFAULT NULL,
-    shelf_location  VARCHAR(100)   DEFAULT NULL,
-    legacy_id       VARCHAR(50)    DEFAULT NULL,
+    barcode          VARCHAR(100)   DEFAULT NULL,
+    shelf_location   VARCHAR(100)   DEFAULT NULL,
+    legacy_id        VARCHAR(50)    DEFAULT NULL,
+    commission_rate  DECIMAL(5,2)   DEFAULT NULL,
     CONSTRAINT uq_product_sku_tenant     UNIQUE (sku, tenant_id),
     CONSTRAINT fk_product_type           FOREIGN KEY (product_type_id) REFERENCES product_type (id),
     CONSTRAINT fk_product_vendor         FOREIGN KEY (vendor_id)       REFERENCES vendors       (id)
@@ -427,6 +428,32 @@ CREATE TABLE IF NOT EXISTS variant_type_options (
     deleted_at      TIMESTAMP    DEFAULT NULL,
     CONSTRAINT fk_vto_variant_type FOREIGN KEY (variant_type_id) REFERENCES variant_types (id)
 );
+
+-- 4.10b product_variants
+CREATE TABLE IF NOT EXISTS product_variants (
+    id               BIGSERIAL    PRIMARY KEY,
+    tenant_id        VARCHAR(100) NOT NULL,
+    product_id       BIGINT       NOT NULL,
+    sku              VARCHAR(100) NOT NULL,
+    barcode          VARCHAR(100) DEFAULT NULL,
+    variant_options  JSONB        NOT NULL DEFAULT '{}',
+    price_override   NUMERIC(15,2) DEFAULT NULL,
+    cost_override    NUMERIC(15,2) DEFAULT NULL,
+    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
+    deleted          BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at       TIMESTAMP    DEFAULT NOW(),
+    updated_at       TIMESTAMP    DEFAULT NOW(),
+    deleted_at       TIMESTAMP    DEFAULT NULL,
+    CONSTRAINT uq_product_variants_sku UNIQUE (tenant_id, sku)
+);
+
+ALTER TABLE product_variants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_variants FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON product_variants
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+CREATE INDEX IF NOT EXISTS idx_product_variants_product_id
+    ON product_variants(product_id) WHERE deleted_at IS NULL;
 
 -- 4.11 inventory
 CREATE TABLE IF NOT EXISTS inventory (
@@ -583,8 +610,9 @@ CREATE TABLE IF NOT EXISTS order_items (
     commission_rate       DECIMAL(5,2)   DEFAULT 0.00,
     commission_amount     DECIMAL(10,2)  DEFAULT 0.00,
     amount_before_tax     DECIMAL(10,2)  DEFAULT 0.00,
-    assigned_employee_id  BIGINT         DEFAULT NULL,
-    unit_cost             DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
+    assigned_employee_id   BIGINT         DEFAULT NULL,
+    assigned_employee_name VARCHAR(255)   DEFAULT NULL,
+    unit_cost              DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
     cost_amount           DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
     included_in_salary_id BIGINT         DEFAULT NULL,
     is_salary_calculated  BOOLEAN        NOT NULL DEFAULT FALSE,
@@ -604,7 +632,7 @@ CREATE TABLE IF NOT EXISTS order_items (
 CREATE TABLE IF NOT EXISTS invoices (
     id                       BIGSERIAL      PRIMARY KEY,
     tenant_id                VARCHAR(100)   NOT NULL,
-    order_id                 BIGINT         NOT NULL,
+    order_id                 BIGINT         DEFAULT NULL,
     invoice_number           VARCHAR(50)    NOT NULL,
     invoice_series           VARCHAR(100)   DEFAULT NULL,
     total_amount             DECIMAL(10,2)  NOT NULL,
@@ -636,14 +664,23 @@ CREATE TABLE IF NOT EXISTS invoices (
     code_of_tax              VARCHAR(100)   DEFAULT NULL,
     created_by               VARCHAR(100)   DEFAULT NULL,
     transaction_uuid         VARCHAR(255)   DEFAULT NULL,
+    direction                VARCHAR(10)    NOT NULL DEFAULT 'OUTPUT',
+    supplier_invoice_number  VARCHAR(50)    DEFAULT NULL,
+    vendor_id                BIGINT         DEFAULT NULL,
+    vendor_name              VARCHAR(200)   DEFAULT NULL,
+    vendor_tax_code          VARCHAR(50)    DEFAULT NULL,
+    purchase_order_id        BIGINT         DEFAULT NULL,
     deleted                  BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at               TIMESTAMP      DEFAULT NULL,
     created_at               TIMESTAMP      DEFAULT NOW(),
     updated_at               TIMESTAMP      DEFAULT NOW(),
     CONSTRAINT uq_invoices_number_tenant UNIQUE (invoice_number, tenant_id),
-    CONSTRAINT chk_inv_status CHECK (status IN ('DRAFT','COMPLETED','FAILED','CANCELLED')),
+    CONSTRAINT chk_inv_status    CHECK (status IN ('DRAFT','COMPLETED','FAILED','CANCELLED')),
+    CONSTRAINT chk_inv_direction CHECK (direction IN ('OUTPUT','INPUT')),
     CONSTRAINT fk_inv_order  FOREIGN KEY (order_id)  REFERENCES orders         (id),
-    CONSTRAINT fk_inv_buyer  FOREIGN KEY (buyer_id)  REFERENCES invoice_buyers (id) ON DELETE SET NULL
+    CONSTRAINT fk_inv_buyer  FOREIGN KEY (buyer_id)  REFERENCES invoice_buyers (id) ON DELETE SET NULL,
+    CONSTRAINT fk_inv_vendor FOREIGN KEY (vendor_id) REFERENCES vendors        (id) ON DELETE SET NULL
+    -- fk_inv_purchase_order deferred: purchase_orders is defined later in this file
 );
 
 -- 4.18 invoice_items
@@ -717,9 +754,14 @@ CREATE TABLE IF NOT EXISTS cart_items (
     metadata        JSONB          DEFAULT NULL,
     variants        JSONB          DEFAULT NULL,
     notes           TEXT           DEFAULT NULL,
-    tax_rate        NUMERIC(5,4)   NOT NULL DEFAULT 0.10,
-    added_at        TIMESTAMP      NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMP      NOT NULL DEFAULT NOW(),
+    tax_rate               NUMERIC(5,4)   NOT NULL DEFAULT 0.10,
+    assigned_employee_id   BIGINT         DEFAULT NULL,
+    assigned_employee_name VARCHAR(255)   DEFAULT NULL,
+    commission_rate        DECIMAL(5,2)   DEFAULT 0.00,
+    commission_amount      DECIMAL(10,2)  DEFAULT 0.00,
+    product_type_code      VARCHAR(50)    DEFAULT NULL,
+    added_at               TIMESTAMP      NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMP      NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_ci_item_type CHECK (item_type IN ('STANDARD', 'GOLD_IN', 'GOLD_OUT')),
     CONSTRAINT fk_ci_cart       FOREIGN KEY (cart_id) REFERENCES carts (id) ON DELETE CASCADE
 );
@@ -831,6 +873,95 @@ CREATE TABLE IF NOT EXISTS employees (
     CONSTRAINT fk_employee_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
 );
 
+-- 4.25b salary
+CREATE TABLE IF NOT EXISTS salary (
+    id               BIGSERIAL      PRIMARY KEY,
+    tenant_id        VARCHAR(36)    NOT NULL,
+    employee_id      BIGINT         NOT NULL,
+    employee_name    VARCHAR(255)   NOT NULL,
+    month            INT            NOT NULL,
+    year             INT            NOT NULL,
+    base_wage        DECIMAL(15,2)  NOT NULL DEFAULT 0,
+    total_commission DECIMAL(15,2)  NOT NULL DEFAULT 0,
+    advance_amount   DECIMAL(15,2)  NOT NULL DEFAULT 0,
+    total_amount     DECIMAL(15,2)  NOT NULL DEFAULT 0,
+    status           VARCHAR(20)    NOT NULL DEFAULT 'DRAFT',
+    notes            TEXT           DEFAULT NULL,
+    approved_at      TIMESTAMP      DEFAULT NULL,
+    paid_at          TIMESTAMP      DEFAULT NULL,
+    created_by       VARCHAR(100)   DEFAULT NULL,
+    created_at       TIMESTAMP      NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMP      NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_salary_month  CHECK (month BETWEEN 1 AND 12),
+    CONSTRAINT chk_salary_year   CHECK (year BETWEEN 2000 AND 2100),
+    CONSTRAINT chk_salary_status CHECK (status IN ('DRAFT','APPROVED','PAID')),
+    CONSTRAINT uq_salary_emp_month_year UNIQUE (tenant_id, employee_id, month, year),
+    CONSTRAINT fk_salary_employee FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_salary_tenant_year_month ON salary (tenant_id, year DESC, month DESC);
+CREATE INDEX IF NOT EXISTS idx_salary_employee          ON salary (tenant_id, employee_id);
+CREATE INDEX IF NOT EXISTS idx_salary_status            ON salary (tenant_id, status);
+
+ALTER TABLE salary ENABLE ROW LEVEL SECURITY;
+ALTER TABLE salary FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON salary
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+-- 4.25c salary_advance
+CREATE TABLE IF NOT EXISTS salary_advance (
+    id              BIGSERIAL       PRIMARY KEY,
+    tenant_id       VARCHAR(36)     NOT NULL,
+    employee_id     BIGINT          NOT NULL,
+    employee_name   VARCHAR(255)    NOT NULL,
+    amount          DECIMAL(15,2)   NOT NULL,
+    advance_date    DATE            NOT NULL,
+    note            TEXT            DEFAULT NULL,
+    salary_id       BIGINT          DEFAULT NULL,
+    is_deducted     BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_by      VARCHAR(100)    DEFAULT NULL,
+    created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_adv_amount  CHECK (amount > 0),
+    CONSTRAINT fk_adv_employee FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_adv_salary   FOREIGN KEY (salary_id)   REFERENCES salary(id)    ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_adv_employee ON salary_advance (tenant_id, employee_id);
+CREATE INDEX IF NOT EXISTS idx_adv_salary   ON salary_advance (salary_id);
+CREATE INDEX IF NOT EXISTS idx_adv_date     ON salary_advance (tenant_id, advance_date DESC);
+
+ALTER TABLE salary_advance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE salary_advance FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON salary_advance
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+-- 4.25d salary_adjustment
+CREATE TABLE IF NOT EXISTS salary_adjustment (
+    id          BIGSERIAL       PRIMARY KEY,
+    tenant_id   VARCHAR(36)     NOT NULL,
+    salary_id   BIGINT          NOT NULL,
+    type        VARCHAR(20)     NOT NULL,
+    amount      DECIMAL(15,2)   NOT NULL,
+    note        TEXT            DEFAULT NULL,
+    created_by  VARCHAR(100)    DEFAULT NULL,
+    created_at  TIMESTAMP       NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_adj_type   CHECK (type IN ('BONUS', 'DEDUCTION')),
+    CONSTRAINT chk_adj_amount CHECK (amount > 0),
+    CONSTRAINT fk_adj_salary  FOREIGN KEY (salary_id) REFERENCES salary(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_adj_salary ON salary_adjustment (salary_id);
+
+ALTER TABLE salary_adjustment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE salary_adjustment FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON salary_adjustment
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+-- FK from order_items.included_in_salary_id → salary (deferred because order_items is defined earlier)
+ALTER TABLE order_items
+    ADD CONSTRAINT fk_oi_salary FOREIGN KEY (included_in_salary_id) REFERENCES salary(id) ON DELETE SET NULL;
+
 -- 4.26 purchase_orders
 CREATE TABLE IF NOT EXISTS purchase_orders (
     id            BIGSERIAL      PRIMARY KEY,
@@ -851,6 +982,10 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     CONSTRAINT uq_po_number_tenant UNIQUE (po_number, tenant_id),
     CONSTRAINT fk_po_vendor        FOREIGN KEY (vendor_id) REFERENCES vendors (id)
 );
+
+-- Deferred FK: invoices.purchase_order_id → purchase_orders (purchase_orders defined after invoices)
+ALTER TABLE invoices
+    ADD CONSTRAINT fk_inv_purchase_order FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE SET NULL;
 
 -- 4.27 purchase_order_items
 CREATE TABLE IF NOT EXISTS purchase_order_items (
@@ -1282,6 +1417,56 @@ CREATE TABLE IF NOT EXISTS product_catalog (
     updated_at    TIMESTAMP
 );
 
+-- 4.45 shop_integrations (per-tenant third-party integration credentials)
+CREATE TABLE IF NOT EXISTS shop_integrations (
+    id                BIGSERIAL    PRIMARY KEY,
+    tenant_id         VARCHAR(100) NOT NULL,
+    integration_type  VARCHAR(50)  NOT NULL,
+    config_json       TEXT         DEFAULT NULL,
+    status            VARCHAR(20)  NOT NULL DEFAULT 'DISCONNECTED',
+    connected_at      TIMESTAMP    DEFAULT NULL,
+    disconnected_at   TIMESTAMP    DEFAULT NULL,
+    deleted           BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP    DEFAULT NULL,
+    created_at        TIMESTAMP    DEFAULT NOW(),
+    updated_at        TIMESTAMP    DEFAULT NOW(),
+    CONSTRAINT uq_shop_integrations_tenant_type UNIQUE (tenant_id, integration_type)
+);
+
+ALTER TABLE shop_integrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shop_integrations FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON shop_integrations
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+CREATE INDEX IF NOT EXISTS idx_shop_integrations_tenant_type
+    ON shop_integrations (tenant_id, integration_type);
+
+-- 4.46 entity_images (Drive file references for any entity)
+CREATE TABLE IF NOT EXISTS entity_images (
+    id             BIGSERIAL     PRIMARY KEY,
+    tenant_id      VARCHAR(100)  NOT NULL,
+    entity_type    VARCHAR(30)   NOT NULL,
+    entity_id      BIGINT        NOT NULL,
+    drive_file_id  VARCHAR(200)  NOT NULL,
+    drive_url      TEXT          DEFAULT NULL,
+    thumbnail_url  TEXT          DEFAULT NULL,
+    label          VARCHAR(100)  DEFAULT NULL,
+    uploaded_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted        BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at     TIMESTAMP     DEFAULT NULL,
+    created_at     TIMESTAMP     DEFAULT NOW(),
+    updated_at     TIMESTAMP     DEFAULT NOW()
+);
+
+ALTER TABLE entity_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE entity_images FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON entity_images
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+CREATE INDEX IF NOT EXISTS idx_entity_images_entity
+    ON entity_images (tenant_id, entity_type, entity_id)
+    WHERE deleted = FALSE;
+
 -- ════════════════════════════════════════════════════════════
 -- SECTION 5: Indexes
 -- ════════════════════════════════════════════════════════════
@@ -1394,6 +1579,7 @@ CREATE INDEX IF NOT EXISTS idx_inv_tenant_id   ON invoices (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_inv_order_id    ON invoices (order_id);
 CREATE INDEX IF NOT EXISTS idx_inv_status      ON invoices (status);
 CREATE INDEX IF NOT EXISTS idx_inv_deleted     ON invoices (deleted);
+CREATE INDEX IF NOT EXISTS idx_inv_direction   ON invoices (tenant_id, direction);
 
 CREATE INDEX IF NOT EXISTS idx_ci_item_type    ON cart_items (item_type);
 
@@ -1668,10 +1854,15 @@ VALUES
     (202601031, 'ORDER_VIEW_ALL',   'Xem Tất Cả Đơn Hàng',       'Xem đơn hàng của tất cả nhân viên; nếu không có quyền này, chỉ xem được đơn hàng tự tạo', TRUE, FALSE),
     -- Gold price management (used by jewelry shops and pawn shops)
     (202601033, 'GOLD_PRICE',       'Bảng Giá Vàng',              'Quản lý bảng giá vàng theo tuổi, dùng cho tính giá mua/bán và cầm đồ',                    TRUE, FALSE),
-    (202601034, 'GOLD_PRICE_CHART', 'Biểu Đồ Giá Vàng',           'Xem biểu đồ giá vàng thế giới (XAU/USD) theo thời gian thực',                              TRUE, FALSE)
+    (202601034, 'GOLD_PRICE_CHART', 'Biểu Đồ Giá Vàng',           'Xem biểu đồ giá vàng thế giới (XAU/USD) theo thời gian thực',                              TRUE, FALSE),
+    -- Commission / salary sub-features
+    (202601035, 'COMMISSION',       'Hoa Hồng Nhân Viên',          'Gán nhân viên thực hiện và tính hoa hồng cho từng sản phẩm/dịch vụ trong đơn hàng',        TRUE, FALSE),
+    (202601036, 'SALARY_VIEW_ALL',  'Xem Tất Cả Bảng Lương',       'Xem bảng lương của tất cả nhân viên; nếu không có quyền này, chỉ xem được bảng lương của bản thân', TRUE, FALSE),
+    -- Integrations
+    (202601037, 'GOOGLE_DRIVE',     'Tích Hợp Google Drive',       'Kết nối Google Drive cá nhân để lưu ảnh sản phẩm, hình căn cước khách hàng và ảnh hợp đồng cầm đồ', TRUE, FALSE)
 ON CONFLICT (id) DO NOTHING;
 
-SELECT setval(pg_get_serial_sequence('features', 'id'), 202601034, true);
+SELECT setval(pg_get_serial_sequence('features', 'id'), 202601037, true);
 
 -- ── 2. Master roles ───────────────────────────────────────────
 INSERT INTO roles (id, tenant_id, name, description, deleted)
@@ -1777,7 +1968,42 @@ INSERT INTO banks (code, bin, name, short_name, sort_order) VALUES
 ('ANZ',      '970421', 'Ngân hàng ANZ Việt Nam',                                            'ANZ Vietnam',          58)
 ON CONFLICT (code) DO NOTHING;
 
--- ── 6. Backfill default POS_RECEIPT print template for existing active tenants ──
+-- ── 6. Backfill shop-type-specific print templates for existing tenants ──────
+-- On a fresh install there are no tenants yet, so these are no-ops.
+-- They exist so re-running V001 against an existing deployment is safe.
+SET row_security = off;
+
+INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default, deleted, created_at, updated_at)
+SELECT t.tenant_id, 'POS_RECEIPT', 'Phiếu dịch vụ',
+    '{"headerText":"","footerText":"Cảm ơn quý khách!\nHẹn gặp lại!","showAddress":true,"showTaxId":false,"showOrderNumber":true,"showDateTime":true,"showCustomer":true,"showTaxBreakdown":false,"showCashDetails":true,"paperWidth":"80mm","autoClose":true,"showVietQr":false}',
+    FALSE, FALSE, NOW(), NOW()
+FROM tenants t WHERE t.shop_type IN ('BARBER_SHOP', 'COFFEE_SHOP', 'FOOD_BEVERAGE', 'RESTAURANT')
+ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
+
+INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default, deleted, created_at, updated_at)
+SELECT t.tenant_id, 'POS_RECEIPT', 'Hóa đơn thuốc',
+    '{"headerText":"","footerText":"Cảm ơn quý khách!\nChúc bạn mau hồi phục!","showAddress":true,"showTaxId":true,"showOrderNumber":true,"showDateTime":true,"showCustomer":true,"showTaxBreakdown":true,"showCashDetails":true,"paperWidth":"80mm","autoClose":true,"showVietQr":false}',
+    FALSE, FALSE, NOW(), NOW()
+FROM tenants t WHERE t.shop_type = 'PHARMACY'
+ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
+
+INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default, deleted, created_at, updated_at)
+SELECT t.tenant_id, 'POS_RECEIPT', 'Hóa đơn siêu thị',
+    '{"headerText":"","footerText":"Cảm ơn quý khách!\nHẹn gặp lại!","showAddress":true,"showTaxId":false,"showOrderNumber":true,"showDateTime":true,"showCustomer":false,"showTaxBreakdown":false,"showCashDetails":true,"paperWidth":"80mm","autoClose":true,"showVietQr":true}',
+    FALSE, FALSE, NOW(), NOW()
+FROM tenants t WHERE t.shop_type = 'CONVENIENCE_STORE'
+ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
+
+INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default, deleted, created_at, updated_at)
+SELECT t.tenant_id, 'POS_RECEIPT', 'Phiếu bảo hành',
+    '{"headerText":"","footerText":"Cảm ơn quý khách!\nVui lòng giữ hóa đơn để bảo hành.","showAddress":true,"showTaxId":true,"showOrderNumber":true,"showDateTime":true,"showCustomer":true,"showTaxBreakdown":true,"showCashDetails":true,"paperWidth":"80mm","autoClose":true,"showVietQr":false}',
+    FALSE, FALSE, NOW(), NOW()
+FROM tenants t WHERE t.shop_type IN ('FASHION', 'ELECTRONICS')
+ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
+
+SET row_security = on;
+
+-- ── 6b. Backfill default POS_RECEIPT print template for existing active tenants ──
 -- On a fresh install there are no tenants yet, so this loop is a no-op.
 -- It exists so the migration is safe to apply against a database that was
 -- previously bootstrapped without print_template seeding in the DML scripts.

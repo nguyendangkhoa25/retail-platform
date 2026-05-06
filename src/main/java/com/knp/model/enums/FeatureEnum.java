@@ -19,6 +19,7 @@ public enum FeatureEnum {
     PROMOTION("Khuyến Mãi", "Tạo và quản lý các chương trình khuyến mãi, giảm giá"),
     EMPLOYEE("Nhân Viên", "Quản lý nhân viên, chức vụ, lương cơ bản"),
     SALARY("Lương Nhân Viên", "Quản lý bảng lương, tính toán lương, chi trả"),
+    SALARY_VIEW_ALL("Xem Tất Cả Bảng Lương", "Xem bảng lương của tất cả nhân viên; nếu không có quyền này, chỉ xem được bảng lương của bản thân"),
     CUSTOMER("Khách Hàng", "Quản lý thông tin khách hàng, lịch sử mua hàng"),
     LOYALTY("Tích Điểm Khách Hàng", "Chương trình tích điểm và phần thưởng khách hàng"),
     INVOICE("Hóa Đơn", "Quản lý hóa đơn, xuất hóa đơn điện tử"),
@@ -37,7 +38,9 @@ public enum FeatureEnum {
     BANK_ACCOUNT("Tài Khoản Ngân Hàng", "Quản lý tài khoản ngân hàng của cửa hàng"),
     ACCOUNTING("Kế Toán", "Xem báo cáo kế toán tổng hợp"),
     GOLD_PRICE("Bảng Giá Vàng", "Quản lý bảng giá vàng theo tuổi, dùng cho tính giá mua/bán và cầm đồ"),
-    GOLD_PRICE_CHART("Biểu Đồ Giá Vàng", "Xem biểu đồ giá vàng thế giới (XAU/USD) theo thời gian thực");
+    GOLD_PRICE_CHART("Biểu Đồ Giá Vàng", "Xem biểu đồ giá vàng thế giới (XAU/USD) theo thời gian thực"),
+    COMMISSION("Hoa Hồng Nhân Viên", "Gán nhân viên thực hiện và tính hoa hồng cho từng sản phẩm/dịch vụ trong đơn hàng"),
+    GOOGLE_DRIVE("Tích Hợp Google Drive", "Kết nối Google Drive cá nhân để lưu ảnh sản phẩm, hình căn cước khách hàng và ảnh hợp đồng cầm đồ");
 
     /**
      * -- GETTER --

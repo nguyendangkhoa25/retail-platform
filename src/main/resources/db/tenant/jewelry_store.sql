@@ -136,24 +136,10 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "paperWidth": "80mm",
   "autoClose": true
 }', TRUE),
-    -- Pawn contract / receipt (A5, 2 copies — customer + shop)
-    (current_setting('app.current_tenant', true), 'PAWN_STAMP', 'Hợp đồng cầm đồ vàng', '{
-  "showShopName": true,
-  "showQrCode": true,
-  "showCustomerInfo": true,
-  "showItemDetails": true,
-  "showWeight": true,
-  "showItemType": true,
-  "showPawnAmount": true,
-  "showAmountInWords": true,
-  "showInterestRate": true,
-  "showDueDate": true,
-  "showPawnDate": true,
-  "showPawnId": true,
-  "paperWidth": 210,
-  "paperHeight": 145,
-  "copies": 2
-}', TRUE),
+    -- Pawn stamp: default layout — prints shop name + row labels, for blank paper
+    (current_setting('app.current_tenant', true), 'PAWN_STAMP', 'Mặc định', '{"variant":"default"}', TRUE),
+    -- Pawn stamp: custom layout — data only, for pre-printed paper with shop name & labels already on it
+    (current_setting('app.current_tenant', true), 'PAWN_STAMP', 'Tùy chỉnh', '{"variant":"custom"}', FALSE),
     -- Product stamp: compact jewelry item label (16×30 mm)
     (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem trang sức 16x30mm', '{
   "showShopName": true,

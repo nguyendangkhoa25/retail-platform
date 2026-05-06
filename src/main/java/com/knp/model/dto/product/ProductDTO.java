@@ -26,6 +26,7 @@ public class ProductDTO {
     private String description;
     private BigDecimal price;
     private BigDecimal costPrice;
+    private BigDecimal commissionRate;
     private String unit;
     private Long vendorId;
     private String vendorName;
@@ -34,6 +35,7 @@ public class ProductDTO {
     private Set<Long> categoryIds;
     private Set<String> categoryNames;
     private Map<String, Object> attributes;
+    private Boolean hasVariants;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

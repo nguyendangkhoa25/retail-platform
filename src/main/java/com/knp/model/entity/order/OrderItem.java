@@ -61,6 +61,12 @@ public class OrderItem extends TenantAwareEntity {
     @Column(name = "tax_amount", precision = 10, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
+    @Column(name = "assigned_employee_id")
+    private Long assignedEmployeeId;
+
+    @Column(name = "assigned_employee_name")
+    private String assignedEmployeeName;
+
     @Builder.Default
     @Column(name = "commission_rate", precision = 5, scale = 2, columnDefinition = "DECIMAL(5,2) DEFAULT 0")
     private BigDecimal commissionRate = BigDecimal.ZERO;
@@ -76,6 +82,9 @@ public class OrderItem extends TenantAwareEntity {
 
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    @Column(name = "included_in_salary_id")
+    private Long includedInSalaryId;
 
     @Builder.Default
     @Column(name = "is_salary_calculated", nullable = false, columnDefinition = "BOOLEAN DEFAULT false")

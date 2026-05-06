@@ -4,6 +4,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -16,6 +17,8 @@ public class ShopInfoDTO {
     private String address;
     private String companyName;
     private Double defaultTaxRate;
+    private Boolean taxAutoApply;
+    private Map<String, Double> taxRateByProductType;
     private String eInvoiceUsername;
     private String eInvoicePassword;
     private String eInvoiceKey;

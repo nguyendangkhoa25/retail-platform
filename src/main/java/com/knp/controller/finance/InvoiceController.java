@@ -2,6 +2,7 @@ package com.knp.controller.finance;
 
 import com.knp.model.dto.ApiResponse;
 import com.knp.model.dto.invoice.CreateInvoiceRequest;
+import com.knp.model.dto.invoice.CreateInputInvoiceRequest;
 import com.knp.model.dto.invoice.InvoiceDTO;
 import com.knp.model.dto.invoice.InvoiceKpiResponse;
 import com.knp.model.dto.invoice.InvoiceResponse;
@@ -37,6 +38,60 @@ public class InvoiceController {
         log.info("Endpoint: GET /invoices - page: {}, size: {}", page, size);
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(ApiResponse.success(invoiceService.getAllInvoices(pageable), "Invoices retrieved successfully"));
+    }
+
+    @GetMapping("/output")
+    public ResponseEntity<ApiResponse<Page<InvoiceDTO>>> getOutputInvoices(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /invoices/output - page: {}, size: {}", page, size);
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.getOutputInvoices(pageable), "Output invoices retrieved"));
+    }
+
+    @GetMapping("/input")
+    public ResponseEntity<ApiResponse<Page<InvoiceDTO>>> getInputInvoices(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /invoices/input - page: {}, size: {}", page, size);
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.getInputInvoices(pageable), "Input invoices retrieved"));
+    }
+
+    @GetMapping("/output/status/{status}")
+    public ResponseEntity<ApiResponse<Page<InvoiceDTO>>> getOutputInvoicesByStatus(
+            @PathVariable String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.getOutputInvoicesByStatus(status, pageable), "Output invoices retrieved"));
+    }
+
+    @GetMapping("/input/status/{status}")
+    public ResponseEntity<ApiResponse<Page<InvoiceDTO>>> getInputInvoicesByStatus(
+            @PathVariable String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.getInputInvoicesByStatus(status, pageable), "Input invoices retrieved"));
+    }
+
+    @GetMapping("/output/search")
+    public ResponseEntity<ApiResponse<Page<InvoiceDTO>>> searchOutputInvoices(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.searchOutputInvoices(keyword, pageable), "Output invoices retrieved"));
+    }
+
+    @GetMapping("/input/search")
+    public ResponseEntity<ApiResponse<Page<InvoiceDTO>>> searchInputInvoices(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.searchInputInvoices(keyword, pageable), "Input invoices retrieved"));
     }
 
     @GetMapping("/status/{status}")
@@ -76,6 +131,18 @@ public class InvoiceController {
         log.info("Endpoint: POST /invoices");
         InvoiceDTO invoice = invoiceService.create(request);
         return ResponseEntity.ok(ApiResponse.success(invoice, "Invoice created successfully"));
+    }
+
+    @PostMapping("/input")
+    public ResponseEntity<ApiResponse<InvoiceDTO>> createInputInvoice(@RequestBody CreateInputInvoiceRequest request) {
+        log.info("Endpoint: POST /invoices/input");
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.createInputInvoice(request), "Input invoice created"));
+    }
+
+    @PutMapping("/{id}/confirm")
+    public ResponseEntity<ApiResponse<InvoiceDTO>> confirmInputInvoice(@PathVariable Long id) {
+        log.info("Endpoint: PUT /invoices/{}/confirm", id);
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.confirmInputInvoice(id), "Input invoice confirmed"));
     }
 
     @PutMapping("/{id}")

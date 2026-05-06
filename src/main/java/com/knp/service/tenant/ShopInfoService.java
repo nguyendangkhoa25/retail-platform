@@ -11,7 +11,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -21,6 +25,7 @@ public class ShopInfoService {
 
     private final ShopInfoRepository shopInfoRepository;
     private final ShopConfigService shopConfigService;
+    private final ObjectMapper objectMapper;
 
     public ShopInfoDTO getShopInfo() {
         log.info("Request: Get shop info");
@@ -47,6 +52,7 @@ public class ShopInfoService {
 
         // Config fields — write to shop_config (null clears the value)
         if (dto.getDefaultTaxRate() != null)   shopConfigService.set(ShopConfigKey.DEFAULT_TAX_RATE, dto.getDefaultTaxRate());
+        if (dto.getTaxAutoApply() != null)     shopConfigService.set(ShopConfigKey.TAX_AUTO_APPLY, dto.getTaxAutoApply());
         if (dto.getEInvoiceUsername() != null) shopConfigService.set(ShopConfigKey.EINVOICE_USERNAME, dto.getEInvoiceUsername());
         if (dto.getEInvoicePassword() != null) shopConfigService.set(ShopConfigKey.EINVOICE_PASSWORD, dto.getEInvoicePassword());
         if (dto.getEInvoiceKey() != null)      shopConfigService.set(ShopConfigKey.EINVOICE_KEY, dto.getEInvoiceKey());
@@ -57,6 +63,14 @@ public class ShopInfoService {
         // cashDenominations may be explicitly cleared to empty string
         shopConfigService.set(ShopConfigKey.CASH_DENOMINATIONS, dto.getCashDenominations());
         if (dto.getPosMode() != null)          shopConfigService.set(ShopConfigKey.POS_MODE, dto.getPosMode());
+        if (dto.getTaxRateByProductType() != null) {
+            try {
+                shopConfigService.set(ShopConfigKey.TAX_RATE_BY_PRODUCT_TYPE,
+                        objectMapper.writeValueAsString(dto.getTaxRateByProductType()));
+            } catch (Exception e) {
+                log.warn("Failed to serialize taxRateByProductType: {}", e.getMessage());
+            }
+        }
         if (dto.getPawnInterestRate() != null) shopConfigService.set(ShopConfigKey.PAWN_INTEREST_RATE, dto.getPawnInterestRate());
         if (dto.getPawnInterestType() != null) shopConfigService.set(ShopConfigKey.PAWN_INTEREST_TYPE, dto.getPawnInterestType());
         if (dto.getPawnDueDate() != null)      shopConfigService.set(ShopConfigKey.PAWN_DUE_DATE, dto.getPawnDueDate());
@@ -121,6 +135,17 @@ public class ShopInfoService {
                 .build();
     }
 
+    public Map<String, Double> parseTaxRateByProductType() {
+        String raw = shopConfigService.getString(ShopConfigKey.TAX_RATE_BY_PRODUCT_TYPE);
+        if (raw == null || raw.isBlank()) return new HashMap<>();
+        try {
+            return objectMapper.readValue(raw, new TypeReference<>() {});
+        } catch (Exception e) {
+            log.warn("Failed to parse taxRateByProductType config: {}", e.getMessage());
+            return new HashMap<>();
+        }
+    }
+
     private ShopInfo findOrCreate() {
         return shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
                 .orElseGet(() -> {
@@ -140,6 +165,8 @@ public class ShopInfoService {
                 .supplierTaxCode(shopInfo.getSupplierTaxCode())
                 .website(shopInfo.getWebsite())
                 .defaultTaxRate(shopConfigService.getDouble(ShopConfigKey.DEFAULT_TAX_RATE, 0.0))
+                .taxAutoApply(shopConfigService.getBoolean(ShopConfigKey.TAX_AUTO_APPLY, true))
+                .taxRateByProductType(parseTaxRateByProductType())
                 .eInvoiceUsername(shopConfigService.getString(ShopConfigKey.EINVOICE_USERNAME))
                 // passwords are not sent to frontend
                 .invoiceVendor(shopConfigService.getString(ShopConfigKey.INVOICE_VENDOR))

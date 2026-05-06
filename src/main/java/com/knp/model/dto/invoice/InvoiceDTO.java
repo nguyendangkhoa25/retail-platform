@@ -13,6 +13,7 @@ import java.util.List;
 @Builder
 public class InvoiceDTO {
     private Long id;
+    private String direction;
     private String invoiceNumber;
     private String invoiceSeries;
     private LocalDateTime issuedDate;
@@ -32,6 +33,13 @@ public class InvoiceDTO {
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // Input invoice vendor fields
+    private String supplierInvoiceNumber;
+    private Long vendorId;
+    private String vendorName;
+    private String vendorTaxCode;
+    private Long purchaseOrderId;
 
     // Orders and buyer info for display
     private List<OrderInfo> orders;

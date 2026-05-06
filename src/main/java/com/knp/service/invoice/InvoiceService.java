@@ -1,6 +1,7 @@
 package com.knp.service.invoice;
 
 import com.knp.model.dto.invoice.CreateInvoiceRequest;
+import com.knp.model.dto.invoice.CreateInputInvoiceRequest;
 import com.knp.model.dto.invoice.InvoiceDTO;
 import com.knp.model.dto.invoice.InvoiceKpiResponse;
 import com.knp.model.dto.invoice.InvoiceResponse;
@@ -12,17 +13,38 @@ import java.io.IOException;
 
 public interface InvoiceService {
 
+    // ── Direction-scoped list / search ────────────────────────────────────────
+
     Page<InvoiceDTO> getAllInvoices(Pageable pageable);
 
     Page<InvoiceDTO> getInvoicesByStatus(String status, Pageable pageable);
 
     Page<InvoiceDTO> searchInvoices(String keyword, Pageable pageable);
 
+    Page<InvoiceDTO> getOutputInvoices(Pageable pageable);
+
+    Page<InvoiceDTO> getInputInvoices(Pageable pageable);
+
+    Page<InvoiceDTO> getOutputInvoicesByStatus(String status, Pageable pageable);
+
+    Page<InvoiceDTO> getInputInvoicesByStatus(String status, Pageable pageable);
+
+    Page<InvoiceDTO> searchOutputInvoices(String keyword, Pageable pageable);
+
+    Page<InvoiceDTO> searchInputInvoices(String keyword, Pageable pageable);
+
     InvoiceDTO getById(Long id);
 
     InvoiceDTO getByOrderId(Long orderId);
 
+    // ── Output invoice (from orders) ──────────────────────────────────────────
     InvoiceDTO create(CreateInvoiceRequest request);
+
+    // ── Input invoice (from vendor purchase) ──────────────────────────────────
+    InvoiceDTO createInputInvoice(CreateInputInvoiceRequest request);
+
+    /** Mark an input invoice as received/confirmed (sets status = COMPLETED) */
+    InvoiceDTO confirmInputInvoice(Long id);
 
     InvoiceDTO update(Long id, UpdateInvoiceRequest request);
 

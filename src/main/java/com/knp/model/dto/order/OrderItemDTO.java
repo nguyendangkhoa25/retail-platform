@@ -21,4 +21,8 @@ public class OrderItemDTO {
     private BigDecimal taxAmount;
     private OrderItem.ItemType itemType;
     private String metadata;
+    private Long assignedEmployeeId;
+    private String assignedEmployeeName;
+    private BigDecimal commissionRate;
+    private BigDecimal commissionAmount;
 }

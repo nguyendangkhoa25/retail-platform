@@ -10,11 +10,10 @@ import com.knp.model.entity.finance.*;
 import com.knp.model.entity.order.*;
 import com.knp.model.entity.customer.*;
 import com.knp.model.entity.tenant.*;
+import com.knp.model.enums.InvoiceDirection;
 import com.knp.repository.finance.InvoiceRepository;
 import com.knp.repository.order.OrderRepository;
 import com.knp.model.enums.ShopConfigKey;
-import com.knp.service.invoice.ExternalInvoiceService;
-import com.knp.service.invoice.InvoiceServiceFactory;
 import com.knp.service.tenant.ShopConfigService;
 import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +45,7 @@ public class InvoiceServiceImpl implements InvoiceService {
     private final OrderRepository orderRepository;
     private final ShopConfigService shopConfigService;
     private final InvoiceServiceFactory invoiceServiceFactory;
+    private final AsyncInvoiceService asyncInvoiceService;
     private final MessageService messageService;
     private final TenantContext tenantContext;
 
@@ -66,6 +66,44 @@ public class InvoiceServiceImpl implements InvoiceService {
     public Page<InvoiceDTO> searchInvoices(String keyword, Pageable pageable) {
         log.info("Request: Search invoices - keyword: {}", keyword);
         return invoiceRepository.searchByKeyword(keyword, pageable).map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<InvoiceDTO> getOutputInvoices(Pageable pageable) {
+        log.info("Request: Get output invoices");
+        return invoiceRepository.findAllActiveByDirection(InvoiceDirection.OUTPUT, pageable).map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<InvoiceDTO> getInputInvoices(Pageable pageable) {
+        log.info("Request: Get input invoices");
+        return invoiceRepository.findAllActiveByDirection(InvoiceDirection.INPUT, pageable).map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<InvoiceDTO> getOutputInvoicesByStatus(String status, Pageable pageable) {
+        log.info("Request: Get output invoices by status: {}", status);
+        Invoice.InvoiceStatus invoiceStatus = Invoice.InvoiceStatus.valueOf(status.toUpperCase());
+        return invoiceRepository.findAllActiveByDirectionAndStatus(InvoiceDirection.OUTPUT, invoiceStatus, pageable).map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<InvoiceDTO> getInputInvoicesByStatus(String status, Pageable pageable) {
+        log.info("Request: Get input invoices by status: {}", status);
+        Invoice.InvoiceStatus invoiceStatus = Invoice.InvoiceStatus.valueOf(status.toUpperCase());
+        return invoiceRepository.findAllActiveByDirectionAndStatus(InvoiceDirection.INPUT, invoiceStatus, pageable).map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<InvoiceDTO> searchOutputInvoices(String keyword, Pageable pageable) {
+        log.info("Request: Search output invoices - keyword: {}", keyword);
+        return invoiceRepository.searchByKeywordAndDirection(keyword, InvoiceDirection.OUTPUT, pageable).map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<InvoiceDTO> searchInputInvoices(String keyword, Pageable pageable) {
+        log.info("Request: Search input invoices - keyword: {}", keyword);
+        return invoiceRepository.searchByKeywordAndDirection(keyword, InvoiceDirection.INPUT, pageable).map(this::mapToDTO);
     }
 
     @Override
@@ -276,31 +314,118 @@ public class InvoiceServiceImpl implements InvoiceService {
 
     @Override
     @Transactional
+    public InvoiceDTO createInputInvoice(CreateInputInvoiceRequest request) {
+        log.info("Request: Create input invoice from vendor={}", request.getVendorName());
+
+        String createdBy = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        Invoice invoice = Invoice.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
+                .direction(InvoiceDirection.INPUT)
+                .invoiceNumber(generateInvoiceNumber())
+                .invoiceSeries(null)
+                .status(Invoice.InvoiceStatus.DRAFT)
+                .invoiceType(request.getInvoiceType())
+                .paymentType(request.getPaymentType())
+                .currencyCode(request.getCurrencyCode() != null ? request.getCurrencyCode() : "VND")
+                .taxPercentage(request.getTaxPercentage() != null ? request.getTaxPercentage() : BigDecimal.ZERO)
+                .notes(request.getNotes())
+                .issuedDate(request.getInvoiceDate())
+                .supplierInvoiceNumber(request.getSupplierInvoiceNumber())
+                .vendorId(request.getVendorId())
+                .vendorName(request.getVendorName())
+                .vendorTaxCode(request.getVendorTaxCode())
+                .purchaseOrderId(request.getPurchaseOrderId())
+                .createdBy(createdBy)
+                .build();
+
+        List<InvoiceItem> items = new ArrayList<>();
+        if (request.getItems() != null) {
+            AtomicInteger lineNum = new AtomicInteger(1);
+            for (CreateInputInvoiceRequest.ItemRequest itemReq : request.getItems()) {
+                BigDecimal qty      = itemReq.getQuantity()  != null ? itemReq.getQuantity()  : BigDecimal.ONE;
+                BigDecimal price    = itemReq.getUnitPrice() != null ? itemReq.getUnitPrice() : BigDecimal.ZERO;
+                BigDecimal discount = itemReq.getDiscount()  != null ? itemReq.getDiscount()  : BigDecimal.ZERO;
+                BigDecimal taxPct   = itemReq.getTaxPercentage() != null
+                        ? itemReq.getTaxPercentage()
+                        : (request.getTaxPercentage() != null ? request.getTaxPercentage() : BigDecimal.ZERO);
+
+                BigDecimal lineAmt  = price.multiply(qty).subtract(discount);
+                BigDecimal taxAmt   = lineAmt.multiply(taxPct)
+                        .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+
+                items.add(InvoiceItem.builder()
+                        .tenantId(tenantContext.getCurrentTenantId())
+                        .invoice(invoice)
+                        .lineNumber(lineNum.getAndIncrement())
+                        .serviceName(itemReq.getItemName())
+                        .unit(itemReq.getUnit())
+                        .unitPrice(price)
+                        .quantity(qty)
+                        .discount(discount)
+                        .totalAmountWithoutTax(lineAmt)
+                        .taxPercentage(taxPct)
+                        .taxAmount(taxAmt)
+                        .totalAmountWithTax(lineAmt.add(taxAmt))
+                        .build());
+            }
+        }
+        invoice.setItems(items);
+
+        BigDecimal totalWithoutTax = items.stream()
+                .map(InvoiceItem::getTotalAmountWithoutTax)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal taxAmount = items.stream()
+                .map(InvoiceItem::getTaxAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        invoice.setTotalAmountWithoutTax(totalWithoutTax);
+        invoice.setTaxAmount(taxAmount);
+        invoice.setTotalAmount(totalWithoutTax.add(taxAmount));
+
+        Invoice saved = invoiceRepository.save(invoice);
+        log.info("Input invoice {} created", saved.getInvoiceNumber());
+        return mapToDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public InvoiceDTO confirmInputInvoice(Long id) {
+        log.info("Request: Confirm input invoice id: {}", id);
+        Invoice invoice = findActiveInvoice(id);
+
+        if (invoice.getDirection() != InvoiceDirection.INPUT) {
+            throw new BadRequestException(messageService.getMessage("error.invoice.not.input"));
+        }
+        if (invoice.getStatus() != Invoice.InvoiceStatus.DRAFT) {
+            throw new BadRequestException(messageService.getMessage("error.invoice.cannot.issue.non.draft"));
+        }
+
+        invoice.setStatus(Invoice.InvoiceStatus.COMPLETED);
+        invoice.setIssuedDate(LocalDateTime.now());
+        Invoice saved = invoiceRepository.save(invoice);
+        log.info("Input invoice {} confirmed", saved.getInvoiceNumber());
+        return mapToDTO(saved);
+    }
+
+    @Override
+    @Transactional
     public InvoiceDTO syncExternal(Long id) {
         log.info("Request: Sync invoice id: {} with external e-invoice system", id);
         Invoice invoice = findActiveInvoice(id);
 
-        InvoiceRequest invoiceRequest = buildInvoiceRequest(invoice);
+        if (invoice.getDirection() == InvoiceDirection.INPUT) {
+            throw new BadRequestException(messageService.getMessage("error.invoice.sync.not.allowed.for.input"));
+        }
+
+        Tenant tenant = tenantContext.getCurrentTenant();
         String system = shopConfigService.getString(ShopConfigKey.INVOICE_SYSTEM);
         String vendor = system != null ? system : shopConfigService.getString(ShopConfigKey.INVOICE_VENDOR);
-        ExternalInvoiceService externalService = invoiceServiceFactory.getInvoiceService(vendor);
-        InvoiceResponse response = externalService.createInvoice(invoiceRequest);
+        InvoiceRequest invoiceRequest = buildInvoiceRequest(invoice);
 
-        if (response.isSuccess()) {
-            invoice.setExternalInvoiceId(response.getInvoiceNo());
-            invoice.setCodeOfTax(response.getCodeOfTax());
-            invoice.setExternalSyncAt(LocalDateTime.now());
-        }
-        if (response.getTransactionId() != null) {
-            invoice.setTransactionUuid(response.getTransactionId());
-        }
-        if (!response.isSuccess() && response.getMessage() != null) {
-            invoice.setErrorMessage(response.getMessage());
-        }
-
-        Invoice saved = invoiceRepository.save(invoice);
-        log.info("Invoice {} synced with external: success={}", saved.getInvoiceNumber(), response.isSuccess());
-        return mapToDTO(saved);
+        asyncInvoiceService.syncWithExternalAsync(id, invoiceRequest, tenant, vendor);
+        log.info("E-invoice async sync initiated for invoice {}", invoice.getInvoiceNumber());
+        return mapToDTO(invoice);
     }
 
     @Override
@@ -546,6 +671,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         return InvoiceDTO.builder()
                 .id(invoice.getId())
+                .direction(invoice.getDirection() != null ? invoice.getDirection().name() : InvoiceDirection.OUTPUT.name())
                 .invoiceNumber(invoice.getInvoiceNumber())
                 .invoiceSeries(invoice.getInvoiceSeries())
                 .issuedDate(invoice.getIssuedDate())
@@ -565,6 +691,11 @@ public class InvoiceServiceImpl implements InvoiceService {
                 .notes(invoice.getNotes())
                 .createdAt(invoice.getCreatedAt())
                 .updatedAt(invoice.getUpdatedAt())
+                .supplierInvoiceNumber(invoice.getSupplierInvoiceNumber())
+                .vendorId(invoice.getVendorId())
+                .vendorName(invoice.getVendorName())
+                .vendorTaxCode(invoice.getVendorTaxCode())
+                .purchaseOrderId(invoice.getPurchaseOrderId())
                 .orders(orderInfos)
                 .buyer(buyerInfo)
                 .items(itemDTOs)

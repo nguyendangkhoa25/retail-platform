@@ -14,8 +14,10 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Savepoint;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Executes shop-type DML seed files in a single transaction.
@@ -39,6 +41,68 @@ public class TenantSeedService {
         Map.entry(ShopType.JEWELRY,            "db/tenant/jewelry_store.sql")
     );
     private static final String DEFAULT_DML = "db/tenant/general.sql";
+
+    /** Service-type shops get a "Phiếu dịch vụ" POS receipt template. */
+    private static final Set<ShopType> SERVICE_SHOP_TYPES = EnumSet.of(
+        ShopType.BARBER_SHOP, ShopType.COFFEE_SHOP,
+        ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT
+    );
+
+    /**
+     * Inserts shop-type-specific named print templates for a newly provisioned
+     * tenant. Must be called after {@link #seed(ShopType)} so the tenant context
+     * (and therefore RLS) is already set on the current connection.
+     */
+    @Transactional
+    public void seedShopTypeTemplates(ShopType shopType) {
+        if (shopType == null) return;
+
+        String templateName;
+        String configJson;
+
+        if (SERVICE_SHOP_TYPES.contains(shopType)) {
+            templateName = "Phiếu dịch vụ";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+        } else if (shopType == ShopType.PHARMACY) {
+            templateName = "Hóa đơn thuốc";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nChúc bạn mau hồi phục!\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+        } else if (shopType == ShopType.CONVENIENCE_STORE) {
+            templateName = "Hóa đơn siêu thị";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":false,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":true}";
+        } else if (shopType == ShopType.FASHION || shopType == ShopType.ELECTRONICS) {
+            templateName = "Phiếu bảo hành";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nVui lòng giữ hóa đơn để bảo hành.\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+        } else {
+            // No type-specific template for other shop types
+            return;
+        }
+
+        final String tName = templateName;
+        final String tConfig = configJson;
+
+        Session session = entityManager.unwrap(Session.class);
+        session.doWork(conn -> {
+            Savepoint sp = conn.setSavepoint();
+            try (Statement st = conn.createStatement()) {
+                st.execute(
+                    "INSERT INTO print_templates " +
+                    "(tenant_id, template_type, name, config_json, is_default, deleted, created_at, updated_at) " +
+                    "VALUES (" +
+                    "  current_setting('app.current_tenant', true)," +
+                    "  'POS_RECEIPT'," +
+                    "  '" + tName.replace("'", "''") + "'," +
+                    "  '" + tConfig.replace("'", "''") + "'," +
+                    "  FALSE, FALSE, NOW(), NOW()" +
+                    ") ON CONFLICT (template_type, name, tenant_id) DO NOTHING"
+                );
+                conn.releaseSavepoint(sp);
+                log.info("Seeded shop-type print template '{}' for shopType={}", tName, shopType);
+            } catch (Exception e) {
+                conn.rollback(sp);
+                log.warn("Could not seed print template for shopType {}: {}", shopType, e.getMessage());
+            }
+        });
+    }
 
     @Transactional
     public void seed(ShopType shopType) {

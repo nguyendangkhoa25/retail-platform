@@ -7,6 +7,8 @@ public enum ShopConfigKey {
 
     // GENERAL
     DEFAULT_TAX_RATE("default_tax_rate", "GENERAL", false),
+    TAX_AUTO_APPLY("tax_auto_apply", "GENERAL", false),
+    TAX_RATE_BY_PRODUCT_TYPE("tax_rate_by_product_type", "GENERAL", false),
     SHOP_LOCATIONS("shop_locations", "GENERAL", false),
 
     // EINVOICE

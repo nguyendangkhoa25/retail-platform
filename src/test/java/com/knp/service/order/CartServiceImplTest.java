@@ -63,6 +63,8 @@ import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
 import com.knp.service.product.ProductService;
 import com.knp.multitenant.TenantContext;
+import com.knp.config.FeatureContext;
+import com.knp.repository.employee.EmployeeRepository;
 
 import java.util.Set;
 
@@ -112,6 +114,12 @@ class CartServiceImplTest {
     @Mock
     private GoldPriceService goldPriceService;
 
+    @Mock
+    private EmployeeRepository employeeRepository;
+
+    @Mock
+    private FeatureContext featureContext;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -147,7 +155,9 @@ class CartServiceImplTest {
             loyaltyService,
             activityLogService,
             tenantContext,
-            goldPriceService
+            goldPriceService,
+            employeeRepository,
+            featureContext
         );
     }
 

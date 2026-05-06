@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.entity.customer.Customer;
 import com.knp.model.entity.order.Order;
+import com.knp.model.enums.InvoiceDirection;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -19,6 +20,11 @@ import java.util.List;
 @NoArgsConstructor
 @SuperBuilder
 public class Invoice extends TenantAwareEntity {
+
+    @Builder.Default
+    @Column(name = "direction", length = 10, nullable = false)
+    @Enumerated(EnumType.STRING)
+    private InvoiceDirection direction = InvoiceDirection.OUTPUT;
 
     @Column(name = "invoice_number", unique = true, length = 30)
     private String invoiceNumber;
@@ -77,6 +83,23 @@ public class Invoice extends TenantAwareEntity {
 
     @Column(name = "created_by", length = 100)
     private String createdBy;
+
+    // ── Input invoice vendor fields ───────────────────────────────────────────
+
+    @Column(name = "supplier_invoice_number", length = 50)
+    private String supplierInvoiceNumber;
+
+    @Column(name = "vendor_id")
+    private Long vendorId;
+
+    @Column(name = "vendor_name", length = 200)
+    private String vendorName;
+
+    @Column(name = "vendor_tax_code", length = 50)
+    private String vendorTaxCode;
+
+    @Column(name = "purchase_order_id")
+    private Long purchaseOrderId;
 
     @Embedded
     private InvoiceBuyerInfo buyerInfo;

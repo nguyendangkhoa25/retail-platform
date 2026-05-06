@@ -52,6 +52,9 @@ public class CartItemEntity {
     @Column(name = "product_name")
     private String productName;
 
+    @Column(name = "product_type_code", length = 50)
+    private String productTypeCode;
+
     @Column(name = "sku")
     private String sku;
 
@@ -109,6 +112,20 @@ public class CartItemEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "variants", columnDefinition = "jsonb")
     private String variants;
+
+    @Column(name = "assigned_employee_id")
+    private Long assignedEmployeeId;
+
+    @Column(name = "assigned_employee_name")
+    private String assignedEmployeeName;
+
+    @Builder.Default
+    @Column(name = "commission_rate", precision = 5, scale = 2)
+    private BigDecimal commissionRate = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "commission_amount", precision = 10, scale = 2)
+    private BigDecimal commissionAmount = BigDecimal.ZERO;
 
     @Builder.Default
     @Enumerated(EnumType.STRING)

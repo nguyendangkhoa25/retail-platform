@@ -34,7 +34,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 import static com.knp.util.InvoiceUtil.*;
 
@@ -157,10 +156,11 @@ public class SInvoiceService implements ExternalInvoiceService {
                     response.setSuccess(true);
                     response.setMessage("Invoice created: " + sInvoiceResponse.getResult().getInvoiceNo());
                 } else {
+                    // S-Invoice returned a transactionUuid — poll synchronously so the caller
+                    // (AsyncInvoiceService) can persist the final invoiceNo to the DB.
                     String transactionUuid = sInvoiceResponse.getResult().getTransactionID();
                     response.setTransactionId(transactionUuid);
-                    CompletableFuture.runAsync(() ->
-                            pollForInvoiceNumber(response, transactionUuid, supplierTaxCode, username, password));
+                    pollForInvoiceNumber(response, transactionUuid, supplierTaxCode, username, password);
                 }
             } else if (sInvoiceResponse != null && StringUtils.isNotEmpty(sInvoiceResponse.getErrorCode())) {
                 response.setMessage(sInvoiceResponse.getDescription());

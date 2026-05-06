@@ -389,6 +389,10 @@ public class OrderServiceImpl implements OrderService {
                 .taxAmount(item.getTaxAmount())
                 .itemType(item.getItemType())
                 .metadata(item.getMetadata())
+                .assignedEmployeeId(item.getAssignedEmployeeId())
+                .assignedEmployeeName(item.getAssignedEmployeeName())
+                .commissionRate(item.getCommissionRate())
+                .commissionAmount(item.getCommissionAmount())
                 .build();
     }
 }

@@ -51,6 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/gold-prices/price-board").permitAll()
                         .requestMatchers("/contact").permitAll()
+                        .requestMatchers("/integrations/oauth/callback").permitAll()
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )

@@ -56,6 +56,13 @@ public interface CartService {
      * @param discountType AMOUNT or PERCENTAGE
      */
     CartResponse applyItemDiscount(String cartId, Long cartItemId, DiscountType discountType, BigDecimal discountValue, String reason);
+
+    /**
+     * Update commission assignment on a cart item.
+     * @param assignedEmployeeId employee to assign; null clears the assignment
+     * @param commissionAmount override amount; null auto-calculates from employee's rate
+     */
+    CartResponse updateItemCommission(String cartId, Long cartItemId, Long assignedEmployeeId, BigDecimal commissionAmount);
     
     /**
      * Apply coupon code to cart

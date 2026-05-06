@@ -41,6 +41,9 @@ public class CreateProductRequest {
     @DecimalMin(value = "0", message = "Cost price must be greater than or equal to 0")
     private BigDecimal costPrice = BigDecimal.ZERO;
 
+    @DecimalMin(value = "0", message = "Commission rate must be >= 0")
+    private BigDecimal commissionRate;
+
     @Builder.Default
     private String status = "ACTIVE";
 

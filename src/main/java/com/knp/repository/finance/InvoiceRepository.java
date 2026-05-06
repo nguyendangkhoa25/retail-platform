@@ -1,6 +1,7 @@
 package com.knp.repository.finance;
 
 import com.knp.model.entity.finance.Invoice;
+import com.knp.model.enums.InvoiceDirection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -32,6 +33,29 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
             ORDER BY i.createdAt DESC
             """)
     Page<Invoice> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
+
+    @Query("SELECT i FROM Invoice i WHERE i.deleted = false AND i.direction = :direction ORDER BY i.createdAt DESC")
+    Page<Invoice> findAllActiveByDirection(@Param("direction") InvoiceDirection direction, Pageable pageable);
+
+    @Query("SELECT i FROM Invoice i WHERE i.deleted = false AND i.direction = :direction AND i.status = :status ORDER BY i.createdAt DESC")
+    Page<Invoice> findAllActiveByDirectionAndStatus(
+            @Param("direction") InvoiceDirection direction,
+            @Param("status") Invoice.InvoiceStatus status,
+            Pageable pageable);
+
+    @Query("""
+            SELECT i FROM Invoice i LEFT JOIN i.orders o
+            WHERE i.deleted = false AND i.direction = :direction
+              AND (LOWER(i.invoiceNumber) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(o.orderNumber)   LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(i.vendorName)    LIKE LOWER(CONCAT('%', :keyword, '%'))
+                OR LOWER(i.supplierInvoiceNumber) LIKE LOWER(CONCAT('%', :keyword, '%')))
+            ORDER BY i.createdAt DESC
+            """)
+    Page<Invoice> searchByKeywordAndDirection(
+            @Param("keyword") String keyword,
+            @Param("direction") InvoiceDirection direction,
+            Pageable pageable);
 
     boolean existsByInvoiceNumber(String invoiceNumber);
 

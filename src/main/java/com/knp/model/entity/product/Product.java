@@ -53,6 +53,10 @@ public class Product extends TenantAwareEntity {
     @Column(name = "legacy_id", length = 50)
     private String legacyId;
 
+    // NULL = inherit from assigned employee; 0.00 = no commission for this product
+    @Column(name = "commission_rate", precision = 5, scale = 2)
+    private BigDecimal commissionRate;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendor_id")
     private Vendor vendor;

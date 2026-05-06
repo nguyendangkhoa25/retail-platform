@@ -22,6 +22,8 @@ public class CartItemResponse {
     private Long id;
     private Long productId;
     private String productName;
+    private String productTypeCode;
+    private Double itemTaxRate; // tax rate as percentage (0–100)
     private String sku;
     private String barcode;
     private Integer quantity;
@@ -39,5 +41,9 @@ public class CartItemResponse {
     private CartItemEntity.ItemType itemType;
     private String metadata;
     private String notes;
+    private Long assignedEmployeeId;
+    private String assignedEmployeeName;
+    private java.math.BigDecimal commissionRate;
+    private java.math.BigDecimal commissionAmount;
 }
 

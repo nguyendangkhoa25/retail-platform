@@ -339,6 +339,22 @@ public class CartController {
     }
 
     /**
+     * Update commission assignment on a cart item (COMMISSION feature required)
+     *
+     * PATCH /api/v1/carts/{cartId}/items/{itemId}/commission
+     */
+    @PatchMapping("/{cartId}/items/{itemId}/commission")
+    @RequiresFeature("COMMISSION")
+    public ResponseEntity<ApiResponse<CartResponse>> updateItemCommission(
+            @PathVariable String cartId,
+            @PathVariable Long itemId,
+            @RequestBody CartRequest request) {
+        log.info("PATCH /api/v1/carts/{}/items/{}/commission - employee={}", cartId, itemId, request.getAssignedEmployeeId());
+        CartResponse cart = cartService.updateItemCommission(cartId, itemId, request.getAssignedEmployeeId(), request.getCommissionAmount());
+        return ResponseEntity.ok(ApiResponse.success(cart, "Commission updated"));
+    }
+
+    /**
      * Mark cart as abandoned
      *
      * POST /api/v1/carts/{cartId}/abandon

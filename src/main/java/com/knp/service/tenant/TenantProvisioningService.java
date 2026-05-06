@@ -241,6 +241,7 @@ public class TenantProvisioningService {
         // Jewellery shops are VAT-exempt in Vietnam; all other shop types default to 10 %.
         double defaultTaxRate = (shopType == ShopType.JEWELRY) ? 0.0 : 0.10;
         shopConfigService.seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, defaultTaxRate);
+        shopConfigService.seedIfAbsent(ShopConfigKey.TAX_AUTO_APPLY, true);
         shopConfigService.seedIfAbsent(ShopConfigKey.POS_MODE, "STANDARD");
         String widgetDefault = SHOP_TYPE_WIDGET_DEFAULTS.getOrDefault(shopType,
                 "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");

@@ -24,6 +24,9 @@ import com.knp.model.entity.order.OrderItem;
 import com.knp.model.enums.CartStatus;
 import com.knp.model.enums.DiscountType;
 import com.knp.model.entity.customer.Customer;
+import com.knp.config.FeatureContext;
+import com.knp.model.entity.employee.Employee;
+import com.knp.repository.employee.EmployeeRepository;
 import com.knp.repository.order.CartItemRepository;
 import com.knp.repository.order.CartRepository;
 import com.knp.repository.customer.CustomerRepository;
@@ -92,6 +95,8 @@ public class CartServiceImpl implements CartService {
     private final ActivityLogService activityLogService;
     private final TenantContext tenantContext;
     private final GoldPriceService goldPriceService;
+    private final EmployeeRepository employeeRepository;
+    private final FeatureContext featureContext;
 
     /**
      * Initialize a new cart session
@@ -101,8 +106,11 @@ public class CartServiceImpl implements CartService {
     public CartResponse initializeCart() {
         log.info("Initializing new cart");
 
+        boolean autoApply = shopConfigService.getBoolean(ShopConfigKey.TAX_AUTO_APPLY, true);
         Double configuredRate = shopConfigService.getDouble(ShopConfigKey.DEFAULT_TAX_RATE, 0.10);
-        BigDecimal taxRate = BigDecimal.valueOf(configuredRate).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal taxRate = autoApply
+                ? BigDecimal.valueOf(configuredRate).setScale(4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
 
         CartEntity cart = CartEntity.builder()
                 .tenantId(tenantContext.getCurrentTenantId())
@@ -266,12 +274,25 @@ public class CartServiceImpl implements CartService {
             log.debug("Merged quantity for existing item: {} (new qty: {})",
                     existing.getId(), existing.getQuantity());
         } else {
+            // Resolve per-product-type tax rate, falling back to cart default
+            String productTypeCode = product.getProductTypeCode();
+            BigDecimal itemTaxRate = cart.getTaxRate();
+            try {
+                Map<String, Double> typeRates = shopInfoService.parseTaxRateByProductType();
+                if (productTypeCode != null && typeRates.containsKey(productTypeCode)) {
+                    itemTaxRate = BigDecimal.valueOf(typeRates.get(productTypeCode) / 100.0);
+                }
+            } catch (Exception e) {
+                log.warn("Could not resolve per-type tax rate for {}: {}", productTypeCode, e.getMessage());
+            }
+
             // Add new item with product details
             CartItemEntity newItem = CartItemEntity.builder()
                     .tenantId(tenantContext.getCurrentTenantId())
                     .cart(cart)
                     .productId(request.getProductId())
                     .productName(product.getName())
+                    .productTypeCode(productTypeCode)
                     .sku(product.getSku())
                     //Todo to generate barcode
                     //.barcode(product.getBarcode())
@@ -282,8 +303,25 @@ public class CartServiceImpl implements CartService {
                     .discountType(DiscountType.NONE)
                     .discountValue(BigDecimal.ZERO)
                     .variants(variantsJson)
-                    .taxRate(cart.getTaxRate())
+                    .taxRate(itemTaxRate)
                     .build();
+
+            // Commission: only when COMMISSION feature is active and an employee is assigned.
+            // Rate priority: manual override > product-level rate > employee default > 0
+            if (featureContext.hasFeature("COMMISSION") && request.getAssignedEmployeeId() != null) {
+                employeeRepository.findById(request.getAssignedEmployeeId()).ifPresent(emp -> {
+                    newItem.setAssignedEmployeeId(emp.getId());
+                    newItem.setAssignedEmployeeName(emp.getFullName());
+                    BigDecimal rate = product.getCommissionRate() != null
+                            ? product.getCommissionRate()
+                            : (emp.getCommissionRate() != null ? emp.getCommissionRate() : BigDecimal.ZERO);
+                    newItem.setCommissionRate(rate);
+                    BigDecimal commAmt = request.getCommissionAmount() != null
+                            ? request.getCommissionAmount()
+                            : resolvedUnitPrice.multiply(rate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    newItem.setCommissionAmount(commAmt);
+                });
+            }
 
             newItem.recalculateLineTotal();
             cart.addItem(newItem);
@@ -383,6 +421,44 @@ public class CartServiceImpl implements CartService {
         CartEntity saved = cartRepository.save(cart);
 
         log.info("Discount applied successfully");
+        return mapToResponse(saved);
+    }
+
+    @Override
+    public CartResponse updateItemCommission(String cartId, Long cartItemId, Long assignedEmployeeId, BigDecimal commissionAmount) {
+        CartEntity cart = cartRepository.findByCartId(cartId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("cart.not.found")));
+
+        CartItemEntity item = cart.getItems().stream()
+                .filter(i -> i.getId().equals(cartItemId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("cart.item.not.found")));
+
+        if (assignedEmployeeId == null) {
+            item.setAssignedEmployeeId(null);
+            item.setAssignedEmployeeName(null);
+            item.setCommissionRate(BigDecimal.ZERO);
+            item.setCommissionAmount(BigDecimal.ZERO);
+        } else {
+            Employee emp = employeeRepository.findById(assignedEmployeeId)
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("employee.not.found")));
+            item.setAssignedEmployeeId(emp.getId());
+            item.setAssignedEmployeeName(emp.getFullName());
+            // Rate priority: product-level rate > employee default > 0
+            BigDecimal productRate = null;
+            if (item.getProductId() != null) {
+                productRate = productService.getProductById(item.getProductId()).getCommissionRate();
+            }
+            BigDecimal rate = productRate != null
+                    ? productRate
+                    : (emp.getCommissionRate() != null ? emp.getCommissionRate() : BigDecimal.ZERO);
+            item.setCommissionRate(rate);
+            item.setCommissionAmount(commissionAmount != null
+                    ? commissionAmount
+                    : item.getUnitPrice().multiply(rate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP));
+        }
+
+        CartEntity saved = cartRepository.save(cart);
         return mapToResponse(saved);
     }
 
@@ -564,6 +640,10 @@ public class CartServiceImpl implements CartService {
             oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
             oi.setMetadata(cartItem.getMetadata());
             oi.setStatus(OrderItem.ItemStatus.PENDING);
+            oi.setAssignedEmployeeId(cartItem.getAssignedEmployeeId());
+            oi.setAssignedEmployeeName(cartItem.getAssignedEmployeeName());
+            oi.setCommissionRate(cartItem.getCommissionRate() != null ? cartItem.getCommissionRate() : BigDecimal.ZERO);
+            oi.setCommissionAmount(cartItem.getCommissionAmount() != null ? cartItem.getCommissionAmount() : BigDecimal.ZERO);
             orderItems.add(oi);
         }
         order.setOrderItems(orderItems);
@@ -829,6 +909,10 @@ public class CartServiceImpl implements CartService {
             oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
             oi.setMetadata(cartItem.getMetadata());
             oi.setStatus(OrderItem.ItemStatus.COMPLETED);
+            oi.setAssignedEmployeeId(cartItem.getAssignedEmployeeId());
+            oi.setAssignedEmployeeName(cartItem.getAssignedEmployeeName());
+            oi.setCommissionRate(cartItem.getCommissionRate() != null ? cartItem.getCommissionRate() : BigDecimal.ZERO);
+            oi.setCommissionAmount(cartItem.getCommissionAmount() != null ? cartItem.getCommissionAmount() : BigDecimal.ZERO);
             orderItems.add(oi);
 
             // Deduct stock only for catalog items; gold items have no inventory
@@ -1011,6 +1095,7 @@ public class CartServiceImpl implements CartService {
                 .totalTax(cart.getTotalTax())
                 .total(cart.getTotal())
                 .taxRate(cart.getTaxRate())
+                .taxAutoApply(shopConfigService.getBoolean(ShopConfigKey.TAX_AUTO_APPLY, true))
                 .status(cart.getStatus())
                 .appliedCoupons(parseCoupons(cart.getAppliedCoupons()))
                 .appliedPromotions(parsePromotions(cart.getAppliedPromotions()))
@@ -1031,6 +1116,8 @@ public class CartServiceImpl implements CartService {
                 .id(item.getId())
                 .productId(item.getProductId())
                 .productName(item.getProductName())
+                .productTypeCode(item.getProductTypeCode())
+                .itemTaxRate(item.getTaxRate() != null ? item.getTaxRate().doubleValue() * 100.0 : null)
                 .sku(item.getSku())
                 .barcode(item.getBarcode())
                 .quantity(item.getQuantity())
@@ -1048,6 +1135,10 @@ public class CartServiceImpl implements CartService {
                 .itemType(item.getItemType())
                 .metadata(item.getMetadata())
                 .notes(item.getNotes())
+                .assignedEmployeeId(item.getAssignedEmployeeId())
+                .assignedEmployeeName(item.getAssignedEmployeeName())
+                .commissionRate(item.getCommissionRate())
+                .commissionAmount(item.getCommissionAmount())
                 .build();
     }
 

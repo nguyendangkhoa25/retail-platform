@@ -36,6 +36,9 @@ public class UpdateProductRequest {
     @DecimalMin(value = "0", message = "Cost price must be greater than or equal to 0")
     private BigDecimal costPrice;
 
+    @DecimalMin(value = "0", message = "Commission rate must be >= 0")
+    private BigDecimal commissionRate;
+
     @NotBlank(message = "Status is required")
     private String status;
 

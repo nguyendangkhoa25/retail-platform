@@ -14,6 +14,7 @@ import com.knp.multitenant.TenantContext;
 import com.knp.repository.finance.InvoiceRepository;
 import com.knp.repository.order.OrderRepository;
 import com.knp.service.MessageService;
+import com.knp.service.invoice.AsyncInvoiceService;
 import com.knp.service.tenant.ShopConfigService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +42,7 @@ class InvoiceServiceImplTest {
     @Mock private InvoiceServiceFactory invoiceServiceFactory;
     @Mock private MessageService messageService;
     @Mock private TenantContext tenantContext;
+    @Mock private AsyncInvoiceService asyncInvoiceService;
 
     @InjectMocks private InvoiceServiceImpl invoiceService;
 
@@ -539,63 +541,41 @@ class InvoiceServiceImplTest {
 
     // ── syncExternal ──────────────────────────────────────────────────────────
 
-    private void stubSyncExternalCommon(ExternalInvoiceService externalService, String system) {
-        lenient().when(shopConfigService.getString(any(ShopConfigKey.class))).thenReturn(system);
-        lenient().when(invoiceServiceFactory.getInvoiceService(any())).thenReturn(externalService);
-        lenient().when(invoiceRepository.save(any(Invoice.class))).thenReturn(draftInvoice);
-    }
-
     @Test
-    @DisplayName("syncExternal uses INVOICE_SYSTEM config when set")
+    @DisplayName("syncExternal kicks off async sync with INVOICE_SYSTEM vendor when set")
     void syncExternal_usesInvoiceSystem() {
-        ExternalInvoiceService externalService = mock(ExternalInvoiceService.class);
-        InvoiceResponse response = InvoiceResponse.builder()
-                .success(true).invoiceNo("INV-001").codeOfTax("TAX001").build();
-
         when(invoiceRepository.findById(1L)).thenReturn(Optional.of(draftInvoice));
-        stubSyncExternalCommon(externalService, "S-INVOICE");
-        when(externalService.createInvoice(any())).thenReturn(response);
+        when(shopConfigService.getString(ShopConfigKey.INVOICE_SYSTEM)).thenReturn("S-INVOICE");
 
         InvoiceDTO result = invoiceService.syncExternal(1L);
 
         assertThat(result).isNotNull();
-        verify(externalService).createInvoice(any());
+        verify(asyncInvoiceService).syncWithExternalAsync(eq(1L), any(), any(), eq("S-INVOICE"));
     }
 
     @Test
     @DisplayName("syncExternal falls back to INVOICE_VENDOR when INVOICE_SYSTEM is null")
     void syncExternal_fallbackToVendor() {
-        ExternalInvoiceService externalService = mock(ExternalInvoiceService.class);
-        InvoiceResponse response = InvoiceResponse.builder()
-                .success(false).message("error").build();
-
         when(invoiceRepository.findById(1L)).thenReturn(Optional.of(draftInvoice));
-        lenient().when(shopConfigService.getString(ShopConfigKey.INVOICE_SYSTEM)).thenReturn(null);
-        lenient().when(shopConfigService.getString(ShopConfigKey.INVOICE_VENDOR)).thenReturn("M-INVOICE");
-        lenient().when(shopConfigService.getString(ShopConfigKey.EINVOICE_SERIES)).thenReturn(null);
-        lenient().when(invoiceServiceFactory.getInvoiceService(any())).thenReturn(externalService);
-        lenient().when(invoiceRepository.save(any(Invoice.class))).thenReturn(draftInvoice);
-        when(externalService.createInvoice(any())).thenReturn(response);
+        when(shopConfigService.getString(ShopConfigKey.INVOICE_SYSTEM)).thenReturn(null);
+        when(shopConfigService.getString(ShopConfigKey.INVOICE_VENDOR)).thenReturn("M-INVOICE");
 
         InvoiceDTO result = invoiceService.syncExternal(1L);
 
         assertThat(result).isNotNull();
+        verify(asyncInvoiceService).syncWithExternalAsync(eq(1L), any(), any(), eq("M-INVOICE"));
     }
 
     @Test
-    @DisplayName("syncExternal sets transactionUuid when response has one")
+    @DisplayName("syncExternal returns invoice DTO and delegates persistence to async service")
     void syncExternal_setsTransactionUuid() {
-        ExternalInvoiceService externalService = mock(ExternalInvoiceService.class);
-        InvoiceResponse response = InvoiceResponse.builder()
-                .success(false).transactionId("tx-uuid-123").build();
-
         when(invoiceRepository.findById(1L)).thenReturn(Optional.of(draftInvoice));
-        stubSyncExternalCommon(externalService, "S-INVOICE");
-        when(externalService.createInvoice(any())).thenReturn(response);
+        when(shopConfigService.getString(ShopConfigKey.INVOICE_SYSTEM)).thenReturn("S-INVOICE");
 
-        invoiceService.syncExternal(1L);
+        InvoiceDTO result = invoiceService.syncExternal(1L);
 
-        verify(invoiceRepository).save(argThat(inv -> "tx-uuid-123".equals(inv.getTransactionUuid())));
+        assertThat(result).isNotNull();
+        verify(asyncInvoiceService).syncWithExternalAsync(eq(1L), any(), any(), eq("S-INVOICE"));
     }
 
     // ── downloadPdf ────────────────────────────────────────────────────────────
