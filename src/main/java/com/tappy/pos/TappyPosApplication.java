@@ -10,7 +10,7 @@ import java.util.TimeZone;
 @SpringBootApplication
 @EnableAsync
 @EnableScheduling
-public class RetailPlatformApplication {
+public class TappyPosApplication {
 
     public static void main(String[] args) {
         // Pin JVM timezone before Spring context initialises so @CreationTimestamp,
@@ -18,7 +18,7 @@ public class RetailPlatformApplication {
         // The TZ env-var in Docker does the same thing, but this is a safety net
         // for local development runs outside the container.
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Ho_Chi_Minh"));
-        SpringApplication.run(RetailPlatformApplication.class, args);
+        SpringApplication.run(TappyPosApplication.class, args);
     }
 }
 
