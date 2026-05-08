@@ -4,13 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.knp</groupId>
-    <artifactId>retail-platform</artifactId>
+    <groupId>com.tappy.pos</groupId>
+    <artifactId>tappy-pos</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>Retail Platform</name>
-    <description>Retail Platform API System </description>
+    <name>Tappy POS</name>
+    <description>Tappy POS API System</description>
 
     <parent>
         <groupId>org.springframework.boot</groupId>
@@ -314,9 +314,9 @@
                 <configuration>
                     <excludes>
                         <!-- Exclude model classes from code coverage (DTOs, entities, enums) -->
-                        <exclude>com/knp/model/**</exclude>
-                        <exclude>com/knp/controller/**</exclude>
-                        <exclude>com/knp/util/**</exclude>
+                        <exclude>com/tappy/pos/model/**</exclude>
+                        <exclude>com/tappy/pos/controller/**</exclude>
+                        <exclude>com/tappy/pos/util/**</exclude>
                     </excludes>
                 </configuration>
             </plugin>
