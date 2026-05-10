@@ -326,4 +326,134 @@ class PrintTemplateServiceTest {
         assertThat(tpl.isDeleted()).isTrue();
         verify(repo, never()).findAllByTemplateTypeAndDeletedFalseOrderByIsDefaultDescNameAsc(anyString());
     }
+
+    // ── validateConfigJson: PRODUCT_STAMP / INVENTORY_STAMP / PAWN_STAMP / default ──
+
+    @Test
+    @DisplayName("create: accepts valid JSON for PRODUCT_STAMP type")
+    void create_productStamp_validJson() {
+        when(repo.existsByTemplateTypeAndDeletedFalse(PrintTemplateService.PRODUCT_STAMP)).thenReturn(false);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        SavePrintTemplateRequest req = new SavePrintTemplateRequest();
+        req.setName("Product Stamp");
+        req.setConfigJson("{}");
+
+        service.create(PrintTemplateService.PRODUCT_STAMP, req);
+
+        verify(repo).save(any());
+    }
+
+    @Test
+    @DisplayName("create: accepts valid JSON for INVENTORY_STAMP type")
+    void create_inventoryStamp_validJson() {
+        when(repo.existsByTemplateTypeAndDeletedFalse(PrintTemplateService.INVENTORY_STAMP)).thenReturn(false);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        SavePrintTemplateRequest req = new SavePrintTemplateRequest();
+        req.setName("Inventory Stamp");
+        req.setConfigJson("{}");
+
+        service.create(PrintTemplateService.INVENTORY_STAMP, req);
+
+        verify(repo).save(any());
+    }
+
+    @Test
+    @DisplayName("create: accepts valid JSON for PAWN_STAMP type")
+    void create_pawnStamp_validJson() {
+        when(repo.existsByTemplateTypeAndDeletedFalse(PrintTemplateService.PAWN_STAMP)).thenReturn(false);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        SavePrintTemplateRequest req = new SavePrintTemplateRequest();
+        req.setName("Pawn Stamp");
+        req.setConfigJson("{}");
+
+        service.create(PrintTemplateService.PAWN_STAMP, req);
+
+        verify(repo).save(any());
+    }
+
+    @Test
+    @DisplayName("create: accepts any valid JSON tree for unknown template types")
+    void create_unknownType_acceptsValidJson() {
+        when(repo.existsByTemplateTypeAndDeletedFalse("CUSTOM_TYPE")).thenReturn(false);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        SavePrintTemplateRequest req = new SavePrintTemplateRequest();
+        req.setName("Custom");
+        req.setConfigJson("{\"key\":\"value\"}");
+
+        service.create("CUSTOM_TYPE", req);
+
+        verify(repo).save(any());
+    }
+
+    // ── defaultJsonFor: POS_RECEIPT / INVENTORY_STAMP / default ──────────────
+
+    @Test
+    @DisplayName("getDefaultConfigJson: generates default JSON for POS_RECEIPT when no template")
+    void getDefaultConfigJson_posReceipt_notFound() {
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.POS_RECEIPT))
+                .thenReturn(Optional.empty());
+
+        String json = service.getDefaultConfigJson(PrintTemplateService.POS_RECEIPT);
+
+        assertThat(json).isNotEmpty();
+        assertThat(json).isNotEqualTo("{}");
+    }
+
+    @Test
+    @DisplayName("getDefaultConfigJson: generates default JSON for INVENTORY_STAMP when no template")
+    void getDefaultConfigJson_inventoryStamp_notFound() {
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.INVENTORY_STAMP))
+                .thenReturn(Optional.empty());
+
+        String json = service.getDefaultConfigJson(PrintTemplateService.INVENTORY_STAMP);
+
+        assertThat(json).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("getDefaultConfigJson: uses StampTemplateConfig defaults for unknown type")
+    void getDefaultConfigJson_unknownType_usesProductStampDefaults() {
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse("UNKNOWN_TYPE"))
+                .thenReturn(Optional.empty());
+
+        String json = service.getDefaultConfigJson("UNKNOWN_TYPE");
+
+        assertThat(json).isNotEmpty();
+    }
+
+    // ── deserialize: exception path returns fallback ──────────────────────────
+
+    @Test
+    @DisplayName("getReceiptConfig: returns fallback defaults when stored JSON is unparseable")
+    void getReceiptConfig_invalidJson_returnsFallback() {
+        PrintTemplate t = PrintTemplate.builder()
+                .templateType(PrintTemplateService.POS_RECEIPT)
+                .name("R").configJson("not-valid-json").isDefault(true).build();
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.POS_RECEIPT))
+                .thenReturn(Optional.of(t));
+
+        ReceiptTemplateConfig cfg = service.getReceiptConfig();
+
+        assertThat(cfg).isNotNull();
+        assertThat(cfg).isEqualTo(ReceiptTemplateConfig.defaults());
+    }
+
+    @Test
+    @DisplayName("getPawnStampConfig: returns fallback when stored JSON is unparseable")
+    void getPawnStampConfig_invalidJson_returnsFallback() {
+        PrintTemplate t = PrintTemplate.builder()
+                .templateType(PrintTemplateService.PAWN_STAMP)
+                .name("P").configJson("{invalid}").isDefault(true).build();
+        when(repo.findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(PrintTemplateService.PAWN_STAMP))
+                .thenReturn(Optional.of(t));
+
+        PawnStampTemplateConfig cfg = service.getPawnStampConfig();
+
+        assertThat(cfg).isNotNull();
+        assertThat(cfg).isEqualTo(PawnStampTemplateConfig.defaults());
+    }
 }

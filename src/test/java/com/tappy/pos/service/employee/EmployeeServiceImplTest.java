@@ -26,6 +26,7 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -378,5 +379,132 @@ class EmployeeServiceImplTest {
 
         assertThat(dto.getUserId()).isEqualTo(5L);
         assertThat(dto.getUsername()).isNull();
+    }
+
+    @Test
+    @DisplayName("toDTO: returns null username when user lookup throws exception")
+    void toDTO_userLookupThrows_returnsNullUsername() {
+        employee.setUserId(99L);
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(userRepository.findById(99L)).thenThrow(new RuntimeException("DB error"));
+
+        EmployeeDTO dto = employeeService.getById(1L);
+
+        assertThat(dto.getUsername()).isNull();
+    }
+
+    @Test
+    @DisplayName("create: null active defaults to true")
+    void create_nullActive_defaultsToTrue() {
+        CreateEmployeeRequest request = new CreateEmployeeRequest();
+        request.setFullName("Trần Thị B");
+        request.setPosition("RECEPTIONIST");
+        request.setActive(null);
+
+        Employee saved = Employee.builder().id(2L).fullName("Trần Thị B")
+                .position(EmployeePosition.RECEPTIONIST).active(true).build();
+
+        when(employeeRepository.save(any(Employee.class))).thenReturn(saved);
+        when(tenantContext.getCurrentTenantId()).thenReturn("test-shop");
+
+        org.mockito.ArgumentCaptor<Employee> captor = org.mockito.ArgumentCaptor.forClass(Employee.class);
+
+        employeeService.create(request);
+
+        verify(employeeRepository).save(captor.capture());
+        assertThat(captor.getValue().getActive()).isTrue();
+    }
+
+    @Test
+    @DisplayName("update: sets all basic fields when provided")
+    void update_setsAllBasicFields() {
+        UpdateEmployeeRequest req = new UpdateEmployeeRequest();
+        req.setPhone("0900000099");
+        req.setEmail("test@example.com");
+        req.setDepartment("Sales");
+        req.setActive(false);
+        req.setBaseWage(java.math.BigDecimal.valueOf(5000000));
+        req.setCommissionRate(java.math.BigDecimal.valueOf(0.1));
+        req.setNotes("Some notes");
+        req.setAvatar("avatar.jpg");
+
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.save(any(Employee.class))).thenAnswer(i -> i.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("test-shop");
+
+        EmployeeDTO dto = employeeService.update(1L, req);
+
+        verify(employeeRepository).save(argThat(e ->
+                "0900000099".equals(e.getPhone()) &&
+                "test@example.com".equals(e.getEmail()) &&
+                "Sales".equals(e.getDepartment()) &&
+                Boolean.FALSE.equals(e.getActive())));
+        assertThat(dto.getPhone()).isEqualTo("0900000099");
+    }
+
+    @Test
+    @DisplayName("update: sets all extended ID card fields when provided")
+    void update_setsExtendedFields() {
+        UpdateEmployeeRequest request = new UpdateEmployeeRequest();
+        request.setIdCardNumber("123456789");
+        request.setGender("MALE");
+        request.setPermanentAddress("123 Đường ABC");
+        request.setIdCardFrontImage("front.jpg");
+        request.setIdCardBackImage("back.jpg");
+
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.save(any(Employee.class))).thenReturn(employee);
+        when(tenantContext.getCurrentTenantId()).thenReturn("test-shop");
+
+        employeeService.update(1L, request);
+
+        verify(employeeRepository).save(argThat(e ->
+                "123456789".equals(e.getIdCardNumber()) &&
+                "MALE".equals(e.getGender()) &&
+                "123 Đường ABC".equals(e.getPermanentAddress())));
+    }
+
+    @Test
+    @DisplayName("update: sets valid position, hireDate, dateOfBirth, idCardIssuedDate, idCardIssuedPlace")
+    void update_setsDatesAndPosition() {
+        UpdateEmployeeRequest req = new UpdateEmployeeRequest();
+        req.setPosition("MANAGER");
+        req.setHireDate(LocalDate.of(2022, 1, 15));
+        req.setDateOfBirth(LocalDate.of(1990, 5, 20));
+        req.setIdCardIssuedDate(LocalDate.of(2018, 3, 10));
+        req.setIdCardIssuedPlace("Hà Nội");
+
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.save(any(Employee.class))).thenAnswer(i -> i.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("test-shop");
+
+        employeeService.update(1L, req);
+
+        verify(employeeRepository).save(argThat(e ->
+                EmployeePosition.MANAGER.equals(e.getPosition()) &&
+                LocalDate.of(2022, 1, 15).equals(e.getHireDate()) &&
+                LocalDate.of(1990, 5, 20).equals(e.getDateOfBirth()) &&
+                LocalDate.of(2018, 3, 10).equals(e.getIdCardIssuedDate()) &&
+                "Hà Nội".equals(e.getIdCardIssuedPlace())));
+    }
+
+    @Test
+    @DisplayName("update: links new userId when user is found successfully")
+    void update_newUserId_userFound_linksSuccessfully() {
+        employee.setUserId(3L);
+        User user = User.builder().build();
+        user.setId(9L);
+
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.existsByUserId(9L)).thenReturn(false);
+        when(userRepository.findById(9L)).thenReturn(Optional.of(user));
+        when(employeeRepository.save(any(Employee.class))).thenAnswer(i -> i.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("test-shop");
+
+        UpdateEmployeeRequest req = new UpdateEmployeeRequest();
+        req.setUserId(9L);
+        employeeService.update(1L, req);
+
+        verify(employeeRepository).save(argThat(e -> Long.valueOf(9L).equals(e.getUserId())));
     }
 }

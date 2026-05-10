@@ -707,5 +707,55 @@ class JwtTokenProviderTest {
         // UUID format: 8-4-4-4-12 hex groups
         assertThat(token).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
     }
+
+    @Test
+    @DisplayName("generateTokenWithRolesAndFeatures 5-param: shopType only, no tenantId")
+    void generateTokenWithRolesAndFeatures_FiveParam_DelegatesToSixParam() {
+        String token = jwtTokenProvider.generateTokenWithRolesAndFeatures(
+                "shopuser", List.of("SHOP_OWNER"), List.of("ORDER"), false, "GENERAL_STORE");
+
+        assertThat(jwtTokenProvider.validateToken(token)).isTrue();
+        assertThat(jwtTokenProvider.getUsernameFromToken(token)).isEqualTo("shopuser");
+        assertThat(jwtTokenProvider.getTenantIdsFromToken(token)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("generateTokenWithSession 6-param: shopType only, no tenantId")
+    void generateTokenWithSession_SixParam_DelegatesToSevenParam() {
+        String token = jwtTokenProvider.generateTokenWithSession(
+                "shopuser", List.of("SHOP_OWNER"), List.of("ORDER"), false, "sess-456", "PAWN_SHOP");
+
+        assertThat(jwtTokenProvider.validateToken(token)).isTrue();
+        assertThat(jwtTokenProvider.getSessionIdFromToken(token)).isEqualTo("sess-456");
+        assertThat(jwtTokenProvider.getTenantIdsFromToken(token)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("validateToken: returns false for token signed with wrong secret (SignatureException)")
+    void validateToken_WrongSignature_ReturnsFalse() {
+        JwtTokenProvider otherProvider = new JwtTokenProvider();
+        ReflectionTestUtils.setField(otherProvider, "jwtSecret",
+                "differentSecretKeyThatIs256BitsLongForTestingJWT567890123456XYZ");
+        ReflectionTestUtils.setField(otherProvider, "jwtExpirationMs", 86400000L);
+        ReflectionTestUtils.setField(otherProvider, "refreshTokenExpirationMs", 604800000L);
+
+        String tokenFromOtherSecret = otherProvider.generateToken("testuser");
+
+        assertThat(jwtTokenProvider.validateToken(tokenFromOtherSecret)).isFalse();
+    }
+
+    @Test
+    @DisplayName("validateToken: returns false for already-expired token (ExpiredJwtException)")
+    void validateToken_ExpiredToken_ReturnsFalse() {
+        JwtTokenProvider expiredProvider = new JwtTokenProvider();
+        ReflectionTestUtils.setField(expiredProvider, "jwtSecret",
+                "thisis256bitlongsecretkeyfortestingjwttoken1234567890123456");
+        ReflectionTestUtils.setField(expiredProvider, "jwtExpirationMs", -86400000L);
+        ReflectionTestUtils.setField(expiredProvider, "refreshTokenExpirationMs", 604800000L);
+
+        String expiredToken = expiredProvider.generateToken("testuser");
+
+        assertThat(jwtTokenProvider.validateToken(expiredToken)).isFalse();
+    }
 }
 

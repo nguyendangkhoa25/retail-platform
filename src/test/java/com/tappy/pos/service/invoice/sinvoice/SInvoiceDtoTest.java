@@ -546,4 +546,94 @@ class SInvoiceDtoTest {
         t.setJwtId("jti-1");
         assertThat(t.toString()).contains("accessToken").contains("tokenType");
     }
+
+    // ── Full-population equals/hashCode (covers non-null field comparison branches) ──
+
+    @Test
+    @DisplayName("SAccessTokenResponse: equals true when all 9 fields are equal and non-null")
+    void sAccessTokenResponse_equalsAllFieldsPopulated() {
+        SAccessTokenResponse t1 = new SAccessTokenResponse();
+        t1.setAccessToken("tok"); t1.setTokenType("Bearer"); t1.setRefreshToken("ref");
+        t1.setExpiresIn(3600); t1.setScope("read"); t1.setIssuedAt(1000L);
+        t1.setInvoiceCluster("c1"); t1.setType(1); t1.setJwtId("jti-1");
+
+        SAccessTokenResponse t2 = new SAccessTokenResponse();
+        t2.setAccessToken("tok"); t2.setTokenType("Bearer"); t2.setRefreshToken("ref");
+        t2.setExpiresIn(3600); t2.setScope("read"); t2.setIssuedAt(1000L);
+        t2.setInvoiceCluster("c1"); t2.setType(1); t2.setJwtId("jti-1");
+
+        assertThat(t1).isEqualTo(t2);
+        assertThat(t1.hashCode()).isEqualTo(t2.hashCode());
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: equals true when all 5 fields are equal and non-null")
+    void fileInvoiceRequest_equalsAllFieldsPopulated() {
+        FileInvoiceRequest r1 = FileInvoiceRequest.builder()
+                .supplierTaxCode("TAX001").invoiceNo("INV-A").templateCode("01GTKT")
+                .transactionUuid("tx-uuid-123").fileType("pdf").build();
+
+        FileInvoiceRequest r2 = FileInvoiceRequest.builder()
+                .supplierTaxCode("TAX001").invoiceNo("INV-A").templateCode("01GTKT")
+                .transactionUuid("tx-uuid-123").fileType("pdf").build();
+
+        assertThat(r1).isEqualTo(r2);
+        assertThat(r1.hashCode()).isEqualTo(r2.hashCode());
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: setters for invoiceNo, templateCode, transactionUuid")
+    void fileInvoiceRequest_uncoveredSetters() {
+        FileInvoiceRequest r = FileInvoiceRequest.builder().build();
+        r.setInvoiceNo("INV-999");
+        r.setTemplateCode("01GTKT0/001");
+        r.setTransactionUuid("new-uuid-abc");
+
+        assertThat(r.getInvoiceNo()).isEqualTo("INV-999");
+        assertThat(r.getTemplateCode()).isEqualTo("01GTKT0/001");
+        assertThat(r.getTransactionUuid()).isEqualTo("new-uuid-abc");
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest builder: toString does not throw")
+    void fileInvoiceRequest_builderToString() {
+        String str = FileInvoiceRequest.builder()
+                .supplierTaxCode("X").invoiceNo("Y").toString();
+        assertThat(str).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusResponse: equals true when all fields equal and non-null")
+    void sInvoiceStatusResponse_equalsAllFieldsPopulated() {
+        SInvoiceStatusResponse r1 = new SInvoiceStatusResponse();
+        r1.setErrorCode("0"); r1.setDescription("OK");
+        r1.setTransactionUuid("tx-123"); r1.setResult(java.util.List.of());
+
+        SInvoiceStatusResponse r2 = new SInvoiceStatusResponse();
+        r2.setErrorCode("0"); r2.setDescription("OK");
+        r2.setTransactionUuid("tx-123"); r2.setResult(java.util.List.of());
+
+        assertThat(r1).isEqualTo(r2);
+        assertThat(r1.hashCode()).isEqualTo(r2.hashCode());
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: equals true when both fields equal and non-null")
+    void sInvoiceStatusRequest_equalsAllFieldsPopulated() {
+        SInvoiceStatusRequest r1 = SInvoiceStatusRequest.builder()
+                .supplierTaxCode("TAX").transactionUuid("tx-abc").build();
+        SInvoiceStatusRequest r2 = SInvoiceStatusRequest.builder()
+                .supplierTaxCode("TAX").transactionUuid("tx-abc").build();
+
+        assertThat(r1).isEqualTo(r2);
+        assertThat(r1.hashCode()).isEqualTo(r2.hashCode());
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest builder: toString does not throw")
+    void sInvoiceStatusRequest_builderToString() {
+        String str = SInvoiceStatusRequest.builder()
+                .supplierTaxCode("TAX").toString();
+        assertThat(str).isNotBlank();
+    }
 }

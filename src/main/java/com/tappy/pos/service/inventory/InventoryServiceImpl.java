@@ -256,7 +256,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public InventoryDTO updateInventoryQuantity(Long id, Long newQuantity) {
         log.info("Request: Update inventory quantity - id: {}, newQuantity: {}", id, newQuantity);
-        Inventory inventory = inventoryRepository.findById(id)
+        Inventory inventory = inventoryRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> {
                     log.error("Inventory not found - id: {}", id);
                     String errorMessage = messageService.getMessage("error.inventory.not.found", id);
@@ -278,7 +278,7 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     public InventoryDTO addStock(Long id, Long quantity) {
         log.info("Request: Add stock - id: {}, quantity: {}", id, quantity);
-        Inventory inventory = inventoryRepository.findById(id)
+        Inventory inventory = inventoryRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> {
                     log.error("Inventory not found - id: {}", id);
                     String errorMessage = messageService.getMessage("error.inventory.not.found", id);
@@ -295,13 +295,19 @@ public class InventoryServiceImpl implements InventoryService {
         inventory.setLastRestockDate(LocalDateTime.now());
         Inventory updated = inventoryRepository.save(inventory);
         log.info("Stock added successfully - id: {}, quantity: {}, newTotal: {}", id, quantity, updated.getQuantityInStock());
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
+                "Nhập kho: " + updated.getProduct().getName() + " +" + quantity + " → " + updated.getQuantityInStock(), null);
+
         return InventoryDTO.fromEntity(updated);
     }
 
     @Override
     public InventoryDTO removeStock(Long id, Long quantity) {
         log.info("Request: Remove stock - id: {}, quantity: {}", id, quantity);
-        Inventory inventory = inventoryRepository.findById(id)
+        Inventory inventory = inventoryRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> {
                     log.error("Inventory not found - id: {}", id);
                     String errorMessage = messageService.getMessage("error.inventory.not.found", id);
@@ -323,6 +329,12 @@ public class InventoryServiceImpl implements InventoryService {
         inventory.setQuantityInStock(inventory.getQuantityInStock() - quantity);
         Inventory updated = inventoryRepository.save(inventory);
         log.info("Stock removed successfully - id: {}, quantity: {}, newTotal: {}", id, quantity, updated.getQuantityInStock());
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
+                "Xuất kho: " + updated.getProduct().getName() + " -" + quantity + " → " + updated.getQuantityInStock(), null);
+
         return InventoryDTO.fromEntity(updated);
     }
 

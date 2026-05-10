@@ -6,6 +6,7 @@ import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.pawn.*;
 import com.tappy.pos.model.entity.customer.Customer;
 import com.tappy.pos.model.entity.pawn.PawnAuditEntity;
+import com.tappy.pos.model.entity.pawn.PawnElectronicsEntity;
 import com.tappy.pos.model.entity.pawn.PawnEntity;
 import com.tappy.pos.model.entity.pawn.PawnQuery;
 import com.tappy.pos.model.entity.pawn.ReqMoneyEntity;
@@ -1217,5 +1218,150 @@ class PawnServiceImplTest {
         verify(realEstateRepository).deleteByPawnIdIn(List.of(1L));
         verify(generalRepository).deleteByPawnIdIn(List.of(1L));
         verify(pawnRepository).deleteAllByIdInBatch(List.of(1L));
+    }
+
+    // ── saveItemDetail: ELECTRONICS category saves electronics entity ─────────
+
+    @Test
+    @DisplayName("createPawn: saves electronics detail when pawnCategory is ELECTRONICS")
+    @SuppressWarnings("unchecked")
+    void testCreatePawn_WithElectronicsDetail() {
+        PawnElectronicsDetail detail = new PawnElectronicsDetail();
+        detail.setBrand("Apple");
+
+        PawnRequest req = new PawnRequest();
+        req.setCustomerId(10L);
+        req.setItemName("iPhone 15 Pro");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("15000000"));
+        req.setInterestRate(new BigDecimal("3"));
+        req.setPawnCategory("ELECTRONICS");
+        req.setElectronicsDetail(detail);
+
+        PawnElectronicsEntity electronicsEntity = PawnElectronicsEntity.builder()
+                .pawnId(4L).brand("Apple").build();
+
+        PawnEntity mappedEntity = PawnEntity.builder().customerId(10L).itemName("iPhone 15 Pro").build();
+        PawnEntity savedEntity = PawnEntity.builder().pawnId(4L).customerId(10L).itemName("iPhone 15 Pro")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("15000000"))
+                .interestRate(new BigDecimal("3")).pawnCategory("ELECTRONICS").build();
+
+        when(pawnMapper.fromPawnRequest(req)).thenReturn(mappedEntity);
+        when(pawnRepository.save(any(PawnEntity.class))).thenReturn(savedEntity);
+        when(pawnMapper.toElectronicsEntity(anyString(), eq(4L), eq(detail))).thenReturn(electronicsEntity);
+        when(pawnRepository.findById(4L)).thenReturn(Optional.of(savedEntity));
+        when(pawnMapper.fromPawnEntity(savedEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(4L)).thenReturn(List.of());
+        when(electronicsRepository.findByPawnId(4L)).thenReturn(Optional.of(electronicsEntity));
+        when(pawnMapper.fromElectronicsEntity(electronicsEntity)).thenReturn(new PawnElectronicsDetail());
+
+        pawnService.createPawn(req);
+
+        verify(electronicsRepository).deleteByPawnId(4L);
+        verify(electronicsRepository).save(electronicsEntity);
+    }
+
+    // ── saveItemDetail: WATCH category ────────────────────────────────────────
+
+    @Test
+    @DisplayName("createPawn: saves watch detail when pawnCategory is WATCH")
+    @SuppressWarnings("unchecked")
+    void testCreatePawn_WithWatchDetail() {
+        PawnWatchDetail detail = new PawnWatchDetail();
+
+        PawnRequest req = new PawnRequest();
+        req.setCustomerId(10L);
+        req.setItemName("Rolex Submariner");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("50000000"));
+        req.setInterestRate(new BigDecimal("3"));
+        req.setPawnCategory("WATCH");
+        req.setWatchDetail(detail);
+
+        PawnEntity savedEntity = PawnEntity.builder().pawnId(5L).customerId(10L).itemName("Rolex Submariner")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("50000000"))
+                .interestRate(new BigDecimal("3")).pawnCategory("WATCH").build();
+
+        when(pawnMapper.fromPawnRequest(req)).thenReturn(PawnEntity.builder().build());
+        when(pawnRepository.save(any(PawnEntity.class))).thenReturn(savedEntity);
+        when(pawnMapper.toWatchEntity(anyString(), eq(5L), eq(detail))).thenReturn(mock(com.tappy.pos.model.entity.pawn.PawnWatchEntity.class));
+        when(pawnRepository.findById(5L)).thenReturn(Optional.of(savedEntity));
+        when(pawnMapper.fromPawnEntity(savedEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(5L)).thenReturn(List.of());
+        when(watchRepository.findByPawnId(5L)).thenReturn(Optional.empty());
+
+        pawnService.createPawn(req);
+
+        verify(watchRepository).deleteByPawnId(5L);
+        verify(watchRepository).save(any());
+    }
+
+    // ── getPawnIdsToClean ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getPawnIdsToClean: returns list of pawnIds from page")
+    @SuppressWarnings("unchecked")
+    void testGetPawnIdsToClean_ReturnsPawnIds() {
+        PawnQuery query1 = new PawnQuery();
+        query1.setPawnId(10L);
+        PawnQuery query2 = new PawnQuery();
+        query2.setPawnId(20L);
+
+        when(queryRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(query1, query2)));
+
+        List<Long> ids = pawnService.getPawnIdsToClean(PageRequest.of(0, 10),
+                SearchPawnRequest.builder().build());
+
+        assertThat(ids).containsExactlyInAnyOrder(10L, 20L);
+    }
+
+    @Test
+    @DisplayName("getPawnIdsToClean: returns empty list when no pawns match")
+    @SuppressWarnings("unchecked")
+    void testGetPawnIdsToClean_EmptyResult() {
+        when(queryRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+
+        List<Long> ids = pawnService.getPawnIdsToClean(PageRequest.of(0, 10),
+                SearchPawnRequest.builder().build());
+
+        assertThat(ids).isEmpty();
+    }
+
+    // ── enrichWithItemDetail: ELECTRONICS category ────────────────────────────
+
+    @Test
+    @DisplayName("getPawnDetails: enriches response with electronics detail when pawnCategory is ELECTRONICS")
+    void testGetPawnDetails_WithElectronicsCategory() {
+        PawnEntity electronics = PawnEntity.builder()
+                .pawnId(6L).customerId(10L).itemName("iPhone 15")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("10000000"))
+                .interestRate(new BigDecimal("3")).pawnCategory("ELECTRONICS").build();
+
+        PawnElectronicsEntity electronicsEntity = PawnElectronicsEntity.builder()
+                .pawnId(6L).brand("Apple").build();
+        PawnElectronicsDetail electronicsDetail = new PawnElectronicsDetail();
+        electronicsDetail.setBrand("Apple");
+
+        PawnResponse resp = new PawnResponse();
+        resp.setPawnId(6L);
+
+        when(pawnRepository.findById(6L)).thenReturn(Optional.of(electronics));
+        when(pawnMapper.fromPawnEntity(electronics)).thenReturn(resp);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(electronicsRepository.findByPawnId(6L)).thenReturn(Optional.of(electronicsEntity));
+        when(pawnMapper.fromElectronicsEntity(electronicsEntity)).thenReturn(electronicsDetail);
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(6L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.getPawnDetails(6L);
+
+        assertThat(result).isNotNull();
+        verify(electronicsRepository).findByPawnId(6L);
+        verify(pawnMapper).fromElectronicsEntity(electronicsEntity);
     }
 }

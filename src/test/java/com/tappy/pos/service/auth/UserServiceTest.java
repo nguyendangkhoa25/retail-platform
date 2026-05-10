@@ -1942,4 +1942,90 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.changePassword(passwordRequest))
                 .isInstanceOf(UnauthorizedException.class);
     }
+
+    // ── mapToDTO: employee branch (tenantContext non-null) ────────────────────
+
+    @Test
+    @DisplayName("createUser: maps employeeId when tenant context is non-null")
+    void createUser_withTenantContext_mapsEmployeeId() {
+        com.tappy.pos.model.entity.employee.Employee emp =
+                com.tappy.pos.model.entity.employee.Employee.builder()
+                        .fullName("Test").phone("0900000000")
+                        .position(com.tappy.pos.model.enums.EmployeePosition.MANAGER)
+                        .active(true).build();
+        emp.setId(42L);
+
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-abc");
+        when(employeeRepository.findByUserId(1L)).thenReturn(java.util.Optional.of(emp));
+
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
+        when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
+        when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+        UserDetailDTO dto = userService.createUser(createUserRequest);
+
+        assertThat(dto.getEmployeeId()).isEqualTo(42L);
+    }
+
+    // ── mapToDTO: agent branch (tenantContext null + agent found) ─────────────
+
+    @Test
+    @DisplayName("createUser: maps vendorId when tenant context is null and agent exists")
+    void createUser_noTenantContext_mapsAgentAsVendor() {
+        com.tappy.pos.model.entity.tenant.Agent agent = com.tappy.pos.model.entity.tenant.Agent.builder()
+                .name("Agent Corp").build();
+        agent.setId(7L);
+
+        when(tenantContext.getCurrentTenantId()).thenReturn(null);
+        when(agentRepository.findByUserId(1L)).thenReturn(java.util.Optional.of(agent));
+
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
+        when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
+        when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+        UserDetailDTO dto = userService.createUser(createUserRequest);
+
+        assertThat(dto.getVendorId()).isEqualTo(7L);
+        assertThat(dto.getVendorName()).isEqualTo("Agent Corp");
+    }
+
+    // ── assignVendor: clears old and links new agent ──────────────────────────
+
+    @Test
+    @DisplayName("createUser: clears old agent assignment and links new vendorId")
+    void createUser_withVendorId_clearsOldAndLinksNew() {
+        com.tappy.pos.model.entity.tenant.Agent oldAgent = com.tappy.pos.model.entity.tenant.Agent.builder()
+                .name("Old Agent").build();
+        oldAgent.setId(5L);
+        oldAgent.setUserId(1L);
+
+        com.tappy.pos.model.entity.tenant.Agent newAgent = com.tappy.pos.model.entity.tenant.Agent.builder()
+                .name("New Agent").build();
+        newAgent.setId(10L);
+
+        CreateUserRequest reqWithVendor = CreateUserRequest.builder()
+                .username("testuser").email("test@example.com").password("password123")
+                .fullName("Test User").roleNames(new java.util.HashSet<>(List.of("SHOP_OWNER")))
+                .vendorId(10L)
+                .build();
+
+        when(tenantContext.getCurrentTenantId()).thenReturn(null);
+        when(agentRepository.findByUserId(1L)).thenReturn(java.util.Optional.of(oldAgent));
+        when(agentRepository.findById(10L)).thenReturn(java.util.Optional.of(newAgent));
+        when(agentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
+        when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
+        when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
+        when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+        userService.createUser(reqWithVendor);
+
+        verify(agentRepository, atLeastOnce()).save(argThat(a -> a.getUserId() == null || Long.valueOf(1L).equals(a.getUserId())));
+    }
 }

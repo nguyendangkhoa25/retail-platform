@@ -9,6 +9,7 @@ import com.tappy.pos.model.entity.finance.InvoiceBuyerInfo;
 import com.tappy.pos.model.entity.finance.InvoiceItem;
 import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.model.entity.order.OrderItem;
+import com.tappy.pos.model.enums.InvoiceDirection;
 import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.finance.InvoiceRepository;
@@ -705,5 +706,226 @@ class InvoiceServiceImplTest {
         assertThat(result.getOrders()).hasSize(1);
         assertThat(result.getOrders().get(0).getCustomer()).isNotNull();
         assertThat(result.getOrders().get(0).getCustomer().getName()).isEqualTo("Khách hàng A");
+    }
+
+    // ── getOutputInvoices / getInputInvoices ──────────────────────────────────���
+
+    @Test
+    @DisplayName("getOutputInvoices: returns page of output invoices")
+    void getOutputInvoices_success() {
+        Page<Invoice> page = new PageImpl<>(List.of(draftInvoice));
+        when(invoiceRepository.findAllActiveByDirection(eq(InvoiceDirection.OUTPUT), any(Pageable.class)))
+                .thenReturn(page);
+
+        Page<InvoiceDTO> result = invoiceService.getOutputInvoices(pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        verify(invoiceRepository).findAllActiveByDirection(InvoiceDirection.OUTPUT, pageable);
+    }
+
+    @Test
+    @DisplayName("getInputInvoices: returns page of input invoices")
+    void getInputInvoices_success() {
+        Page<Invoice> page = new PageImpl<>(List.of(draftInvoice));
+        when(invoiceRepository.findAllActiveByDirection(eq(InvoiceDirection.INPUT), any(Pageable.class)))
+                .thenReturn(page);
+
+        Page<InvoiceDTO> result = invoiceService.getInputInvoices(pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        verify(invoiceRepository).findAllActiveByDirection(InvoiceDirection.INPUT, pageable);
+    }
+
+    // ── getByStatus ────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getOutputInvoicesByStatus: filters by status and direction")
+    void getOutputInvoicesByStatus_success() {
+        Page<Invoice> page = new PageImpl<>(List.of(completedInvoice));
+        when(invoiceRepository.findAllActiveByDirectionAndStatus(
+                eq(InvoiceDirection.OUTPUT), eq(Invoice.InvoiceStatus.COMPLETED), any(Pageable.class)))
+                .thenReturn(page);
+
+        Page<InvoiceDTO> result = invoiceService.getOutputInvoicesByStatus("COMPLETED", pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("getInputInvoicesByStatus: filters by status and direction")
+    void getInputInvoicesByStatus_success() {
+        Page<Invoice> page = new PageImpl<>(List.of(draftInvoice));
+        when(invoiceRepository.findAllActiveByDirectionAndStatus(
+                eq(InvoiceDirection.INPUT), eq(Invoice.InvoiceStatus.DRAFT), any(Pageable.class)))
+                .thenReturn(page);
+
+        Page<InvoiceDTO> result = invoiceService.getInputInvoicesByStatus("DRAFT", pageable);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+    }
+
+    // ── searchInvoices ─────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("searchOutputInvoices: searches output invoices by keyword")
+    void searchOutputInvoices_success() {
+        Page<Invoice> page = new PageImpl<>(List.of(draftInvoice));
+        when(invoiceRepository.searchByKeywordAndDirection(eq("INV"), eq(InvoiceDirection.OUTPUT), any(Pageable.class)))
+                .thenReturn(page);
+
+        Page<InvoiceDTO> result = invoiceService.searchOutputInvoices("INV", pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("searchInputInvoices: searches input invoices by keyword")
+    void searchInputInvoices_success() {
+        Page<Invoice> page = new PageImpl<>(List.of(draftInvoice));
+        when(invoiceRepository.searchByKeywordAndDirection(eq("VND"), eq(InvoiceDirection.INPUT), any(Pageable.class)))
+                .thenReturn(page);
+
+        Page<InvoiceDTO> result = invoiceService.searchInputInvoices("VND", pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    // ── createInputInvoice ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("createInputInvoice: success — creates INPUT direction invoice with items")
+    void createInputInvoice_success() {
+        CreateInputInvoiceRequest req = new CreateInputInvoiceRequest();
+        req.setVendorName("Nhà cung cấp A");
+        req.setTaxPercentage(BigDecimal.TEN);
+
+        CreateInputInvoiceRequest.ItemRequest item = new CreateInputInvoiceRequest.ItemRequest();
+        item.setItemName("Hàng hoá X");
+        item.setQuantity(BigDecimal.valueOf(2));
+        item.setUnitPrice(BigDecimal.valueOf(100_000));
+        req.setItems(List.of(item));
+
+        Invoice saved = Invoice.builder()
+                .invoiceNumber("INV-20260510-0001")
+                .status(Invoice.InvoiceStatus.DRAFT)
+                .direction(InvoiceDirection.INPUT)
+                .totalAmount(BigDecimal.valueOf(220_000))
+                .totalAmountWithoutTax(BigDecimal.valueOf(200_000))
+                .taxAmount(BigDecimal.valueOf(20_000))
+                .orders(new ArrayList<>())
+                .items(new ArrayList<>())
+                .build();
+        saved.setId(10L);
+        saved.setDeleted(false);
+
+        when(tenantContext.getCurrentTenantId()).thenReturn("tenant1");
+        when(invoiceRepository.save(any(Invoice.class))).thenReturn(saved);
+
+        InvoiceDTO result = invoiceService.createInputInvoice(req);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(10L);
+        verify(invoiceRepository).save(any(Invoice.class));
+    }
+
+    @Test
+    @DisplayName("createInputInvoice: no items — creates invoice with zero totals")
+    void createInputInvoice_noItems_success() {
+        CreateInputInvoiceRequest req = new CreateInputInvoiceRequest();
+        req.setVendorName("Nhà cung cấp B");
+        req.setItems(null);
+
+        Invoice saved = Invoice.builder()
+                .invoiceNumber("INV-20260510-0002")
+                .status(Invoice.InvoiceStatus.DRAFT)
+                .direction(InvoiceDirection.INPUT)
+                .totalAmount(BigDecimal.ZERO)
+                .totalAmountWithoutTax(BigDecimal.ZERO)
+                .taxAmount(BigDecimal.ZERO)
+                .orders(new ArrayList<>())
+                .items(new ArrayList<>())
+                .build();
+        saved.setId(11L);
+        saved.setDeleted(false);
+
+        when(tenantContext.getCurrentTenantId()).thenReturn("tenant1");
+        when(invoiceRepository.save(any(Invoice.class))).thenReturn(saved);
+
+        InvoiceDTO result = invoiceService.createInputInvoice(req);
+
+        assertThat(result).isNotNull();
+    }
+
+    // ── confirmInputInvoice ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("confirmInputInvoice: DRAFT INPUT invoice → COMPLETED")
+    void confirmInputInvoice_success() {
+        Invoice inputDraft = Invoice.builder()
+                .invoiceNumber("INV-INPUT-001")
+                .status(Invoice.InvoiceStatus.DRAFT)
+                .direction(InvoiceDirection.INPUT)
+                .totalAmount(BigDecimal.valueOf(200_000))
+                .totalAmountWithoutTax(BigDecimal.valueOf(200_000))
+                .taxAmount(BigDecimal.ZERO)
+                .orders(new ArrayList<>())
+                .items(new ArrayList<>())
+                .build();
+        inputDraft.setId(5L);
+        inputDraft.setDeleted(false);
+
+        Invoice completedInput = Invoice.builder()
+                .invoiceNumber("INV-INPUT-001")
+                .status(Invoice.InvoiceStatus.COMPLETED)
+                .direction(InvoiceDirection.INPUT)
+                .totalAmount(BigDecimal.valueOf(200_000))
+                .totalAmountWithoutTax(BigDecimal.valueOf(200_000))
+                .taxAmount(BigDecimal.ZERO)
+                .orders(new ArrayList<>())
+                .items(new ArrayList<>())
+                .build();
+        completedInput.setId(5L);
+        completedInput.setDeleted(false);
+
+        when(invoiceRepository.findById(5L)).thenReturn(Optional.of(inputDraft));
+        when(invoiceRepository.save(any(Invoice.class))).thenReturn(completedInput);
+
+        InvoiceDTO result = invoiceService.confirmInputInvoice(5L);
+
+        assertThat(result.getStatus()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    @DisplayName("confirmInputInvoice: not an INPUT invoice → BadRequestException")
+    void confirmInputInvoice_notInput_throws() {
+        draftInvoice.setDirection(InvoiceDirection.OUTPUT);
+        when(invoiceRepository.findById(1L)).thenReturn(Optional.of(draftInvoice));
+        when(messageService.getMessage("error.invoice.not.input")).thenReturn("Not input");
+
+        assertThatThrownBy(() -> invoiceService.confirmInputInvoice(1L))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("confirmInputInvoice: not DRAFT status → BadRequestException")
+    void confirmInputInvoice_notDraft_throws() {
+        Invoice completedInput = Invoice.builder()
+                .invoiceNumber("INV-INPUT-002")
+                .status(Invoice.InvoiceStatus.COMPLETED)
+                .direction(InvoiceDirection.INPUT)
+                .totalAmount(BigDecimal.ZERO)
+                .totalAmountWithoutTax(BigDecimal.ZERO)
+                .taxAmount(BigDecimal.ZERO)
+                .orders(new ArrayList<>())
+                .items(new ArrayList<>())
+                .build();
+        completedInput.setId(6L);
+        completedInput.setDeleted(false);
+
+        when(invoiceRepository.findById(6L)).thenReturn(Optional.of(completedInput));
+        when(messageService.getMessage("error.invoice.cannot.issue.non.draft")).thenReturn("Not draft");
+
+        assertThatThrownBy(() -> invoiceService.confirmInputInvoice(6L))
+                .isInstanceOf(BadRequestException.class);
     }
 }

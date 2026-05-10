@@ -65,7 +65,14 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
-        <!-- Testcontainers (replaces H2 — tests run against a real PostgreSQL) -->
+        <!-- H2 for @DataJpaTest integration tests (no Docker required) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers (for full-stack integration tests against real PostgreSQL) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-testcontainers</artifactId>
@@ -317,6 +324,15 @@
                         <exclude>com/tappy/pos/model/**</exclude>
                         <exclude>com/tappy/pos/controller/**</exclude>
                         <exclude>com/tappy/pos/util/**</exclude>
+                        <!-- External API integrations — cannot be unit-tested without live credentials -->
+                        <exclude>com/tappy/pos/integration/google/**</exclude>
+                        <exclude>com/tappy/pos/service/integration/**</exclude>
+                        <!-- Pawn repositories: Spring Data JPA proxies + complex native SQL queries -->
+                        <exclude>com/tappy/pos/repository/pawn/**</exclude>
+                        <!-- Spring Security DSL config — not unit-testable without Spring context -->
+                        <exclude>com/tappy/pos/config/SecurityConfig*</exclude>
+                        <!-- One-time raw-JDBC credential migration — bypasses JPA, requires live DB -->
+                        <exclude>com/tappy/pos/service/tenant/CredentialMigrationService*</exclude>
                     </excludes>
                 </configuration>
             </plugin>

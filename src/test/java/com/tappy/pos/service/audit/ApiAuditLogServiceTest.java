@@ -857,6 +857,44 @@ class ApiAuditLogServiceTest {
         // Then
         verify(auditLogRepository, times(2)).save(any(ApiAuditLog.class));
     }
+
+    // ── ApiAuditLogRequest builder.toString + setters + calculateSize(null) ──
+
+    @Test
+    @DisplayName("ApiAuditLogRequest builder: toString does not throw")
+    void apiAuditLogRequest_builderToString() {
+        String str = ApiAuditLogService.ApiAuditLogRequest.builder()
+                .traceId("t1").apiEndpoint("/test").httpMethod("GET")
+                .responseStatus(200).toString();
+        assertThat(str).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("ApiAuditLogRequest: setHttpMethod, setResponseHeaders, setDescription via setters")
+    void apiAuditLogRequest_setters() {
+        ApiAuditLogService.ApiAuditLogRequest req = new ApiAuditLogService.ApiAuditLogRequest();
+        req.setHttpMethod("DELETE");
+        req.setResponseHeaders(Map.of("X-Header", "value"));
+        req.setDescription("test description");
+
+        assertThat(req.getHttpMethod()).isEqualTo("DELETE");
+        assertThat(req.getResponseHeaders()).isNotNull();
+        assertThat(req.getDescription()).isEqualTo("test description");
+    }
+
+    @Test
+    @DisplayName("logApiCall: handles null requestBody and responseBody (covers calculateSize null path)")
+    void logApiCall_nullBodies_handlesGracefully() {
+        when(auditLogRepository.save(any(ApiAuditLog.class))).thenReturn(new ApiAuditLog());
+
+        ApiAuditLogService.ApiAuditLogRequest req = ApiAuditLogService.ApiAuditLogRequest.builder()
+                .apiEndpoint("/test").httpMethod("GET").responseStatus(200)
+                .requestBody(null).responseBody(null).build();
+
+        auditLogService.logApiCall(req);
+
+        verify(auditLogRepository).save(any(ApiAuditLog.class));
+    }
 }
 
 

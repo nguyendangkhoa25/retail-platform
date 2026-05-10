@@ -1,15 +1,20 @@
 package com.tappy.pos.service.tenant;
 
+import com.tappy.pos.model.dto.tenant.InitialShopConfigRequest;
+import com.tappy.pos.model.dto.tenant.RoleSetupRequest;
 import com.tappy.pos.model.entity.auth.Role;
 import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.model.entity.customer.Customer;
+import com.tappy.pos.model.entity.employee.Employee;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.RoleEnum;
 import com.tappy.pos.model.enums.ShopConfigKey;
+import com.tappy.pos.model.enums.ShopType;
 import com.tappy.pos.repository.auth.RoleRepository;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.customer.CustomerRepository;
+import com.tappy.pos.repository.employee.EmployeeRepository;
 import com.tappy.pos.repository.tenant.ShopInfoRepository;
 import com.tappy.pos.service.auth.RoleFeatureService;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.nullable;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TenantProvisioningService Unit Tests")
@@ -38,6 +44,7 @@ class TenantProvisioningServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private ShopInfoRepository shopInfoRepository;
     @Mock private CustomerRepository customerRepository;
+    @Mock private EmployeeRepository employeeRepository;
     @Mock private ShopConfigService shopConfigService;
     @Mock private PasswordEncoder passwordEncoder;
 
@@ -72,6 +79,8 @@ class TenantProvisioningServiceTest {
         lenient().when(userRepository.findByUsernameTenantScoped("admin")).thenReturn(Optional.empty());
         lenient().when(userRepository.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
         lenient().when(passwordEncoder.encode(anyString())).thenReturn("encoded-password");
+        lenient().when(employeeRepository.existsByUserId(nullable(Long.class))).thenReturn(false);
+        lenient().when(employeeRepository.save(any(Employee.class))).thenAnswer(i -> i.getArgument(0));
     }
 
     // ── provision ─────────────────────────────────────────────────────────────
@@ -188,5 +197,132 @@ class TenantProvisioningServiceTest {
 
         verify(roleRepository, never()).save(argThat(r ->
                 RoleEnum.SHOP_OWNER.getCode().equals(r.getName())));
+    }
+
+    // ── buildEffectiveRoleFeatures ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("provision with custom roleSetups applies custom feature list")
+    void testProvision_WithCustomRoleSetups_AppliesCustomFeatures() {
+        RoleSetupRequest setup = new RoleSetupRequest("CASHIER", List.of("POS", "ORDER"));
+        tenantProvisioningService.provision(tenant, "admin", "password",
+                List.of(setup), null, null);
+
+        verify(roleFeatureService).setRoleFeatures("CASHIER", List.of("POS", "ORDER"));
+    }
+
+    @Test
+    @DisplayName("provision with custom roleSetups uses default features when setup.features is null")
+    void testProvision_WithCustomRoleSetups_NullFeatures_UsesDefault() {
+        RoleSetupRequest setup = new RoleSetupRequest("CASHIER", null);
+        tenantProvisioningService.provision(tenant, "admin", "password",
+                List.of(setup), null, null);
+
+        verify(roleFeatureService).setRoleFeatures(eq("CASHIER"), argThat(f -> !f.isEmpty()));
+    }
+
+    @Test
+    @DisplayName("provision with roleSetups skips MASTER_TENANT role")
+    void testProvision_WithCustomRoleSetups_SkipsMasterRole() {
+        RoleSetupRequest masterSetup = new RoleSetupRequest("MASTER_TENANT", List.of("USER"));
+        RoleSetupRequest cashierSetup = new RoleSetupRequest("CASHIER", List.of("POS"));
+        tenantProvisioningService.provision(tenant, "admin", "password",
+                List.of(masterSetup, cashierSetup), null, null);
+
+        verify(roleFeatureService, never()).setRoleFeatures(eq("MASTER_TENANT"), any());
+        verify(roleFeatureService).setRoleFeatures("CASHIER", List.of("POS"));
+    }
+
+    @Test
+    @DisplayName("provision with roleSetups skips entries with blank roleName")
+    void testProvision_WithCustomRoleSetups_SkipsBlankRoleName() {
+        RoleSetupRequest blankSetup = new RoleSetupRequest("", List.of("POS"));
+        RoleSetupRequest validSetup = new RoleSetupRequest("CASHIER", List.of("POS"));
+        tenantProvisioningService.provision(tenant, "admin", "password",
+                List.of(blankSetup, validSetup), null, null);
+
+        verify(roleFeatureService).setRoleFeatures("CASHIER", List.of("POS"));
+    }
+
+    // ── applyInitialConfig ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("provision with initialConfig sets POS_MODE")
+    void testProvision_WithInitialConfig_SetsPosMode() {
+        InitialShopConfigRequest cfg = InitialShopConfigRequest.builder()
+                .posMode("TABLE")
+                .build();
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, cfg);
+
+        verify(shopConfigService).set(ShopConfigKey.POS_MODE, "TABLE");
+    }
+
+    @Test
+    @DisplayName("provision with initialConfig sets PAWN_CATEGORY_CONFIG")
+    void testProvision_WithInitialConfig_SetsPawnConfig() {
+        InitialShopConfigRequest cfg = InitialShopConfigRequest.builder()
+                .pawnCategoryConfig("{\"enabled\":[\"GOLD\"]}")
+                .build();
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, cfg);
+
+        verify(shopConfigService).set(ShopConfigKey.PAWN_CATEGORY_CONFIG, "{\"enabled\":[\"GOLD\"]}");
+    }
+
+    @Test
+    @DisplayName("provision with blank posMode in config does not call shopConfigService.set")
+    void testProvision_WithInitialConfig_BlankPosMode_DoesNotSet() {
+        InitialShopConfigRequest cfg = InitialShopConfigRequest.builder()
+                .posMode("  ")
+                .build();
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, cfg);
+
+        verify(shopConfigService, never()).set(eq(ShopConfigKey.POS_MODE), anyString());
+    }
+
+    // ── seedShopOwnerEmployee ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("provision seeds SHOP_OWNER employee linked to admin user")
+    void testProvision_SeedsShopOwnerEmployee_WhenNotExists() {
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(employeeRepository).save(argThat(e ->
+                "Nguyễn Văn A".equals(e.getFullName()) &&
+                e.getPosition() != null));
+    }
+
+    @Test
+    @DisplayName("provision skips employee creation when already linked to admin user")
+    void testProvision_SeedsShopOwnerEmployee_SkipsWhenExists() {
+        when(employeeRepository.existsByUserId(nullable(Long.class))).thenReturn(true);
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(employeeRepository, never()).save(any(Employee.class));
+    }
+
+    // ── seedDefaultConfig with JEWELRY shop type ───────────────────────────────
+
+    @Test
+    @DisplayName("provision seeds zero tax rate for JEWELRY shop type")
+    void testProvision_JewelryShopType_ZeroTaxRate() {
+        tenant.setShopType(ShopType.JEWELRY);
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(shopConfigService).seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.0);
+    }
+
+    @Test
+    @DisplayName("provision seeds 10% tax rate for non-JEWELRY shop types")
+    void testProvision_NonJewelryShopType_TenPercentTaxRate() {
+        tenant.setShopType(ShopType.CONVENIENCE_STORE);
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(shopConfigService).seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.10);
     }
 }

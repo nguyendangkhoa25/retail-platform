@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.tappy.pos.service.MessageService;
@@ -732,6 +733,129 @@ class ProfileServiceImplTest {
 
         assertThatThrownBy(() -> profileService.updateProfileLang("testuser", request))
                 .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    @DisplayName("updateProfileLang: null lang — skips update, saves unchanged user")
+    void testUpdateProfileLang_NullLang_SkipsUpdate() {
+        ProfileRequest request = ProfileRequest.builder().username("testuser").lang(null).build();
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        UserProfile result = profileService.updateProfileLang("testuser", request);
+
+        assertThat(result).isNotNull();
+        verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("updateProfileLang: blank lang — skips update")
+    void testUpdateProfileLang_BlankLang_SkipsUpdate() {
+        ProfileRequest request = ProfileRequest.builder().username("testuser").lang("  ").build();
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        UserProfile result = profileService.updateProfileLang("testuser", request);
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    @DisplayName("updateProfileLang: user not found → ResourceNotFoundException")
+    void testUpdateProfileLang_UserNotFound() {
+        ProfileRequest request = ProfileRequest.builder().username("testuser").lang("en").build();
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.empty());
+        when(messageService.getMessage(anyString(), anyString())).thenReturn("Not found");
+
+        assertThatThrownBy(() -> profileService.updateProfileLang("testuser", request))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── updateProfileInfo edge cases ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("updateProfileInfo: null fullName — skips fullName update")
+    void testUpdateProfileInfo_NullFullName_Skips() {
+        ProfileRequest request = ProfileRequest.builder()
+                .username("testuser").fullName(null).email(null).build();
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        UserProfile result = profileService.updateProfileInfo("testuser", request);
+
+        assertThat(result).isNotNull();
+        verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("updateProfileInfo: empty email after trim — sets email to null")
+    void testUpdateProfileInfo_EmptyEmail_SetsNull() {
+        ProfileRequest request = ProfileRequest.builder()
+                .username("testuser").email("   ").build();
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        profileService.updateProfileInfo("testuser", request);
+
+        verify(userRepository).save(argThat((User u) -> u.getEmail() == null));
+    }
+
+    @Test
+    @DisplayName("updateProfileInfo: user not found → ResourceNotFoundException")
+    void testUpdateProfileInfo_UserNotFound() {
+        ProfileRequest request = ProfileRequest.builder().username("testuser").fullName("Name").build();
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.empty());
+        when(messageService.getMessage(anyString(), anyString())).thenReturn("Not found");
+
+        assertThatThrownBy(() -> profileService.updateProfileInfo("testuser", request))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── getPreferences / updatePreferences ────────────────────────────────────
+
+    @Test
+    @DisplayName("getPreferences: returns '{}' when user has null preferences")
+    void testGetPreferences_NullPreferences_ReturnsEmpty() {
+        user.setPreferences(null);
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+
+        String result = profileService.getPreferences("testuser");
+
+        assertThat(result).isEqualTo("{}");
+    }
+
+    @Test
+    @DisplayName("getPreferences: returns stored preferences JSON")
+    void testGetPreferences_ReturnsStoredValue() {
+        user.setPreferences("{\"theme\":\"dark\"}");
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+
+        String result = profileService.getPreferences("testuser");
+
+        assertThat(result).isEqualTo("{\"theme\":\"dark\"}");
+    }
+
+    @Test
+    @DisplayName("updatePreferences: saves preferences JSON to user")
+    void testUpdatePreferences_SavesSuccessfully() {
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+
+        profileService.updatePreferences("testuser", "{\"theme\":\"light\"}");
+
+        verify(userRepository).save(argThat((User u) -> "{\"theme\":\"light\"}".equals(u.getPreferences())));
+    }
+
+    @Test
+    @DisplayName("updatePreferences: user not found → ResourceNotFoundException")
+    void testUpdatePreferences_UserNotFound() {
+        when(userRepository.findByUsernameActive("nobody")).thenReturn(Optional.empty());
+        when(messageService.getMessage(anyString(), anyString())).thenReturn("Not found");
+
+        assertThatThrownBy(() -> profileService.updatePreferences("nobody", "{}"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }
 

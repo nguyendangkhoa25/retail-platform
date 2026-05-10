@@ -60,6 +60,16 @@ public class EncryptionService {
                     "app.encryption.key must decode to exactly 32 bytes (256 bits), got " + keyBytes.length);
         }
         this.secretKey = new SecretKeySpec(keyBytes, "AES");
+        try {
+            String probe = encrypt("smoke-test");
+            if (!"smoke-test".equals(decrypt(probe))) {
+                throw new IllegalStateException("EncryptionService self-test failed: round-trip mismatch");
+            }
+        } catch (IllegalStateException rethrow) {
+            throw rethrow;
+        } catch (Exception e) {
+            throw new IllegalStateException("EncryptionService self-test failed", e);
+        }
         log.info("EncryptionService initialised with AES-256-GCM");
     }
 

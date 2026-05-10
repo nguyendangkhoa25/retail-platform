@@ -1,9 +1,11 @@
 package com.tappy.pos.repository.inventory;
 
 import com.tappy.pos.model.entity.inventory.Inventory;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -19,6 +21,15 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
      * Find inventory by ID when not deleted
      */
     Optional<Inventory> findByIdAndDeletedFalse(Long id);
+
+    /**
+     * Find inventory by ID with a pessimistic write lock — use for any read-then-write
+     * sequence (addStock, removeStock, updateInventoryQuantity) to prevent lost-update
+     * races when two transactions modify the same row concurrently.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Inventory i WHERE i.id = :id")
+    Optional<Inventory> findByIdForUpdate(@Param("id") Long id);
 
     /**
      * Find inventory by product ID

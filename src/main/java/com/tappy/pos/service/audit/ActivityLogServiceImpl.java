@@ -30,7 +30,7 @@ public class ActivityLogServiceImpl implements ActivityLogService {
     public void logAsync(String tenantId, String actorUsername, String actorFullName,
                          ActivityAction action, String targetType, String targetId,
                          String description, String ipAddress) {
-        if (tenantId == null || actorUsername == null) return;
+        if (tenantId == null || tenantId.isBlank() || actorUsername == null) return;
 
         boolean isMaster = "master".equalsIgnoreCase(tenantId);
         if (!isMaster) {

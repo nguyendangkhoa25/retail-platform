@@ -15,7 +15,7 @@ import java.util.Arrays;
 public class WebConfig implements WebMvcConfigurer {
 
     private final TenantInterceptor tenantInterceptor;
-    @Value("${system.corsAllowedOrigin:*}")
+    @Value("${system.corsAllowedOrigin:http://localhost:4000}")
     private String allowedOriginConfig;
 
     @Override

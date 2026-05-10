@@ -64,6 +64,7 @@ import com.tappy.pos.service.customer.LoyaltyService;
 import com.tappy.pos.service.product.ProductService;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.config.FeatureContext;
+import com.tappy.pos.model.entity.employee.Employee;
 import com.tappy.pos.repository.employee.EmployeeRepository;
 
 import java.util.Set;
@@ -1864,6 +1865,206 @@ class CartServiceImplTest {
         CartResponse response = cartService.addGoldItem("cart-456", req);
 
         assertThat(response).isNotNull();
+    }
+
+    // ── updateItemCommission ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("updateItemCommission: clears commission when assignedEmployeeId is null")
+    void updateItemCommission_clearCommission() {
+        CartItemEntity item = CartItemEntity.builder()
+                .id(1L).productId(1L).productName("SP A").sku("SKU-001")
+                .quantity(1).basePrice(BigDecimal.valueOf(100_000))
+                .unitPrice(BigDecimal.valueOf(100_000))
+                .lineSubtotal(BigDecimal.valueOf(100_000))
+                .lineTotal(BigDecimal.valueOf(100_000)).lineGrandTotal(BigDecimal.valueOf(100_000))
+                .discountValue(BigDecimal.ZERO).tax(BigDecimal.ZERO)
+                .discountType(com.tappy.pos.model.enums.DiscountType.NONE)
+                .variants("{}").addedAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
+                .build();
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-upd").status(CartStatus.ACTIVE)
+                .subtotal(BigDecimal.ZERO).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(BigDecimal.ZERO)
+                .items(new ArrayList<>(List.of(item)))
+                .appliedCoupons("[]").appliedPromotions("[]").build();
+
+        when(cartRepository.findByCartId("cart-upd")).thenReturn(Optional.of(cart));
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.updateItemCommission("cart-upd", 1L, null, null);
+
+        assertThat(response).isNotNull();
+        assertThat(item.getAssignedEmployeeId()).isNull();
+        assertThat(item.getCommissionAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("updateItemCommission: assigns employee with commission rate from employee")
+    void updateItemCommission_withEmployee() {
+        CartItemEntity item = CartItemEntity.builder()
+                .id(1L).productId(1L).productName("SP A").sku("SKU-001")
+                .quantity(1).basePrice(BigDecimal.valueOf(100_000))
+                .unitPrice(BigDecimal.valueOf(100_000))
+                .lineSubtotal(BigDecimal.valueOf(100_000))
+                .lineTotal(BigDecimal.valueOf(100_000)).lineGrandTotal(BigDecimal.valueOf(100_000))
+                .discountValue(BigDecimal.ZERO).tax(BigDecimal.ZERO)
+                .discountType(com.tappy.pos.model.enums.DiscountType.NONE)
+                .variants("{}").addedAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
+                .build();
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-emp").status(CartStatus.ACTIVE)
+                .subtotal(BigDecimal.ZERO).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(BigDecimal.ZERO)
+                .items(new ArrayList<>(List.of(item)))
+                .appliedCoupons("[]").appliedPromotions("[]").build();
+
+        Employee emp = Employee.builder().id(5L).fullName("Nhân viên A").commissionRate(BigDecimal.TEN).build();
+
+        ProductDTO product = ProductDTO.builder().id(1L).commissionRate(null).build();
+
+        when(cartRepository.findByCartId("cart-emp")).thenReturn(Optional.of(cart));
+        when(employeeRepository.findById(5L)).thenReturn(Optional.of(emp));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.updateItemCommission("cart-emp", 1L, 5L, null);
+
+        assertThat(response).isNotNull();
+        assertThat(item.getAssignedEmployeeId()).isEqualTo(5L);
+        assertThat(item.getAssignedEmployeeName()).isEqualTo("Nhân viên A");
+    }
+
+    @Test
+    @DisplayName("updateItemCommission: cart not found → ResourceNotFoundException")
+    void updateItemCommission_cartNotFound_throws() {
+        when(cartRepository.findByCartId("no-cart")).thenReturn(Optional.empty());
+        when(messageService.getMessage("cart.not.found")).thenReturn("Cart not found");
+
+        assertThatThrownBy(() -> cartService.updateItemCommission("no-cart", 1L, null, null))
+                .isInstanceOf(com.tappy.pos.exception.ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("updateItemCommission: item not in cart → ResourceNotFoundException")
+    void updateItemCommission_itemNotFound_throws() {
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-miss").status(CartStatus.ACTIVE)
+                .subtotal(BigDecimal.ZERO).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(BigDecimal.ZERO)
+                .items(new ArrayList<>())
+                .appliedCoupons("[]").appliedPromotions("[]").build();
+
+        when(cartRepository.findByCartId("cart-miss")).thenReturn(Optional.of(cart));
+        when(messageService.getMessage("cart.item.not.found")).thenReturn("Item not found");
+
+        assertThatThrownBy(() -> cartService.updateItemCommission("cart-miss", 99L, null, null))
+                .isInstanceOf(com.tappy.pos.exception.ResourceNotFoundException.class);
+    }
+
+    // ── checkout — EXCHANGE order type ────────────────────────────────────────
+
+    @Test
+    @DisplayName("checkout computes net as sellSum - buySum for EXCHANGE order type")
+    void testCheckout_ExchangeOrderType() {
+        mockSecurityContext("cashier01");
+
+        CartItemEntity goldOut = CartItemEntity.builder()
+                .id(1L).productId(1L).productName("Vàng bán ra")
+                .sku("GOLD-OUT").quantity(1)
+                .basePrice(new BigDecimal("10000000")).unitPrice(new BigDecimal("10000000"))
+                .unitCost(new BigDecimal("9000000"))
+                .taxRate(BigDecimal.ZERO)
+                .discountType(DiscountType.NONE).discountValue(BigDecimal.ZERO)
+                .itemType(CartItemEntity.ItemType.GOLD_OUT)
+                .variants("{}")
+                .build();
+        goldOut.recalculateLineTotal();
+
+        CartItemEntity goldIn = CartItemEntity.builder()
+                .id(2L).productId(2L).productName("Vàng mua vào")
+                .sku("GOLD-IN").quantity(1)
+                .basePrice(new BigDecimal("4000000")).unitPrice(new BigDecimal("4000000"))
+                .unitCost(new BigDecimal("3500000"))
+                .taxRate(BigDecimal.ZERO)
+                .discountType(DiscountType.NONE).discountValue(BigDecimal.ZERO)
+                .itemType(CartItemEntity.ItemType.GOLD_IN)
+                .variants("{}")
+                .build();
+        goldIn.recalculateLineTotal();
+
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-exc").status(CartStatus.ACTIVE)
+                .items(new ArrayList<>(List.of(goldOut, goldIn)))
+                .subtotal(new BigDecimal("14000000")).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(new BigDecimal("14000000"))
+                .taxRate(BigDecimal.ZERO)
+                .appliedCoupons("[]").appliedPromotions("[]").build();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setOrderType(Order.OrderType.EXCHANGE);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(600L);
+        savedOrder.setOrderNumber("ORD-EXC-001");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-exc")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-exc", request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getOrderNumber()).isEqualTo("ORD-EXC-001");
+        // net = GOLD_OUT total (10M) - GOLD_IN total (4M) = 6M
+        assertThat(response.getTotal()).isEqualByComparingTo(new BigDecimal("6000000"));
+    }
+
+    // ── checkout — BUY order type ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("checkout uses cart.getTotal() for BUY order type (shop pays customer)")
+    void testCheckout_BuyOrderType() {
+        mockSecurityContext("cashier01");
+
+        CartItemEntity goldIn = CartItemEntity.builder()
+                .id(1L).productId(1L).productName("Vàng mua vào")
+                .sku("GOLD-BUY").quantity(1)
+                .basePrice(new BigDecimal("5000000")).unitPrice(new BigDecimal("5000000"))
+                .unitCost(new BigDecimal("5000000"))
+                .taxRate(BigDecimal.ZERO)
+                .discountType(DiscountType.NONE).discountValue(BigDecimal.ZERO)
+                .itemType(CartItemEntity.ItemType.GOLD_IN)
+                .variants("{}")
+                .build();
+        goldIn.recalculateLineTotal();
+
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-buy").status(CartStatus.ACTIVE)
+                .items(new ArrayList<>(List.of(goldIn)))
+                .subtotal(new BigDecimal("5000000")).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(new BigDecimal("5000000"))
+                .taxRate(BigDecimal.ZERO)
+                .appliedCoupons("[]").appliedPromotions("[]").build();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setOrderType(Order.OrderType.BUY);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(700L);
+        savedOrder.setOrderNumber("ORD-BUY-001");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-buy")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-buy", request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getOrderNumber()).isEqualTo("ORD-BUY-001");
+        assertThat(response.getTotal()).isEqualByComparingTo(new BigDecimal("5000000"));
     }
 }
 

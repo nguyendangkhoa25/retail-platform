@@ -38,11 +38,11 @@ class TenantSeedServiceTest {
         mockSavepoint  = mock(Savepoint.class);
         mockStatement  = mock(Statement.class);
 
-        when(entityManager.unwrap(Session.class)).thenReturn(mockSession);
-        when(mockConnection.setSavepoint()).thenReturn(mockSavepoint);
-        when(mockConnection.createStatement()).thenReturn(mockStatement);
+        lenient().when(entityManager.unwrap(Session.class)).thenReturn(mockSession);
+        lenient().when(mockConnection.setSavepoint()).thenReturn(mockSavepoint);
+        lenient().when(mockConnection.createStatement()).thenReturn(mockStatement);
 
-        doAnswer(inv -> {
+        lenient().doAnswer(inv -> {
             Work work = inv.getArgument(0);
             work.execute(mockConnection);
             return null;
@@ -101,6 +101,96 @@ class TenantSeedServiceTest {
 
         verify(mockConnection, atLeastOnce()).rollback(any(Savepoint.class));
         verify(mockSession).doWork(any(Work.class));
+    }
+
+    // ── seedShopTypeTemplates ─────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: null shopType returns early without DB call")
+    void seedShopTypeTemplates_nullShopType() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(null);
+
+        verify(mockSession, never()).doWork(any(Work.class));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: BARBER_SHOP inserts 'Phiếu dịch vụ' template")
+    void seedShopTypeTemplates_barberShop() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.BARBER_SHOP);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement).execute(argThat(sql -> sql.contains("Phiếu dịch vụ")));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: COFFEE_SHOP inserts service template")
+    void seedShopTypeTemplates_coffeeShop() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.COFFEE_SHOP);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement).execute(argThat(sql -> sql.contains("Phiếu dịch vụ")));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: PHARMACY inserts 'Hóa đơn thuốc' template")
+    void seedShopTypeTemplates_pharmacy() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.PHARMACY);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement).execute(argThat(sql -> sql.contains("Hóa đơn thuốc")));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: CONVENIENCE_STORE inserts 'Hóa đơn siêu thị' template")
+    void seedShopTypeTemplates_convenienceStore() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.CONVENIENCE_STORE);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement).execute(argThat(sql -> sql.contains("Hóa đơn siêu thị")));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: FASHION inserts 'Phiếu bảo hành' template")
+    void seedShopTypeTemplates_fashion() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.FASHION);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement).execute(argThat(sql -> sql.contains("Phiếu bảo hành")));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: ELECTRONICS inserts 'Phiếu bảo hành' template")
+    void seedShopTypeTemplates_electronics() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.ELECTRONICS);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement).execute(argThat(sql -> sql.contains("Phiếu bảo hành")));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: OTHER shop type returns early without DB call")
+    void seedShopTypeTemplates_otherShopType_noTemplate() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.OTHER);
+
+        verify(mockSession, never()).doWork(any(Work.class));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: JEWELRY shop type returns early without DB call")
+    void seedShopTypeTemplates_jewelry_noTemplate() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.JEWELRY);
+
+        verify(mockSession, never()).doWork(any(Work.class));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: DB error during insert is caught via savepoint rollback")
+    void seedShopTypeTemplates_dbError_rollsBackAndContinues() throws Exception {
+        when(mockStatement.execute(anyString())).thenThrow(new RuntimeException("insert failed"));
+
+        tenantSeedService.seedShopTypeTemplates(ShopType.BARBER_SHOP);
+
+        verify(mockConnection).rollback(any(Savepoint.class));
     }
 
 }

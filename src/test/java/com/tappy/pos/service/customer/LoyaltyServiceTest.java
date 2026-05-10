@@ -460,4 +460,168 @@ class LoyaltyServiceTest {
 
         assertThat(result.getContent()).hasSize(1);
     }
+
+    // ── backfillRedemptionOrderId ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("backfillRedemptionOrderId: sets orderId on most recent redemption without order")
+    void backfillRedemptionOrderId_found_updatesOrderId() {
+        LoyaltyTransaction tx = LoyaltyTransaction.builder()
+                .customerId(1L).points(-100).type(LoyaltyTransactionType.REDEEMED).build();
+        when(transactionRepository.findTopRedemptionWithoutOrder(1L)).thenReturn(Optional.of(tx));
+        when(transactionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        loyaltyService.backfillRedemptionOrderId(1L, 55L);
+
+        verify(transactionRepository).save(argThat(t -> Long.valueOf(55L).equals(t.getOrderId())));
+    }
+
+    @Test
+    @DisplayName("backfillRedemptionOrderId: no-op when no unlinked redemption exists")
+    void backfillRedemptionOrderId_notFound_noOp() {
+        when(transactionRepository.findTopRedemptionWithoutOrder(1L)).thenReturn(Optional.empty());
+
+        loyaltyService.backfillRedemptionOrderId(1L, 55L);
+
+        verify(transactionRepository, never()).save(any());
+    }
+
+    // ── awardPointsForOrder edge cases ────────────────────────────────────────
+
+    @Test
+    @DisplayName("awardPointsForOrder: skips when customer not found")
+    void awardPoints_customerNotFound_noOp() {
+        when(transactionRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+        when(programRepository.findActiveProgram()).thenReturn(Optional.of(activeProgram));
+        when(customerRepository.findByIdActive(99L)).thenReturn(Optional.empty());
+
+        loyaltyService.awardPointsForOrder(99L, 1L, new BigDecimal("100000"));
+
+        verify(customerRepository, never()).save(any());
+    }
+
+    // ── redeemPoints edge cases ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("redeemPoints: throws ResourceNotFoundException when customer not found")
+    void redeemPoints_customerNotFound_throws() {
+        when(programRepository.findActiveProgram()).thenReturn(Optional.of(activeProgram));
+        when(customerRepository.findByIdActive(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> loyaltyService.redeemPoints(99L, 100, 5L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── saveProgram all-fields coverage ───────────────────────────────────────
+
+    @Test
+    @DisplayName("saveProgram updates all null-checked fields when all provided")
+    void saveProgram_allFields_updatesAll() {
+        when(programRepository.findActiveProgram()).thenReturn(Optional.of(activeProgram));
+        when(programRepository.save(any(LoyaltyProgram.class))).thenReturn(activeProgram);
+
+        SaveLoyaltyProgramRequest req = SaveLoyaltyProgramRequest.builder()
+                .pointsPerAmount(3)
+                .amountPerPoints(5000L)
+                .redemptionPointsPerDiscount(50)
+                .redemptionDiscountAmount(new BigDecimal("5000"))
+                .minRedemptionPoints(50)
+                .isActive(false)
+                .build();
+
+        loyaltyService.saveProgram(req);
+
+        verify(programRepository).save(argThat(p ->
+                p.getPointsPerAmount() == 3 &&
+                p.getAmountPerPoints() == 5000L &&
+                p.getRedemptionPointsPerDiscount() == 50));
+    }
+
+    // ── updateTier all-fields coverage ────────────────────────────────────────
+
+    @Test
+    @DisplayName("updateTier updates all fields when all provided in request")
+    void updateTier_allFields_updatesAll() {
+        LoyaltyTier tier = LoyaltyTier.builder().name("Silver").build();
+        tier.setId(1L);
+        tier.setDeleted(false);
+        when(tierRepository.findById(1L)).thenReturn(Optional.of(tier));
+        when(tierRepository.save(any(LoyaltyTier.class))).thenReturn(tier);
+
+        CreateLoyaltyTierRequest req = CreateLoyaltyTierRequest.builder()
+                .name("Platinum")
+                .minSpend(new BigDecimal("5000000"))
+                .pointsMultiplier(new BigDecimal("2.0"))
+                .color("#FFD700")
+                .description("Top tier customers")
+                .sortOrder(3)
+                .build();
+
+        loyaltyService.updateTier(1L, req);
+
+        verify(tierRepository).save(argThat(t ->
+                "Platinum".equals(t.getName()) &&
+                t.getMinSpend().compareTo(new BigDecimal("5000000")) == 0 &&
+                "#FFD700".equals(t.getColor()) &&
+                "Top tier customers".equals(t.getDescription()) &&
+                t.getSortOrder() == 3));
+    }
+
+    // ── awardPointsForOrder: inactive program ─────────────────────────────────
+
+    @Test
+    @DisplayName("awardPointsForOrder: skips when program is found but inactive")
+    void awardPointsForOrder_inactiveProgram_skips() {
+        LoyaltyProgram inactiveProgram = LoyaltyProgram.builder()
+                .pointsPerAmount(1).amountPerPoints(10000L)
+                .redemptionPointsPerDiscount(100)
+                .redemptionDiscountAmount(new BigDecimal("10000"))
+                .minRedemptionPoints(100)
+                .isActive(false)
+                .build();
+
+        when(transactionRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+        when(programRepository.findActiveProgram()).thenReturn(Optional.of(inactiveProgram));
+
+        loyaltyService.awardPointsForOrder(10L, 1L, new BigDecimal("100000"));
+
+        verify(customerRepository, never()).save(any());
+    }
+
+    // ── getCustomerLoyalty: nextTier present ──────────────────────────────────
+
+    @Test
+    @DisplayName("getCustomerLoyalty: computes amountToNextTier when next tier is available")
+    void getCustomerLoyalty_withNextTier_computesAmount() {
+        customer.setId(1L);
+        LoyaltyTier nextTierEntity = LoyaltyTier.builder()
+                .name("Gold").minSpend(new BigDecimal("1000000")).sortOrder(2).build();
+        nextTierEntity.setId(2L);
+        nextTierEntity.setDeleted(false);
+        when(customerRepository.findByIdActive(1L)).thenReturn(Optional.of(customer));
+        when(tierRepository.findTierForSpend(any())).thenReturn(Optional.empty());
+        when(tierRepository.findNextTierForSpend(any())).thenReturn(Optional.of(nextTierEntity));
+
+        var result = loyaltyService.getCustomerLoyalty(1L);
+
+        // amountToNext = 1000000 - 500000 = 500000
+        assertThat(result.getAmountToNextTier()).isEqualByComparingTo("500000");
+        assertThat(result.getNextTier()).isNotNull();
+        assertThat(result.getNextTier().getName()).isEqualTo("Gold");
+    }
+
+    // ── adjustPoints: null description ────────────────────────────────────────
+
+    @Test
+    @DisplayName("adjustPoints: uses default description when null is passed")
+    void adjustPoints_nullDescription_usesDefault() {
+        when(customerRepository.findByIdActive(10L)).thenReturn(Optional.of(customer));
+        when(customerRepository.save(any())).thenReturn(customer);
+        when(transactionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        var tx = loyaltyService.adjustPoints(10L, 50, null);
+
+        verify(transactionRepository).save(argThat(
+                t -> "Điều chỉnh điểm thủ công".equals(t.getDescription())));
+    }
 }

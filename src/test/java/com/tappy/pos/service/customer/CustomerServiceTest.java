@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.MessageService;
@@ -1197,6 +1198,87 @@ class CustomerServiceTest {
         assertThat(result).isNotNull();
         verify(customerRepository).findByPhone(intlPhone);
         verify(customerRepository).save(any(Customer.class));
+    }
+
+    // ── updateCustomer extended fields ────────────────────────────────────────
+
+    @Test
+    @DisplayName("updateCustomer: sets all extended fields when provided")
+    void testUpdateCustomer_ExtendedFields() {
+        UpdateCustomerRequest req = UpdateCustomerRequest.builder()
+                .zaloId("zalo-new")
+                .facebookId("fb-new")
+                .preferredServices("Massage, Spa")
+                .allergiesOrSensitivities("Latex")
+                .specialRequests("No loud music")
+                .idCardNumber("123456789")
+                .gender("MALE")
+                .permanentAddress("123 ABC Street")
+                .idCardIssuedPlace("Ha Noi")
+                .build();
+
+        when(customerRepository.findByIdActive(1L)).thenReturn(Optional.of(customer));
+        when(customerRepository.save(any(Customer.class))).thenAnswer(i -> i.getArgument(0));
+
+        customerService.updateCustomer(1L, req);
+
+        verify(customerRepository).save(argThat(c ->
+                "zalo-new".equals(c.getZaloId()) &&
+                "fb-new".equals(c.getFacebookId()) &&
+                "Massage, Spa".equals(c.getPreferredServices()) &&
+                "123456789".equals(c.getIdCardNumber())));
+    }
+
+    // ── deleteCustomer: walk-in customer ─────────────────────────────────────
+
+    @Test
+    @DisplayName("deleteCustomer: throws when trying to delete walk-in customer")
+    void testDeleteCustomer_WalkIn_Throws() {
+        Customer walkIn = Customer.builder().name("Khách lẻ").phone("0000000000").build();
+        walkIn.setId(99L);
+        walkIn.setDeleted(false);
+        when(customerRepository.findByIdActive(99L)).thenReturn(Optional.of(walkIn));
+        when(messageService.getMessage("error.customer.cannot.delete.walkin")).thenReturn("Cannot delete walk-in");
+
+        assertThatThrownBy(() -> customerService.deleteCustomer(99L))
+                .isInstanceOf(com.tappy.pos.exception.BadRequestException.class);
+    }
+
+    // ── getWalkinCustomer ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getWalkinCustomer: returns DTO for customer with phone 0000000000")
+    void testGetWalkinCustomer_Success() {
+        customer.setPhone("0000000000");
+        when(customerRepository.findByPhone("0000000000")).thenReturn(Optional.of(customer));
+
+        CustomerDTO dto = customerService.getWalkinCustomer();
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.getPhone()).isEqualTo("0000000000");
+    }
+
+    // ── findCustomerByPhone ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("findCustomerByPhone: returns DTO when customer exists")
+    void testFindCustomerByPhone_Found() {
+        when(customerRepository.findByPhone("1234567890")).thenReturn(Optional.of(customer));
+
+        CustomerDTO dto = customerService.findCustomerByPhone("1234567890");
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.getName()).isEqualTo("John Doe");
+    }
+
+    @Test
+    @DisplayName("findCustomerByPhone: returns null when no customer with that phone")
+    void testFindCustomerByPhone_NotFound() {
+        when(customerRepository.findByPhone("0000000001")).thenReturn(Optional.empty());
+
+        CustomerDTO dto = customerService.findCustomerByPhone("0000000001");
+
+        assertThat(dto).isNull();
     }
 
 }

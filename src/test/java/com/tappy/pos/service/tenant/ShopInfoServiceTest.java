@@ -10,16 +10,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -35,6 +39,9 @@ class ShopInfoServiceTest {
 
     @Mock
     private ShopConfigService shopConfigService;
+
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private ShopInfoService shopInfoService;
@@ -638,5 +645,64 @@ class ShopInfoServiceTest {
         assertThat(result.getDefaultTaxRate()).isEqualTo(10.0);
         assertThat(result.getCashDenominations()).isEqualTo("500000");
         assertThat(result.getPosMode()).isEqualTo("STANDARD");
+    }
+
+    // ============= parseTaxRateByProductType Tests =============
+
+    @Test
+    @DisplayName("parseTaxRateByProductType: returns empty map when config is null")
+    void testParseTaxRateByProductType_Null_ReturnsEmpty() {
+        when(shopConfigService.getString(ShopConfigKey.TAX_RATE_BY_PRODUCT_TYPE)).thenReturn(null);
+
+        Map<String, Double> result = shopInfoService.parseTaxRateByProductType();
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("parseTaxRateByProductType: returns empty map when config is blank")
+    void testParseTaxRateByProductType_Blank_ReturnsEmpty() {
+        when(shopConfigService.getString(ShopConfigKey.TAX_RATE_BY_PRODUCT_TYPE)).thenReturn("   ");
+
+        Map<String, Double> result = shopInfoService.parseTaxRateByProductType();
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("parseTaxRateByProductType: parses valid JSON into map")
+    void testParseTaxRateByProductType_ValidJson_ReturnsParsedMap() {
+        when(shopConfigService.getString(ShopConfigKey.TAX_RATE_BY_PRODUCT_TYPE))
+                .thenReturn("{\"FOOD\":10.0,\"DRUG\":5.0}");
+
+        Map<String, Double> result = shopInfoService.parseTaxRateByProductType();
+
+        assertThat(result).containsEntry("FOOD", 10.0).containsEntry("DRUG", 5.0);
+    }
+
+    @Test
+    @DisplayName("parseTaxRateByProductType: returns empty map when JSON is invalid")
+    void testParseTaxRateByProductType_InvalidJson_ReturnsEmpty() {
+        when(shopConfigService.getString(ShopConfigKey.TAX_RATE_BY_PRODUCT_TYPE))
+                .thenReturn("{not-valid-json!!}");
+
+        Map<String, Double> result = shopInfoService.parseTaxRateByProductType();
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("updateShopInfo: serializes and writes taxRateByProductType to config")
+    void testUpdateShopInfo_WithTaxRateByProductType() {
+        ShopInfoDTO dto = ShopInfoDTO.builder()
+                .taxRateByProductType(Map.of("FOOD", 10.0))
+                .build();
+
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopInfoRepository.save(any(ShopInfo.class))).thenReturn(testShopInfo);
+
+        shopInfoService.updateShopInfo(dto);
+
+        verify(shopConfigService).set(eq(ShopConfigKey.TAX_RATE_BY_PRODUCT_TYPE), anyString());
     }
 }

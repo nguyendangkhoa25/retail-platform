@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -30,6 +31,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Seeds roles, features, role-feature mappings, shop info, and admin user
@@ -137,6 +139,7 @@ public class TenantProvisioningService {
         ROLE_FEATURES = m;
     }
 
+    @Transactional
     public void provision(Tenant tenant, String adminUsername, String adminPassword,
                           List<RoleSetupRequest> roleSetups, String shopAddress,
                           InitialShopConfigRequest initialConfig) {
@@ -145,11 +148,8 @@ public class TenantProvisioningService {
         String tenantId = tenant.getTenantId();
         Map<String, List<String>> effectiveRoleFeatures = buildEffectiveRoleFeatures(roleSetups);
 
-        try { seedRoles(effectiveRoleFeatures.keySet().stream().toList(), tenantId); }
-        catch (Exception e) { log.warn("seedRoles failed for tenant {}: {}", tenantId, e.getMessage()); }
-
-        try { seedRoleFeatureMappings(effectiveRoleFeatures); }
-        catch (Exception e) { log.warn("seedRoleFeatureMappings failed for tenant {}: {}", tenantId, e.getMessage()); }
+        seedRoles(effectiveRoleFeatures.keySet().stream().toList(), tenantId);
+        seedRoleFeatureMappings(effectiveRoleFeatures);
 
         try { seedShopInfo(tenant, shopAddress, tenantId); }
         catch (Exception e) { log.warn("seedShopInfo failed for tenant {}: {}", tenantId, e.getMessage()); }
@@ -280,9 +280,10 @@ public class TenantProvisioningService {
     }
 
     private User seedShopOwnerUser(Tenant tenant, String adminUsername, String adminPassword, String tenantId) {
-        if (userRepository.findByUsernameTenantScoped(adminUsername).isPresent()) {
+        Optional<User> existingUser = userRepository.findByUsernameTenantScoped(adminUsername);
+        if (existingUser.isPresent()) {
             log.info("Admin user '{}' already exists in tenant: {}", adminUsername, tenantId);
-            return userRepository.findByUsernameTenantScoped(adminUsername).get();
+            return existingUser.get();
         }
 
         Role shopOwnerRole = roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), tenantId)

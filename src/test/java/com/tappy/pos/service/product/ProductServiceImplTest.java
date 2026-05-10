@@ -18,6 +18,7 @@ import com.tappy.pos.repository.product.CategoryRepository;
 import com.tappy.pos.repository.product.AttributeDefinitionRepository;
 import com.tappy.pos.repository.product.AttributeGroupRepository;
 import com.tappy.pos.repository.product.ProductAttributeValueRepository;
+import com.tappy.pos.repository.inventory.InventoryRepository;
 import com.tappy.pos.repository.product.ProductVariantRepository;
 import com.tappy.pos.repository.vendor.VendorRepository;
 import com.tappy.pos.service.MessageService;
@@ -89,6 +90,9 @@ class ProductServiceImplTest {
 
     @Mock
     private ProductVariantRepository productVariantRepository;
+
+    @Mock
+    private InventoryRepository inventoryRepository;
 
     @InjectMocks
     private ProductServiceImpl productService;
@@ -1667,6 +1671,224 @@ class ProductServiceImplTest {
         String sku = productService.generateSku("Phone", "ELECTRONICS");
 
         assertThat(sku).startsWith("ELEC-");
+    }
+
+    // ── markAsSold ─────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("markAsSold: sets product status to INACTIVE")
+    void markAsSold_success() {
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.markAsSold(1L);
+
+        verify(productRepository).save(product);
+        assertThat(product.getStatus()).isEqualTo(Product.ProductStatus.INACTIVE);
+    }
+
+    @Test
+    @DisplayName("markAsSold: product not found → ResourceNotFoundException")
+    void markAsSold_notFound_throws() {
+        when(productRepository.findByIdAndDeletedFalse(99L)).thenReturn(Optional.empty());
+        when(messageService.getMessage("product.not.found")).thenReturn("Not found");
+
+        assertThatThrownBy(() -> productService.markAsSold(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── JEWELRY type: auto-creates 1-unit inventory ────────────────────────────
+
+    @Test
+    @DisplayName("createProduct: JEWELRY type auto-creates 1-unit inventory at 'Quầy'")
+    void createProduct_jewelryType_autoCreatesInventory() {
+        ProductType jewelryType = ProductType.builder()
+                .id(2L).code("JEWELRY").name("Trang Sức").build();
+
+        Product savedJewelry = Product.builder()
+                .id(5L).productType(jewelryType).sku("JWL-001").name("Nhẫn Vàng 24K")
+                .price(BigDecimal.valueOf(5_000_000)).costPrice(BigDecimal.valueOf(4_000_000))
+                .status(Product.ProductStatus.ACTIVE)
+                .attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
+
+        CreateProductRequest req = CreateProductRequest.builder()
+                .productTypeId(2L).sku("JWL-001").name("Nhẫn Vàng 24K")
+                .price(BigDecimal.valueOf(5_000_000)).status("ACTIVE").build();
+
+        when(productRepository.findBySkuAndDeletedFalse("JWL-001")).thenReturn(Optional.empty());
+        when(productTypeRepository.findById(2L)).thenReturn(Optional.of(jewelryType));
+        when(productRepository.save(any(Product.class))).thenReturn(savedJewelry);
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-test");
+
+        productService.createProduct(req);
+
+        verify(inventoryRepository).save(argThat(inv ->
+                inv.getQuantityInStock() == 1L && "Quầy".equals(inv.getWarehouseLocation())));
+    }
+
+    @Test
+    @DisplayName("createProduct: JEWELRY type uses counter_code attribute as warehouse location")
+    void createProduct_jewelryType_usesCounterCodeAsLocation() {
+        ProductType jewelryType = ProductType.builder()
+                .id(2L).code("JEWELRY").name("Trang Sức").build();
+
+        Product savedJewelry = Product.builder()
+                .id(6L).productType(jewelryType).sku("JWL-002").name("Dây Chuyền Vàng")
+                .price(BigDecimal.valueOf(3_000_000)).costPrice(BigDecimal.valueOf(2_500_000))
+                .status(Product.ProductStatus.ACTIVE)
+                .attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
+
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("counter_code", "TU-A1");
+
+        CreateProductRequest req = CreateProductRequest.builder()
+                .productTypeId(2L).sku("JWL-002").name("Dây Chuyền Vàng")
+                .price(BigDecimal.valueOf(3_000_000)).status("ACTIVE")
+                .attributes(attrs).build();
+
+        AttributeDefinition counterCodeAttr = AttributeDefinition.builder()
+                .code("counter_code").name("Mã Tủ").dataType(AttributeDefinition.DataType.STRING).build();
+        counterCodeAttr.setId(10L);
+
+        when(productRepository.findBySkuAndDeletedFalse("JWL-002")).thenReturn(Optional.empty());
+        when(productTypeRepository.findById(2L)).thenReturn(Optional.of(jewelryType));
+        when(productRepository.save(any(Product.class))).thenReturn(savedJewelry);
+        when(attributeDefinitionRepository.findByCodeAndProductTypeId("counter_code", 2L))
+                .thenReturn(Optional.of(counterCodeAttr));
+        when(productAttributeValueRepository.save(any())).thenReturn(new com.tappy.pos.model.entity.product.ProductAttributeValue());
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-test");
+
+        productService.createProduct(req);
+
+        verify(inventoryRepository).save(argThat(inv -> "TU-A1".equals(inv.getWarehouseLocation())));
+    }
+
+    // ── vendorId handling ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("createProduct: with vendorId — looks up vendor and assigns it to product")
+    void createProduct_withVendorId_loadsVendor() {
+        com.tappy.pos.model.entity.vendor.Vendor vendor = new com.tappy.pos.model.entity.vendor.Vendor();
+        vendor.setId(7L);
+        vendor.setName("Nhà Cung Cấp A");
+
+        CreateProductRequest req = CreateProductRequest.builder()
+                .productTypeId(1L).sku("VENDOR-001").name("Product With Vendor")
+                .price(BigDecimal.valueOf(100_000)).status("ACTIVE")
+                .vendorId(7L).build();
+
+        Product savedWithVendor = Product.builder()
+                .id(10L).productType(productType).sku("VENDOR-001").name("Product With Vendor")
+                .price(BigDecimal.valueOf(100_000)).status(Product.ProductStatus.ACTIVE)
+                .vendor(vendor).attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
+
+        when(productRepository.findBySkuAndDeletedFalse("VENDOR-001")).thenReturn(Optional.empty());
+        when(productTypeRepository.findById(1L)).thenReturn(Optional.of(productType));
+        when(vendorRepository.findById(7L)).thenReturn(Optional.of(vendor));
+        when(productRepository.save(any(Product.class))).thenReturn(savedWithVendor);
+
+        ProductDTO result = productService.createProduct(req);
+
+        assertThat(result.getVendorId()).isEqualTo(7L);
+        verify(vendorRepository).findById(7L);
+    }
+
+    @Test
+    @DisplayName("createProduct: vendor not found → ResourceNotFoundException")
+    void createProduct_vendorNotFound_throws() {
+        CreateProductRequest req = CreateProductRequest.builder()
+                .productTypeId(1L).sku("BAD-VND-001").name("Product")
+                .price(BigDecimal.TEN).status("ACTIVE").vendorId(999L).build();
+
+        when(productRepository.findBySkuAndDeletedFalse("BAD-VND-001")).thenReturn(Optional.empty());
+        when(productTypeRepository.findById(1L)).thenReturn(Optional.of(productType));
+        when(vendorRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> productService.createProduct(req))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("updateProduct: with vendorId — updates vendor on product")
+    void updateProduct_withVendorId_updatesVendor() {
+        com.tappy.pos.model.entity.vendor.Vendor vendor = new com.tappy.pos.model.entity.vendor.Vendor();
+        vendor.setId(3L);
+        vendor.setName("New Vendor");
+
+        UpdateProductRequest req = UpdateProductRequest.builder()
+                .name("Updated").description("Desc").price(BigDecimal.TEN)
+                .status("ACTIVE").vendorId(3L).build();
+
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(vendorRepository.findById(3L)).thenReturn(Optional.of(vendor));
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.updateProduct(1L, req);
+
+        verify(vendorRepository).findById(3L);
+        verify(productRepository).save(any(Product.class));
+    }
+
+    @Test
+    @DisplayName("createProduct: attribute with null value — skipped without saving attribute")
+    void createProduct_nullAttributeValue_skipped() {
+        Map<String, Object> attrs = new LinkedHashMap<>();
+        attrs.put("color", null);
+        attrs.put("size", "M");
+
+        AttributeDefinition sizeAttr = AttributeDefinition.builder()
+                .code("size").name("Size").dataType(AttributeDefinition.DataType.STRING).build();
+        sizeAttr.setId(2L);
+
+        Product savedProduct = Product.builder()
+                .id(1L).productType(productType).sku("NULL-ATTR-SKIP").name("Test")
+                .price(BigDecimal.TEN).status(Product.ProductStatus.ACTIVE)
+                .attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
+
+        CreateProductRequest req = CreateProductRequest.builder()
+                .productTypeId(1L).sku("NULL-ATTR-SKIP").name("Test")
+                .price(BigDecimal.TEN).status("ACTIVE").attributes(attrs).build();
+
+        when(productRepository.findBySkuAndDeletedFalse("NULL-ATTR-SKIP")).thenReturn(Optional.empty());
+        when(productTypeRepository.findById(1L)).thenReturn(Optional.of(productType));
+        when(productRepository.save(any(Product.class))).thenReturn(savedProduct);
+        when(attributeDefinitionRepository.findByCodeAndProductTypeId("size", 1L))
+                .thenReturn(Optional.of(sizeAttr));
+        when(productAttributeValueRepository.save(any())).thenReturn(new com.tappy.pos.model.entity.product.ProductAttributeValue());
+
+        productService.createProduct(req);
+
+        verify(attributeDefinitionRepository, never()).findByCodeAndProductTypeId(eq("color"), anyLong());
+        verify(productAttributeValueRepository, times(1)).save(any());
+    }
+
+    @Test
+    @DisplayName("lookupByBarcode: OFF enabled, valid barcode not found in OFF — returns NONE")
+    void lookupByBarcode_offEnabled_validBarcode_notFoundInOff() {
+        String validBarcode = "4006381333931";
+        when(productRepository.findByBarcodeAndDeletedFalse(validBarcode)).thenReturn(Optional.empty());
+        when(productCatalogRepository.findByBarcode(validBarcode)).thenReturn(Optional.empty());
+        when(openFoodFactsClient.isEnabled()).thenReturn(true);
+        when(openFoodFactsClient.fetchByBarcode(validBarcode)).thenReturn(Optional.empty());
+
+        BarcodeLookupResult result = productService.lookupByBarcode(validBarcode);
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.NONE);
+        verify(productCatalogService, never()).saveFromOffAsync(any());
+    }
+
+    @Test
+    @DisplayName("lookupByBarcode: OFF enabled but barcode structurally invalid — skips OFF call")
+    void lookupByBarcode_offEnabled_invalidBarcode_skipsOff() {
+        String invalidBarcode = "NOTABARCODE";
+        when(productRepository.findByBarcodeAndDeletedFalse(invalidBarcode)).thenReturn(Optional.empty());
+        when(productCatalogRepository.findByBarcode(invalidBarcode)).thenReturn(Optional.empty());
+        when(openFoodFactsClient.isEnabled()).thenReturn(true);
+
+        BarcodeLookupResult result = productService.lookupByBarcode(invalidBarcode);
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.NONE);
+        verify(openFoodFactsClient, never()).fetchByBarcode(anyString());
     }
 }
 

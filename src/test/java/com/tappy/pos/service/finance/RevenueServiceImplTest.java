@@ -413,4 +413,85 @@ class RevenueServiceImplTest {
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getEmployeeName()).isEqualTo("Nguyễn Văn A");
     }
+
+    // ── getMonthlyBreakdown with populated cost/expense rows ──────────────────
+
+    @Test
+    @DisplayName("getMonthlyBreakdown maps cost and expense rows when data is present")
+    void getMonthlyBreakdown_withCostAndExpenses() {
+        List<Object[]> revenueRows = new ArrayList<>();
+        revenueRows.add(new Object[]{ 5, new BigDecimal("500000"), 50L });
+
+        List<Object[]> costRows = new ArrayList<>();
+        costRows.add(new Object[]{ 5, new BigDecimal("300000") });
+
+        List<Object[]> expenseRows = new ArrayList<>();
+        expenseRows.add(new Object[]{ 5, new BigDecimal("20000") });
+
+        when(orderRepository.sumRevenueGroupedByMonth(2024)).thenReturn(revenueRows);
+        when(orderItemRepository.sumCostGroupedByMonth(2024)).thenReturn(costRows);
+        when(expenseRepository.sumGroupedByMonth(2024)).thenReturn(expenseRows);
+
+        List<RevenuePeriodDTO> result = revenueService.getMonthlyBreakdown(2024);
+
+        RevenuePeriodDTO may = result.get(4);
+        assertThat(may.getCost()).isEqualByComparingTo("300000");
+        assertThat(may.getExpenses()).isEqualByComparingTo("20000");
+        // profit = 500000 - 300000 = 200000; netProfit = 200000 - 20000 = 180000
+        assertThat(may.getProfit()).isEqualByComparingTo("200000");
+        assertThat(may.getNetProfit()).isEqualByComparingTo("180000");
+    }
+
+    // ── getDailyBreakdown with populated cost/expense rows ────────────────────
+
+    @Test
+    @DisplayName("getDailyBreakdown maps cost and expense rows when data is present")
+    void getDailyBreakdown_withCostAndExpenses() {
+        List<Object[]> revenueRows = new ArrayList<>();
+        revenueRows.add(new Object[]{ 10, new BigDecimal("100000"), 10L });
+
+        List<Object[]> costRows = new ArrayList<>();
+        costRows.add(new Object[]{ 10, new BigDecimal("60000") });
+
+        List<Object[]> expenseRows = new ArrayList<>();
+        expenseRows.add(new Object[]{ 10, new BigDecimal("5000") });
+
+        when(orderRepository.sumRevenueGroupedByDay(2024, 6)).thenReturn(revenueRows);
+        when(orderItemRepository.sumCostGroupedByDay(2024, 6)).thenReturn(costRows);
+        when(expenseRepository.sumGroupedByDay(2024, 6)).thenReturn(expenseRows);
+
+        List<RevenuePeriodDTO> result = revenueService.getDailyBreakdown(2024, 6);
+
+        RevenuePeriodDTO day10 = result.get(9);
+        assertThat(day10.getCost()).isEqualByComparingTo("60000");
+        assertThat(day10.getExpenses()).isEqualByComparingTo("5000");
+        assertThat(day10.getProfit()).isEqualByComparingTo("40000");
+        assertThat(day10.getNetProfit()).isEqualByComparingTo("35000");
+    }
+
+    // ── toBigDecimal: non-BigDecimal branch ───────────────────────────────────
+
+    @Test
+    @DisplayName("getCategoryBreakdown handles Long revenue value via toBigDecimal (non-BigDecimal path)")
+    void getCategoryBreakdown_longRevenue_convertsViaToBigDecimal() {
+        List<Object[]> rows = new ArrayList<>();
+        rows.add(new Object[]{"Electronics", 10L, 300000L}); // Long, not BigDecimal
+        when(orderRepository.sumRevenueGroupedByCategory(null, null)).thenReturn(rows);
+
+        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown(null, null);
+
+        assertThat(result.get(0).getRevenue()).isEqualByComparingTo("300000");
+    }
+
+    @Test
+    @DisplayName("getTopEmployees handles Long revenue value via toBigDecimal")
+    void getTopEmployees_longRevenue_convertsViaToBigDecimal() {
+        List<Object[]> rows = new ArrayList<>();
+        rows.add(new Object[]{"Nguyễn Văn A", 50L, 500000L}); // Long, not BigDecimal
+        when(orderRepository.sumRevenueGroupedByEmployee(null, null)).thenReturn(rows);
+
+        List<TopEmployeeDTO> result = revenueService.getTopEmployees(null, null, 5);
+
+        assertThat(result.get(0).getRevenue()).isEqualByComparingTo("500000");
+    }
 }

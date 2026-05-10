@@ -162,6 +162,124 @@ class NotificationServiceTest {
         assertThat(n.isDeleted()).isTrue();
     }
 
+    // ── delete edge cases ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("delete: throws when notification not found")
+    void delete_notFound_throws() {
+        when(notificationRepository.findById(99L)).thenReturn(Optional.empty());
+        when(messageService.getMessage(anyString(), eq(99L))).thenReturn("not found");
+
+        assertThatThrownBy(() -> notificationService.delete(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("delete: throws when notification belongs to different user")
+    void delete_wrongUser_throws() {
+        Notification n = Notification.builder()
+                .userId("other-user").title("Test").isRead(false)
+                .type(Notification.NotificationType.INFO)
+                .createdBy("SYSTEM").build();
+        when(notificationRepository.findById(2L)).thenReturn(Optional.of(n));
+        when(messageService.getMessage(anyString(), eq(2L))).thenReturn("not found");
+
+        assertThatThrownBy(() -> notificationService.delete(2L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── pushSystem edge cases ─────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("pushSystem: skips save when user opted out of the type")
+    void pushSystem_userOptedOut_skipsNotification() {
+        NotificationPreference pref = NotificationPreference.builder()
+                .userId("user1").enabledTypes("BILLING,ORDER").build();
+        when(preferenceRepository.findByUserIdIn(List.of("user1"))).thenReturn(List.of(pref));
+
+        notificationService.pushSystem("user1", Notification.NotificationType.SYSTEM,
+                "Title", "Body", null, null);
+
+        verify(notificationRepository, never()).save(any());
+    }
+
+    // ── pushToRolesAsync ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("pushToRolesAsync: sets tenant context when tenantId provided")
+    void pushToRolesAsync_withTenantId_setsTenantContext() {
+        Tenant tenant = new Tenant();
+        tenant.setTenantId("shop-abc");
+        when(tenantRepository.findByTenantId("shop-abc")).thenReturn(Optional.of(tenant));
+        when(userRepository.findUsernamesByRoleNames(anyList())).thenReturn(Collections.emptyList());
+
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+                null, null, List.of("SHOP_OWNER"), "shop-abc");
+
+        verify(tenantContext).setCurrentTenant(tenant);
+        verify(tenantContext).clear();
+    }
+
+    @Test
+    @DisplayName("pushToRolesAsync: skips context setup when tenantId is null")
+    void pushToRolesAsync_withNullTenantId_noContextSetup() {
+        when(userRepository.findUsernamesByRoleNames(anyList())).thenReturn(Collections.emptyList());
+
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+                null, null, List.of("MASTER_TENANT"), null);
+
+        verify(tenantRepository, never()).findByTenantId(anyString());
+        verify(tenantContext, never()).clear();
+    }
+
+    @Test
+    @DisplayName("pushToRolesAsync: swallows exception and clears context")
+    void pushToRolesAsync_exceptionSwallowed() {
+        when(tenantRepository.findByTenantId("shop-err")).thenReturn(Optional.empty());
+        when(userRepository.findUsernamesByRoleNames(anyList())).thenThrow(new RuntimeException("DB error"));
+
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+                null, null, List.of("SHOP_OWNER"), "shop-err");
+
+        verify(tenantContext).clear();
+    }
+
+    // ── parseType via create ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("create: null type defaults to INFO")
+    void create_withNullType_defaultsToInfo() {
+        CreateNotificationRequest req = new CreateNotificationRequest();
+        req.setTitle("Test");
+        req.setMessage("Body");
+        req.setType(null);
+        req.setTargetUserIds(List.of("user1"));
+
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+
+        List<NotificationDTO> result = notificationService.create(req);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getType()).isEqualTo("INFO");
+    }
+
+    @Test
+    @DisplayName("create: invalid type string defaults to INFO")
+    void create_withInvalidType_defaultsToInfo() {
+        CreateNotificationRequest req = new CreateNotificationRequest();
+        req.setTitle("Test");
+        req.setMessage("Body");
+        req.setType("INVALID_TYPE_XYZ");
+        req.setTargetUserIds(List.of("user1"));
+
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+
+        List<NotificationDTO> result = notificationService.create(req);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getType()).isEqualTo("INFO");
+    }
+
     // ── create ────────────────────────────────────────────────────────────────
 
     @Test

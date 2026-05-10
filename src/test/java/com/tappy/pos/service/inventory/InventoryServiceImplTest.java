@@ -252,7 +252,7 @@ class InventoryServiceImplTest {
     @DisplayName("Should add stock successfully")
     void testAddStock_Success() {
         // Given
-        when(inventoryRepository.findById(1L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
         when(inventoryRepository.save(any(Inventory.class))).thenReturn(inventory);
 
         // When
@@ -269,7 +269,7 @@ class InventoryServiceImplTest {
     @DisplayName("Should remove stock successfully")
     void testRemoveStock_Success() {
         // Given
-        when(inventoryRepository.findById(1L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
         when(inventoryRepository.save(any(Inventory.class))).thenReturn(inventory);
 
         // When
@@ -285,7 +285,7 @@ class InventoryServiceImplTest {
     @DisplayName("Should throw exception when removing more stock than available")
     void testRemoveStock_InsufficientStock() {
         // Given
-        when(inventoryRepository.findById(1L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
 
         // When & Then
         assertThatThrownBy(() -> inventoryService.removeStock(1L, 200L))
@@ -296,7 +296,7 @@ class InventoryServiceImplTest {
     @DisplayName("Should update quantity successfully")
     void testUpdateQuantity_Success() {
         // Given
-        when(inventoryRepository.findById(1L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
         when(inventoryRepository.save(any(Inventory.class))).thenReturn(inventory);
 
         // When
@@ -594,7 +594,7 @@ class InventoryServiceImplTest {
     @DisplayName("Should throw exception when updating quantity for non-existent inventory")
     void testUpdateInventoryQuantity_NotFound() {
         // Given
-        when(inventoryRepository.findById(999L)).thenReturn(Optional.empty());
+        when(inventoryRepository.findByIdForUpdate(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.inventory.not.found", 999L))
                 .thenReturn("Inventory not found");
 
@@ -608,7 +608,7 @@ class InventoryServiceImplTest {
     void testUpdateInventoryQuantity_Deleted() {
         // Given
         inventory.softDelete();
-        when(inventoryRepository.findById(1L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
         when(messageService.getMessage("error.inventory.not.found", 1L))
                 .thenReturn("Inventory not found");
 
@@ -621,7 +621,7 @@ class InventoryServiceImplTest {
     @DisplayName("Should throw exception when adding stock to non-existent inventory")
     void testAddStock_NotFound() {
         // Given
-        when(inventoryRepository.findById(999L)).thenReturn(Optional.empty());
+        when(inventoryRepository.findByIdForUpdate(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.inventory.not.found", 999L))
                 .thenReturn("Inventory not found");
 
@@ -635,7 +635,7 @@ class InventoryServiceImplTest {
     void testAddStock_Deleted() {
         // Given
         inventory.softDelete();
-        when(inventoryRepository.findById(1L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
         when(messageService.getMessage("error.inventory.not.found", 1L))
                 .thenReturn("Inventory not found");
 
@@ -648,7 +648,7 @@ class InventoryServiceImplTest {
     @DisplayName("Should throw exception when removing stock from non-existent inventory")
     void testRemoveStock_NotFound() {
         // Given
-        when(inventoryRepository.findById(999L)).thenReturn(Optional.empty());
+        when(inventoryRepository.findByIdForUpdate(999L)).thenReturn(Optional.empty());
         when(messageService.getMessage("error.inventory.not.found", 999L))
                 .thenReturn("Inventory not found");
 
@@ -662,7 +662,7 @@ class InventoryServiceImplTest {
     void testRemoveStock_Deleted() {
         // Given
         inventory.softDelete();
-        when(inventoryRepository.findById(1L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
         when(messageService.getMessage("error.inventory.not.found", 1L))
                 .thenReturn("Inventory not found");
 
