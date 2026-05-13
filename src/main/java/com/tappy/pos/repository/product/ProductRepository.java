@@ -25,5 +25,11 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Query("SELECT p.sku FROM Product p WHERE p.deleted = false AND p.sku LIKE :prefix%")
     List<String> findSkusByPrefix(@Param("prefix") String prefix);
+
+    @Query("SELECT p FROM Product p JOIN p.categories c WHERE p.deleted = false AND p.status = :status AND c.id = :categoryId ORDER BY p.createdAt DESC")
+    Page<Product> findByStatusAndCategoryId(@Param("status") Product.ProductStatus status, @Param("categoryId") Long categoryId, Pageable pageable);
+
+    @Query("SELECT COUNT(p) FROM Product p WHERE p.deleted = false AND p.status = 'ACTIVE'")
+    long countActive();
 }
 

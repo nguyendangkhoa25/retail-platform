@@ -74,4 +74,45 @@ public class ShopExpenseController {
         log.info("Endpoint: GET /expenses/category-breakdown - year:{} month:{}", year, month);
         return ResponseEntity.ok(ApiResponse.success(expenseService.getCategoryBreakdown(year, month), "Category breakdown retrieved"));
     }
+
+    @GetMapping("/summary")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getSummary(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /expenses/summary from={} to={}", from, to);
+        return ResponseEntity.ok(ApiResponse.success(expenseService.getSummary(from, to), "OK"));
+    }
+
+    @GetMapping("/chart")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getChart(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /expenses/chart from={} to={}", from, to);
+        return ResponseEntity.ok(ApiResponse.success(expenseService.getChart(from, to), "OK"));
+    }
+
+    @GetMapping("/defaults")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getDefaults() {
+        return ResponseEntity.ok(ApiResponse.success(java.util.List.of(), "OK"));
+    }
+
+    @PostMapping("/defaults")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> createDefault(@RequestBody java.util.Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success(body, "Created"));
+    }
+
+    @PutMapping("/defaults/{id}")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> updateDefault(@PathVariable Long id, @RequestBody java.util.Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success(body, "Updated"));
+    }
+
+    @DeleteMapping("/defaults/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteDefault(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(null, "Deleted"));
+    }
+
+    @PostMapping("/clone-defaults")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> cloneDefaults(@RequestBody java.util.Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success(java.util.List.of(), "Cloned"));
+    }
 }

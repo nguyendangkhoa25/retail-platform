@@ -30,6 +30,9 @@ public class OrderItem extends TenantAwareEntity {
     @Column(name = "product_name")
     private String productName;
 
+    @Column(name = "variant_id")
+    private Long variantId;
+
     @Positive(message = "Quantity must be positive")
     @Column(nullable = false)
     private Integer quantity;

@@ -15,4 +15,5 @@ public class LoginRequest {
     private String password;
     private Boolean rememberMe;
     private String turnstileToken;
+    private Boolean refreshInBody;
 }

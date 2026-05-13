@@ -57,6 +57,11 @@ public class Product extends TenantAwareEntity {
     @Column(name = "commission_rate", precision = 5, scale = 2)
     private BigDecimal commissionRate;
 
+    // Duration in minutes for timed services (e.g. barber services); 0 = not a timed service
+    @Builder.Default
+    @Column(name = "duration_minutes", nullable = false, columnDefinition = "INT DEFAULT 0")
+    private Integer durationMinutes = 0;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendor_id")
     private Vendor vendor;

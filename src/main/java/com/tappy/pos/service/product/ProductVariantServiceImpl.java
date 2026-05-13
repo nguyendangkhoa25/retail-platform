@@ -1,14 +1,17 @@
 package com.tappy.pos.service.product;
 
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.DuplicateResourceException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.product.GenerateVariantsRequest;
 import com.tappy.pos.model.dto.product.ProductVariantDTO;
 import com.tappy.pos.model.dto.product.SaveProductVariantRequest;
+import com.tappy.pos.model.entity.inventory.Inventory;
 import com.tappy.pos.model.entity.product.Product;
 import com.tappy.pos.model.entity.product.ProductVariant;
 import com.tappy.pos.model.entity.product.VariantType;
 import com.tappy.pos.model.entity.product.VariantTypeOption;
+import com.tappy.pos.repository.inventory.InventoryRepository;
 import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.repository.product.ProductVariantRepository;
 import com.tappy.pos.repository.product.VariantTypeRepository;
@@ -34,6 +37,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     private final ProductVariantRepository productVariantRepository;
     private final ProductRepository productRepository;
     private final VariantTypeRepository variantTypeRepository;
+    private final InventoryRepository inventoryRepository;
     private final MessageService messageService;
 
     @Override
@@ -50,6 +54,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     public ProductVariantDTO createVariant(Long productId, SaveProductVariantRequest req) {
         Product product = requireProduct(productId);
         checkSkuUnique(req.getSku());
+        boolean isFirstVariant = !productVariantRepository.existsByProductIdAndDeletedAtIsNull(productId);
         ProductVariant variant = ProductVariant.builder()
                 .product(product)
                 .tenantId(product.getTenantId())
@@ -61,6 +66,10 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                 .status(ProductVariant.VariantStatus.ACTIVE)
                 .build();
         ProductVariant saved = productVariantRepository.save(variant);
+        createVariantInventory(saved, product);
+        if (isFirstVariant) {
+            zeroOutProductLevelInventory(productId);
+        }
         log.info("Created variant {} for product {}", saved.getId(), productId);
         return mapToDTO(saved, product.getPrice());
     }
@@ -96,6 +105,12 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                 .findByIdAndProductIdAndDeletedAtIsNull(variantId, productId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         messageService.getMessage("error.product.not.found", variantId)));
+        inventoryRepository.findByProductIdAndVariantId(productId, variantId).ifPresent(inv -> {
+            if (inv.getQuantityInStock() != null && inv.getQuantityInStock() > 0) {
+                throw new BadRequestException(
+                        messageService.getMessage("error.variant.delete.has.stock", inv.getQuantityInStock()));
+            }
+        });
         variant.setDeletedAt(LocalDateTime.now());
         variant.setDeleted(true);
         productVariantRepository.save(variant);
@@ -108,6 +123,8 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         String baseSkuStr = (req.getBaseSku() != null && !req.getBaseSku().isBlank())
                 ? req.getBaseSku().trim()
                 : product.getSku();
+
+        boolean isFirstVariantBatch = !productVariantRepository.existsByProductIdAndDeletedAtIsNull(productId);
 
         // Load variant types with options (ordered)
         List<VariantType> variantTypes = req.getVariantTypeIds().stream()
@@ -150,8 +167,13 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                     .status(ProductVariant.VariantStatus.ACTIVE)
                     .build();
             ProductVariant saved = productVariantRepository.save(variant);
+            createVariantInventory(saved, product);
             created.add(mapToDTO(saved, product.getPrice()));
             log.debug("Generated variant {} (SKU: {})", saved.getId(), sku);
+        }
+
+        if (isFirstVariantBatch && !created.isEmpty()) {
+            zeroOutProductLevelInventory(productId);
         }
 
         log.info("Generated {} variants for product {}", created.size(), productId);
@@ -159,6 +181,37 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private void createVariantInventory(ProductVariant variant, Product product) {
+        if (inventoryRepository.findByProductIdAndVariantId(product.getId(), variant.getId()).isPresent()) {
+            return; // Already exists (e.g. retry after partial failure)
+        }
+        Inventory inv = Inventory.builder()
+                .tenantId(product.getTenantId())
+                .product(product)
+                .variant(variant)
+                .quantityInStock(0L)
+                .reorderLevel(10L)
+                .reorderQuantity(50L)
+                .unitCost(product.getCostPrice() != null ? product.getCostPrice() : java.math.BigDecimal.ZERO)
+                .warehouseLocation("Kho chính")
+                .status(Inventory.InventoryStatus.ACTIVE)
+                .inventoryType(Inventory.InventoryType.RETAIL)
+                .build();
+        inventoryRepository.save(inv);
+        log.debug("Created inventory record for variant {} (product {})", variant.getId(), product.getId());
+    }
+
+    private void zeroOutProductLevelInventory(Long productId) {
+        inventoryRepository.findProductLevelInventory(productId).ifPresent(inv -> {
+            if (inv.getQuantityInStock() > 0) {
+                log.info("Zeroing product-level stock ({} units) for product {} — variants now track stock",
+                        inv.getQuantityInStock(), productId);
+                inv.setQuantityInStock(0L);
+                inventoryRepository.save(inv);
+            }
+        });
+    }
 
     private Product requireProduct(Long productId) {
         return productRepository.findByIdAndDeletedFalse(productId)
@@ -174,6 +227,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     }
 
     private ProductVariantDTO mapToDTO(ProductVariant v, java.math.BigDecimal parentPrice) {
+        Long qty = inventoryRepository.findByProductIdAndVariantId(v.getProduct().getId(), v.getId())
+                .map(inv -> inv.getQuantityInStock())
+                .orElse(null);
         return ProductVariantDTO.builder()
                 .id(v.getId())
                 .productId(v.getProduct().getId())
@@ -184,6 +240,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                 .price(v.getPriceOverride() != null ? v.getPriceOverride() : parentPrice)
                 .costOverride(v.getCostOverride())
                 .status(v.getStatus().name())
+                .quantityInStock(qty)
                 .build();
     }
 

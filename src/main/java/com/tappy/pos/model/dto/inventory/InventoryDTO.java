@@ -11,6 +11,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Data
 @NoArgsConstructor
@@ -22,6 +24,10 @@ public class InventoryDTO {
     private Long productId;
     private String productName;
     private String productSku;
+    private Long variantId;
+    private String variantSku;
+    private Map<String, String> variantOptions;
+    private String variantLabel;
     private Long quantityInStock;
     private Long reorderLevel;
     private Long reorderQuantity;
@@ -44,6 +50,14 @@ public class InventoryDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    private static String buildVariantLabel(com.tappy.pos.model.entity.product.ProductVariant variant) {
+        if (variant == null || variant.getVariantOptions() == null || variant.getVariantOptions().isEmpty()) {
+            return null;
+        }
+        return variant.getVariantOptions().values().stream()
+                .collect(Collectors.joining(" / "));
+    }
+
     private static String buildShelfLabel(Inventory entity) {
         List<String> parts = new ArrayList<>();
         if (entity.getZone() != null && !entity.getZone().isBlank()) parts.add("Khu " + entity.getZone().trim());
@@ -59,6 +73,10 @@ public class InventoryDTO {
                 .productId(entity.getProduct() != null ? entity.getProduct().getId() : null)
                 .productName(entity.getProduct() != null ? entity.getProduct().getName() : null)
                 .productSku(entity.getProduct() != null ? entity.getProduct().getSku() : null)
+                .variantId(entity.getVariant() != null ? entity.getVariant().getId() : null)
+                .variantSku(entity.getVariant() != null ? entity.getVariant().getSku() : null)
+                .variantOptions(entity.getVariant() != null ? entity.getVariant().getVariantOptions() : null)
+                .variantLabel(buildVariantLabel(entity.getVariant()))
                 .quantityInStock(entity.getQuantityInStock())
                 .reorderLevel(entity.getReorderLevel())
                 .reorderQuantity(entity.getReorderQuantity())

@@ -22,6 +22,9 @@ public class PurchaseOrderItem extends TenantAwareEntity {
     @Column(name = "product_id")
     private Long productId;
 
+    @Column(name = "variant_id")
+    private Long variantId;
+
     @Column(name = "product_name", nullable = false, length = 255)
     private String productName;
 

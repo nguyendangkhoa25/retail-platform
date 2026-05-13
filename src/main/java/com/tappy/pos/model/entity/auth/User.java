@@ -82,6 +82,12 @@ public class User extends UnifiedTenantEntity {
     @Column(columnDefinition = "TEXT")
     private String preferences;
 
+    @Column(name = "pin_hash", length = 255)
+    private String pinHash;
+
+    @Column(name = "nickname", length = 100)
+    private String nickname;
+
     // Add a role to this user
     public void addRole(Role role) {
         this.roles.add(role);

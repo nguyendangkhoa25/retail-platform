@@ -45,6 +45,10 @@ public class CreateProductRequest {
     private BigDecimal commissionRate;
 
     @Builder.Default
+    @Min(value = 0, message = "Duration must be >= 0")
+    private Integer durationMinutes = 0;
+
+    @Builder.Default
     private String status = "ACTIVE";
 
     @Size(max = 20, message = "Unit must not exceed 20 characters")

@@ -180,6 +180,13 @@ public class CustomerController {
         return ResponseEntity.ok(ApiResponse.success(null, "Customer deleted successfully"));
     }
 
+    @GetMapping("/recent")
+    public ResponseEntity<ApiResponse<java.util.List<CustomerDTO>>> getRecentCustomers(
+            @RequestParam(defaultValue = "5") int limit) {
+        log.info("Endpoint: GET /customers/recent limit={}", limit);
+        return ResponseEntity.ok(ApiResponse.success(customerService.getRecentCustomers(limit), "Recent customers retrieved"));
+    }
+
     @GetMapping("/{id}/orders")
     public ResponseEntity<ApiResponse<Page<OrderDTO>>> getCustomerOrders(
             @PathVariable Long id, Pageable pageable) {

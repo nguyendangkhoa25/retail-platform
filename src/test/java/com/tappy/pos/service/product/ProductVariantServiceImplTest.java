@@ -9,6 +9,7 @@ import com.tappy.pos.model.entity.product.Product;
 import com.tappy.pos.model.entity.product.ProductVariant;
 import com.tappy.pos.model.entity.product.VariantType;
 import com.tappy.pos.model.entity.product.VariantTypeOption;
+import com.tappy.pos.repository.inventory.InventoryRepository;
 import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.repository.product.ProductVariantRepository;
 import com.tappy.pos.repository.product.VariantTypeRepository;
@@ -38,6 +39,7 @@ class ProductVariantServiceImplTest {
     @Mock private ProductVariantRepository productVariantRepository;
     @Mock private ProductRepository        productRepository;
     @Mock private VariantTypeRepository    variantTypeRepository;
+    @Mock private InventoryRepository      inventoryRepository;
     @Mock private MessageService           messageService;
 
     @InjectMocks

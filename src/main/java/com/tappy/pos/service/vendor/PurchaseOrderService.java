@@ -10,6 +10,7 @@ import com.tappy.pos.model.entity.vendor.Vendor;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.repository.product.ProductVariantRepository;
 import com.tappy.pos.repository.vendor.PurchaseOrderItemRepository;
 import com.tappy.pos.repository.vendor.PurchaseOrderRepository;
 import com.tappy.pos.repository.vendor.VendorRepository;
@@ -39,6 +40,7 @@ public class PurchaseOrderService {
     private final PurchaseOrderItemRepository poItemRepository;
     private final VendorRepository vendorRepository;
     private final InventoryService inventoryService;
+    private final ProductVariantRepository productVariantRepository;
     private final MessageService messageService;
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
@@ -85,6 +87,7 @@ public class PurchaseOrderService {
             PurchaseOrderItem item = PurchaseOrderItem.builder()
                     .purchaseOrder(po)
                     .productId(i.getProductId())
+                    .variantId(i.getVariantId())
                     .productName(i.getProductName())
                     .productSku(i.getProductSku())
                     .quantityOrdered(i.getQuantityOrdered())
@@ -149,16 +152,21 @@ public class PurchaseOrderService {
             }
             item.setQuantityReceived(newReceived);
 
-            // Add to inventory
+            // Add to inventory — variant-aware: if this line item specifies a variant,
+            // add stock to the variant's inventory record; otherwise add to the product-level record.
             if (item.getProductId() != null) {
                 try {
-                    var inventoryPage = inventoryService.getInventoryByProductId(
-                            item.getProductId(), PageRequest.of(0, 1));
+                    var pageable = PageRequest.of(0, 1);
+                    var inventoryPage = (item.getVariantId() != null)
+                            ? inventoryService.getInventoryByProductIdAndVariantId(item.getProductId(), item.getVariantId(), pageable)
+                            : inventoryService.getInventoryByProductId(item.getProductId(), pageable);
                     if (!inventoryPage.isEmpty()) {
                         inventoryService.addStock(inventoryPage.getContent().get(0).getId(), (long) qty);
-                        log.info("Added {} units of product {} to inventory via PO {}", qty, item.getProductId(), po.getPoNumber());
+                        log.info("Added {} units of product {} (variant {}) to inventory via PO {}",
+                                qty, item.getProductId(), item.getVariantId(), po.getPoNumber());
                     } else {
-                        log.warn("No inventory record found for product {} — stock not updated", item.getProductId());
+                        log.warn("No inventory record found for product {} variant {} — stock not updated",
+                                item.getProductId(), item.getVariantId());
                     }
                 } catch (Exception e) {
                     log.warn("Failed to update inventory for product {}: {}", item.getProductId(), e.getMessage());
@@ -244,16 +252,28 @@ public class PurchaseOrderService {
         PurchaseOrderDTO dto = mapToDTO(po);
         dto.setItems(po.getItems().stream()
                 .filter(i -> !i.isDeleted())
-                .map(i -> PurchaseOrderItemDTO.builder()
-                        .id(i.getId())
-                        .productId(i.getProductId())
-                        .productName(i.getProductName())
-                        .productSku(i.getProductSku())
-                        .quantityOrdered(i.getQuantityOrdered())
-                        .quantityReceived(i.getQuantityReceived())
-                        .unitCost(i.getUnitCost())
-                        .totalCost(i.getTotalCost())
-                        .build())
+                .map(i -> {
+                    String variantLabel = null;
+                    if (i.getVariantId() != null) {
+                        variantLabel = productVariantRepository.findById(i.getVariantId())
+                                .map(v -> v.getVariantOptions() != null
+                                        ? String.join(" / ", v.getVariantOptions().values())
+                                        : null)
+                                .orElse(null);
+                    }
+                    return PurchaseOrderItemDTO.builder()
+                            .id(i.getId())
+                            .productId(i.getProductId())
+                            .variantId(i.getVariantId())
+                            .variantLabel(variantLabel)
+                            .productName(i.getProductName())
+                            .productSku(i.getProductSku())
+                            .quantityOrdered(i.getQuantityOrdered())
+                            .quantityReceived(i.getQuantityReceived())
+                            .unitCost(i.getUnitCost())
+                            .totalCost(i.getTotalCost())
+                            .build();
+                })
                 .collect(Collectors.toList()));
         return dto;
     }

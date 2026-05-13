@@ -83,6 +83,7 @@ public class ProductServiceImpl implements ProductService {
                 .price(request.getPrice())
                 .costPrice(request.getCostPrice() != null ? request.getCostPrice() : java.math.BigDecimal.ZERO)
                 .commissionRate(request.getCommissionRate())
+                .durationMinutes(request.getDurationMinutes() != null ? request.getDurationMinutes() : 0)
                 .unit(request.getUnit())
                 .shelfLocation(request.getShelfLocation())
                 .vendor(vendor)
@@ -217,6 +218,9 @@ public class ProductServiceImpl implements ProductService {
         }
         // commissionRate: null = inherit employee default; explicit value (incl. 0) = override
         product.setCommissionRate(request.getCommissionRate());
+        if (request.getDurationMinutes() != null) {
+            product.setDurationMinutes(request.getDurationMinutes());
+        }
         product.setUnit(request.getUnit());
         product.setShelfLocation(request.getShelfLocation());
         product.setStatus(Product.ProductStatus.valueOf(request.getStatus()));
@@ -326,12 +330,13 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ProductDTO> getAllProducts(String status, Pageable pageable) {
-        log.info("Getting all products with status: {}", status);
+    public Page<ProductDTO> getAllProducts(String status, Long categoryId, Pageable pageable) {
+        log.info("Getting all products with status: {}, categoryId: {}", status, categoryId);
         Product.ProductStatus productStatus = Product.ProductStatus.valueOf(status.toUpperCase());
-        Page<Product> products = productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(productStatus, pageable);
+        Page<Product> products = categoryId != null
+                ? productRepository.findByStatusAndCategoryId(productStatus, categoryId, pageable)
+                : productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(productStatus, pageable);
 
-        // Batch-load variant presence to avoid N+1 queries
         List<Long> productIds = products.getContent().stream()
                 .map(Product::getId)
                 .collect(Collectors.toList());
@@ -481,6 +486,19 @@ public class ProductServiceImpl implements ProductService {
                 .map(Category::getName)
                 .collect(Collectors.toSet());
 
+        boolean isService = "SERVICE".equals(product.getProductType().getCode());
+        Long stockQuantity = null;
+        Boolean inStock = null;
+        if (!isService) {
+            Optional<Inventory> inv = inventoryRepository.findByProductId(product.getId());
+            if (inv.isPresent()) {
+                stockQuantity = inv.get().getQuantityInStock();
+                inStock = stockQuantity > 0;
+            } else {
+                inStock = false;
+            }
+        }
+
         return ProductDTO.builder()
                 .id(product.getId())
                 .productTypeId(product.getProductType().getId())
@@ -493,6 +511,7 @@ public class ProductServiceImpl implements ProductService {
                 .price(product.getPrice())
                 .costPrice(product.getCostPrice())
                 .commissionRate(product.getCommissionRate())
+                .durationMinutes(product.getDurationMinutes())
                 .unit(product.getUnit())
                 .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
                 .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
@@ -502,6 +521,8 @@ public class ProductServiceImpl implements ProductService {
                 .categoryNames(categoryNames)
                 .attributes(attributes)
                 .hasVariants(hasVariants)
+                .stockQuantity(stockQuantity)
+                .inStock(inStock)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -523,6 +544,19 @@ public class ProductServiceImpl implements ProductService {
 
         boolean hasVariants = productVariantRepository.existsByProductIdAndDeletedAtIsNull(product.getId());
 
+        boolean isService = "SERVICE".equals(product.getProductType().getCode());
+        Long stockQuantity = null;
+        Boolean inStock = null;
+        if (!isService) {
+            Optional<Inventory> inv = inventoryRepository.findByProductId(product.getId());
+            if (inv.isPresent()) {
+                stockQuantity = inv.get().getQuantityInStock();
+                inStock = stockQuantity > 0;
+            } else {
+                inStock = false;
+            }
+        }
+
         return ProductDTO.builder()
                 .id(product.getId())
                 .productTypeId(product.getProductType().getId())
@@ -535,6 +569,7 @@ public class ProductServiceImpl implements ProductService {
                 .price(product.getPrice())
                 .costPrice(product.getCostPrice())
                 .commissionRate(product.getCommissionRate())
+                .durationMinutes(product.getDurationMinutes())
                 .unit(product.getUnit())
                 .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
                 .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
@@ -544,6 +579,8 @@ public class ProductServiceImpl implements ProductService {
                 .categoryNames(categoryNames)
                 .attributes(attributes)
                 .hasVariants(hasVariants)
+                .stockQuantity(stockQuantity)
+                .inStock(inStock)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -624,6 +661,27 @@ public class ProductServiceImpl implements ProductService {
         product.setStatus(Product.ProductStatus.INACTIVE);
         productRepository.save(product);
         log.info("Product {} marked as sold (status → INACTIVE)", productId);
+    }
+
+    @Override
+    @Transactional
+    public void setVisibility(Long id, boolean active) {
+        Product product = productRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new com.tappy.pos.exception.ResourceNotFoundException(
+                        messageService.getMessage("product.not.found")));
+        product.setStatus(active ? Product.ProductStatus.ACTIVE : Product.ProductStatus.INACTIVE);
+        productRepository.save(product);
+        log.info("Product {} visibility set to {}", id, active);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProductSummaryDTO getSummary() {
+        return ProductSummaryDTO.builder()
+                .total(productRepository.countActive())
+                .outOfStock(inventoryRepository.countOutOfStock())
+                .lowStock(inventoryRepository.countLowStock())
+                .build();
     }
 }
 

@@ -40,4 +40,7 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     // Provisioning helper — explicit tenant_id avoids relying on Hibernate filter state
     @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.phone = :phone AND c.tenantId = :tenantId")
     Optional<Customer> findByPhoneAndTenantId(@Param("phone") String phone, @Param("tenantId") String tenantId);
+
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false ORDER BY c.createdAt DESC")
+    java.util.List<Customer> findTop(org.springframework.data.domain.Pageable pageable);
 }

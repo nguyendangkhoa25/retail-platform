@@ -2088,3 +2088,426 @@ UPDATE product SET unit = 'bag'    WHERE unit = 'bao';
 UPDATE product SET unit = 'tube'   WHERE unit = 'tuýp';
 UPDATE product SET unit = 'bar'    WHERE unit = 'bánh';
 UPDATE product SET unit = 'roll'   WHERE unit = 'cuộn';
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V002__variant_inventory.sql
+-- ════════════════════════════════════════════════════════════
+
+-- V002__variant_inventory.sql
+-- Adds per-variant inventory tracking.
+--
+-- Strategy:
+--   • inventory: add variant_id (nullable); replace the product-level unique constraint
+--     with two partial unique indexes — one for product-only rows, one for product+variant rows.
+--   • cart_items, order_items, purchase_order_items: add variant_id for line-item traceability.
+--     No FK constraint on these tables (historical records must survive variant deletion).
+
+-- ─── inventory ───────────────────────────────────────────────────────────────
+
+ALTER TABLE inventory
+    ADD COLUMN IF NOT EXISTS variant_id BIGINT DEFAULT NULL;
+
+-- FK: block variant deletion when an inventory record references it (stock > 0 guard is in Java).
+ALTER TABLE inventory
+    ADD CONSTRAINT fk_inventory_variant
+        FOREIGN KEY (variant_id) REFERENCES product_variants (id) ON DELETE RESTRICT;
+
+-- Remove the old product-level unique constraint; replaced by the two partial indexes below.
+ALTER TABLE inventory
+    DROP CONSTRAINT IF EXISTS uq_inventory_product;
+
+-- One inventory record per product when no variant is assigned.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_product_no_variant
+    ON inventory (product_id)
+    WHERE variant_id IS NULL AND deleted = false;
+
+-- One inventory record per (product, variant) combination.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_product_variant
+    ON inventory (product_id, variant_id)
+    WHERE variant_id IS NOT NULL AND deleted = false;
+
+-- Support fast lookup by variant_id (used in CartServiceImpl and PurchaseOrderService).
+CREATE INDEX IF NOT EXISTS idx_inventory_variant_id
+    ON inventory (variant_id)
+    WHERE variant_id IS NOT NULL;
+
+-- ─── cart_items ───────────────────────────────────────────────────────────────
+
+ALTER TABLE cart_items
+    ADD COLUMN IF NOT EXISTS variant_id BIGINT DEFAULT NULL;
+
+-- ─── order_items ─────────────────────────────────────────────────────────────
+
+ALTER TABLE order_items
+    ADD COLUMN IF NOT EXISTS variant_id BIGINT DEFAULT NULL;
+
+-- ─── purchase_order_items ────────────────────────────────────────────────────
+
+ALTER TABLE purchase_order_items
+    ADD COLUMN IF NOT EXISTS variant_id BIGINT DEFAULT NULL;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V003__mobile_additions.sql
+-- ════════════════════════════════════════════════════════════
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname VARCHAR(100);
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V004__combos.sql
+-- ════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS combos (
+    id BIGSERIAL PRIMARY KEY,
+    tenant_id VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description VARCHAR(500),
+    price DECIMAL(20,0) NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    created_by VARCHAR(100)
+);
+CREATE TABLE IF NOT EXISTS combo_items (
+    id BIGSERIAL PRIMARY KEY,
+    combo_id BIGINT NOT NULL REFERENCES combos(id) ON DELETE CASCADE,
+    product_id BIGINT NOT NULL,
+    product_name VARCHAR(255) NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    price DECIMAL(20,0) NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_combos_tenant ON combos(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_combo_items_combo ON combo_items(combo_id);
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V005__exchange_rates.sql
+-- ════════════════════════════════════════════════════════════
+
+-- Master-level exchange rate cache (one row per currency+source, upserted every 30 min)
+CREATE TABLE IF NOT EXISTS exchange_rates (
+    currency_code VARCHAR(3)   NOT NULL,
+    source        VARCHAR(50)  NOT NULL,
+    buy_rate      NUMERIC(18, 4),
+    transfer_rate NUMERIC(18, 4),
+    sell_rate     NUMERIC(18, 4),
+    fetched_at    TIMESTAMP    NOT NULL,
+    PRIMARY KEY (currency_code, source)
+);
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V006__customers_phone_partial_unique.sql
+-- ════════════════════════════════════════════════════════════
+
+-- Replace the full unique constraint on (phone, tenant_id) with a partial index
+-- that ignores soft-deleted rows, so a new customer can reuse a phone number that
+-- belonged to a previously deleted customer.
+ALTER TABLE customers DROP CONSTRAINT IF EXISTS uq_customers_phone_tenant;
+DROP INDEX IF EXISTS uq_customers_phone_tenant;
+CREATE UNIQUE INDEX uq_customers_phone_tenant
+    ON customers (phone, tenant_id)
+    WHERE deleted = false;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V007__product_suggestions.sql
+-- ════════════════════════════════════════════════════════════
+
+-- ============================================================
+-- V007: Product suggestions for onboarding
+-- Global reference table (no tenant_id, no RLS).
+-- Products tagged with shop_types[] can appear for multiple
+-- shop types; products with dynamic_price=true (e.g. jewelry)
+-- are priced at gold market rate, not a fixed default_price.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS product_suggestions (
+    id               BIGSERIAL    PRIMARY KEY,
+    name             VARCHAR(200) NOT NULL,
+    emoji            VARCHAR(20),
+    default_price    BIGINT       NOT NULL DEFAULT 0,
+    unit             VARCHAR(50)  NOT NULL DEFAULT 'Cái',
+    product_type_code VARCHAR(50) NOT NULL DEFAULT 'FOOD',
+    dynamic_price    BOOLEAN      NOT NULL DEFAULT FALSE,
+    shop_types       TEXT[]       NOT NULL DEFAULT '{}',
+    display_order    INT          NOT NULL DEFAULT 0,
+    CONSTRAINT uq_product_suggestion_name UNIQUE (name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_suggestions_shop_types
+    ON product_suggestions USING GIN(shop_types);
+
+-- ── Seed data ────────────────────────────────────────────────
+-- Products shared across multiple shop types come first (lower display_order).
+-- Use ON CONFLICT ... DO NOTHING for idempotent re-runs.
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order)
+VALUES
+-- ── Shared beverages ──────────────────────────────────────────
+('Nước suối',              '💧', 5000,    'Chai',  'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE','RESTAURANT','COFFEE_SHOP'], 1),
+('Coca Cola',              '🥤', 12000,   'Lon',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE','RESTAURANT','COFFEE_SHOP'], 2),
+('Pepsi',                  '🥤', 12000,   'Lon',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE','RESTAURANT','COFFEE_SHOP'], 3),
+('Bia Saigon',             '🍺', 15000,   'Lon',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE','RESTAURANT'], 4),
+('Bia Tiger',              '🍺', 16000,   'Lon',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE','RESTAURANT'], 5),
+('Trứng gà',               '🥚', 35000,   'Chục',  'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE','RESTAURANT','COFFEE_SHOP'], 6),
+('Bánh mì',                '🥖', 15000,   'Ổ',     'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE','COFFEE_SHOP','RESTAURANT'], 7),
+
+-- ── CONVENIENCE_STORE ─────────────────────────────────────────
+('Mì tôm Hảo Hảo',        '🍜', 5000,    'Gói',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE'], 10),
+('Sữa tươi Vinamilk',      '🥛', 8000,    'Hộp',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE'], 11),
+('Dầu ăn',                 '🫒', 45000,   'Chai',  'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE'], 12),
+('Gạo',                    '🌾', 25000,   'Kg',    'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE'], 13),
+('Nước mắm',               '🫙', 35000,   'Chai',  'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE','RESTAURANT'], 14),
+('Đường cát',              '🍬', 22000,   'Kg',    'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE'], 15),
+('Bột giặt',               '🧴', 35000,   'Túi',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 16),
+('Dầu gội đầu',            '🧴', 55000,   'Chai',  'BEAUTY',   FALSE, ARRAY['CONVENIENCE_STORE'], 17),
+('Xà phòng',               '🧼', 15000,   'Bánh',  'BEAUTY',   FALSE, ARRAY['CONVENIENCE_STORE'], 18),
+('Khăn giấy',              '🧻', 20000,   'Gói',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 19),
+('Thuốc lá',               '🚬', 25000,   'Gói',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 20),
+('Pin AA',                 '🔋', 25000,   'Vỉ',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 21),
+('Sạc điện thoại',         '🔌', 150000,  'Cái',   'ELECTRONICS', FALSE, ARRAY['CONVENIENCE_STORE','ELECTRONICS'], 22),
+('Cáp USB',                '🔌', 35000,   'Cái',   'ELECTRONICS', FALSE, ARRAY['CONVENIENCE_STORE','ELECTRONICS'], 23),
+('Nước tăng lực Redbull',  '🔋', 14000,   'Lon',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE','FOOD_BEVERAGE'], 24),
+('Snack khoai tây',        '🍟', 10000,   'Gói',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 25),
+('Kẹo cao su',             '🍬', 5000,    'Gói',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 26),
+
+-- ── FOOD_BEVERAGE ─────────────────────────────────────────────
+('Rau cải xanh',           '🥬', 10000,   'Bó',    'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 30),
+('Thịt heo',               '🥩', 120000,  'Kg',    'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 31),
+('Thịt bò',                '🥩', 220000,  'Kg',    'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 32),
+('Cá tươi',                '🐟', 80000,   'Kg',    'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 33),
+('Đậu hũ',                 '🫙', 10000,   'Miếng', 'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 34),
+('Cà chua',                '🍅', 20000,   'Kg',    'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 35),
+('Hành tây',               '🧅', 15000,   'Kg',    'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 36),
+('Tỏi',                    '🧄', 30000,   'Kg',    'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 37),
+('Cà rốt',                 '🥕', 18000,   'Kg',    'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 38),
+('Dầu hào',                '🫙', 28000,   'Chai',  'FOOD',     FALSE, ARRAY['FOOD_BEVERAGE','RESTAURANT'], 39),
+
+-- ── RESTAURANT ───────────────────────────────────────────────
+('Phở bò',                 '🍜', 65000,   'Tô',    'FOOD',     FALSE, ARRAY['RESTAURANT'], 40),
+('Cơm tấm sườn',           '🍚', 55000,   'Dĩa',   'FOOD',     FALSE, ARRAY['RESTAURANT'], 41),
+('Bún bò Huế',             '🍜', 60000,   'Tô',    'FOOD',     FALSE, ARRAY['RESTAURANT'], 42),
+('Bánh mì thịt',           '🥖', 25000,   'Ổ',     'FOOD',     FALSE, ARRAY['RESTAURANT','COFFEE_SHOP'], 43),
+('Gỏi cuốn',               '🫔', 35000,   'Phần',  'FOOD',     FALSE, ARRAY['RESTAURANT'], 44),
+('Chả giò',                '🧆', 45000,   'Phần',  'FOOD',     FALSE, ARRAY['RESTAURANT'], 45),
+('Cơm chiên dương châu',   '🍳', 50000,   'Dĩa',   'FOOD',     FALSE, ARRAY['RESTAURANT'], 46),
+('Lẩu thái hải sản',       '🍲', 150000,  'Nồi',   'FOOD',     FALSE, ARRAY['RESTAURANT'], 47),
+('Bún riêu cua',           '🍜', 55000,   'Tô',    'FOOD',     FALSE, ARRAY['RESTAURANT'], 48),
+('Hủ tiếu Nam Vang',       '🍜', 60000,   'Tô',    'FOOD',     FALSE, ARRAY['RESTAURANT'], 49),
+
+-- ── COFFEE_SHOP ──────────────────────────────────────────────
+('Cà phê sữa đá',          '☕', 30000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 50),
+('Bạc xỉu',                '☕', 28000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 51),
+('Cà phê đen đá',          '☕', 25000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 52),
+('Trà sữa trân châu',      '🧋', 45000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 53),
+('Americano',              '☕', 55000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 54),
+('Latte',                  '☕', 65000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 55),
+('Cappuccino',             '☕', 65000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 56),
+('Nước ép cam',            '🍊', 40000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP','RESTAURANT'], 57),
+('Sinh tố bơ',             '🥑', 55000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP','RESTAURANT'], 58),
+('Nước ép dứa',            '🍍', 40000,   'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP','RESTAURANT'], 59),
+('Bánh croissant',         '🥐', 35000,   'Cái',   'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 60),
+('Sandwich',               '🥪', 45000,   'Cái',   'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 61),
+('Bánh tiramisu',          '🍰', 55000,   'Cái',   'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 62),
+
+-- ── FASHION ──────────────────────────────────────────────────
+('Áo thun basic',          '👕', 150000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 70),
+('Quần jean',              '👖', 350000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 71),
+('Áo sơ mi',               '👔', 250000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 72),
+('Đầm nữ',                 '👗', 280000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 73),
+('Áo khoác',               '🧥', 450000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 74),
+('Quần short',             '🩳', 180000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 75),
+('Áo dài',                 '👘', 800000,  'Bộ',    'CLOTHING', FALSE, ARRAY['FASHION'], 76),
+('Áo len',                 '🧣', 300000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 77),
+('Giày sneaker',           '👟', 650000,  'Đôi',   'CLOTHING', FALSE, ARRAY['FASHION'], 78),
+('Dép lê',                 '🩴', 150000,  'Đôi',   'CLOTHING', FALSE, ARRAY['FASHION'], 79),
+('Túi xách',               '👜', 350000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 80),
+('Mũ lưỡi trai',           '🧢', 120000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 81),
+('Tất vớ',                 '🧦', 25000,   'Đôi',   'CLOTHING', FALSE, ARRAY['FASHION'], 82),
+('Thắt lưng',              '🪡', 150000,  'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 83),
+('Kính mắt thời trang',    '🕶️', 200000, 'Cái',   'CLOTHING', FALSE, ARRAY['FASHION'], 84),
+
+-- ── ELECTRONICS ──────────────────────────────────────────────
+('Điện thoại smartphone',  '📱', 8000000, 'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS','PAWN_SHOP'], 90),
+('Laptop',                 '💻', 15000000,'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS','PAWN_SHOP'], 91),
+('Máy tính bảng',          '📱', 6000000, 'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS','PAWN_SHOP'], 92),
+('Tai nghe bluetooth',     '🎧', 500000,  'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS'], 93),
+('Loa bluetooth',          '🔊', 800000,  'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS'], 94),
+('Đồng hồ thông minh',     '⌚', 2500000, 'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS','PAWN_SHOP'], 95),
+('Pin sạc dự phòng',       '🔋', 350000,  'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS'], 96),
+('Ốp lưng điện thoại',     '📱', 50000,   'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS'], 97),
+('Bàn phím không dây',     '⌨️', 400000, 'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS'], 98),
+('Chuột máy tính',         '🖱️', 200000, 'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS'], 99),
+('Màn hình máy tính',      '🖥️', 3500000,'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS'], 100),
+('Camera giám sát',        '📷', 1200000, 'Cái',   'ELECTRONICS', FALSE, ARRAY['ELECTRONICS'], 101),
+
+-- ── BARBER_SHOP (services) ───────────────────────────────────
+('Cắt tóc nam',            '💇‍♂️', 50000,   'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 110),
+('Cắt tóc nữ',             '💇‍♂️', 100000,  'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 111),
+('Cắt tóc trẻ em',         '💇‍♂️', 40000,   'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 112),
+('Nhuộm tóc',              '💈', 250000,  'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 113),
+('Uốn tóc',                '💈', 350000,  'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 114),
+('Duỗi tóc',               '💈', 400000,  'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 115),
+('Gội đầu',                '💆', 50000,   'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 116),
+('Cạo râu',                '🪒', 30000,   'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 117),
+('Massage đầu',            '💆', 80000,   'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 118),
+('Phục hồi tóc',           '💇', 200000,  'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 119),
+('Tạo kiểu tóc',           '💇', 150000,  'Lần',   'BEAUTY',   FALSE, ARRAY['BARBER_SHOP'], 120),
+
+-- ── PHARMACY ─────────────────────────────────────────────────
+('Paracetamol 500mg',      '💊', 15000,   'Hộp',   'DRUG',     FALSE, ARRAY['PHARMACY'], 130),
+('Vitamin C 1000mg',       '💊', 55000,   'Hộp',   'DRUG',     FALSE, ARRAY['PHARMACY'], 131),
+('Vitamin tổng hợp',       '💊', 85000,   'Hộp',   'DRUG',     FALSE, ARRAY['PHARMACY'], 132),
+('Khẩu trang y tế',        '😷', 25000,   'Hộp',   'DRUG',     FALSE, ARRAY['PHARMACY'], 133),
+('Nước muối sinh lý 0.9%', '💧', 12000,   'Chai',  'DRUG',     FALSE, ARRAY['PHARMACY'], 134),
+('Thuốc ho bổ phế',        '💊', 45000,   'Lọ',    'DRUG',     FALSE, ARRAY['PHARMACY'], 135),
+('Băng y tế',              '🩹', 20000,   'Cuộn',  'DRUG',     FALSE, ARRAY['PHARMACY'], 136),
+('Băng dán vết thương',    '🩹', 15000,   'Hộp',   'DRUG',     FALSE, ARRAY['PHARMACY'], 137),
+('Dầu xoa nóng',           '🧴', 35000,   'Chai',  'DRUG',     FALSE, ARRAY['PHARMACY'], 138),
+('Dầu khuynh diệp',        '🧴', 25000,   'Chai',  'DRUG',     FALSE, ARRAY['PHARMACY'], 139),
+('Nhiệt kế điện tử',       '🌡️', 250000, 'Cái',   'HEALTH',   FALSE, ARRAY['PHARMACY'], 140),
+('Máy đo huyết áp',        '❤️', 800000,  'Cái',   'HEALTH',   FALSE, ARRAY['PHARMACY'], 141),
+('Bông y tế',              '🩹', 15000,   'Gói',   'DRUG',     FALSE, ARRAY['PHARMACY'], 142),
+('Cồn y tế 90°',           '🧪', 18000,   'Chai',  'DRUG',     FALSE, ARRAY['PHARMACY'], 143),
+('Thuốc nhỏ mắt',          '💧', 30000,   'Lọ',    'DRUG',     FALSE, ARRAY['PHARMACY'], 144),
+
+-- ── JEWELRY (dynamic price — priced by gold market rate) ──────
+('Nhẫn vàng 18K',          '💍', 0, 'Cái',   'JEWELRY', TRUE,  ARRAY['JEWELRY'], 150),
+('Nhẫn vàng 24K',          '💍', 0, 'Cái',   'JEWELRY', TRUE,  ARRAY['JEWELRY'], 151),
+('Nhẫn cưới vàng 18K',     '💍', 0, 'Cái',   'JEWELRY', TRUE,  ARRAY['JEWELRY'], 152),
+('Dây chuyền vàng 18K',    '⛓️', 0, 'Cái',  'JEWELRY', TRUE,  ARRAY['JEWELRY'], 153),
+('Dây chuyền vàng 24K',    '⛓️', 0, 'Cái',  'JEWELRY', TRUE,  ARRAY['JEWELRY'], 154),
+('Lắc tay vàng 18K',       '📿', 0, 'Cái',   'JEWELRY', TRUE,  ARRAY['JEWELRY'], 155),
+('Lắc chân vàng 18K',      '📿', 0, 'Cái',   'JEWELRY', TRUE,  ARRAY['JEWELRY'], 156),
+('Bông tai vàng 18K',      '💎', 0, 'Đôi',   'JEWELRY', TRUE,  ARRAY['JEWELRY'], 157),
+('Mặt dây chuyền vàng',    '💎', 0, 'Cái',   'JEWELRY', TRUE,  ARRAY['JEWELRY'], 158),
+('Nhẫn bạc',               '💍', 350000, 'Cái',   'JEWELRY', FALSE, ARRAY['JEWELRY'], 159),
+('Dây chuyền bạc',         '⛓️', 450000,'Cái',   'JEWELRY', FALSE, ARRAY['JEWELRY'], 160),
+
+-- ── PAWN_SHOP (items accepted as collateral) ──────────────────
+('Điện thoại (cầm)',       '📱', 0, 'Cái',   'ELECTRONICS', FALSE, ARRAY['PAWN_SHOP'], 170),
+('Laptop (cầm)',           '💻', 0, 'Cái',   'ELECTRONICS', FALSE, ARRAY['PAWN_SHOP'], 171),
+('Máy tính bảng (cầm)',    '📱', 0, 'Cái',   'ELECTRONICS', FALSE, ARRAY['PAWN_SHOP'], 172),
+('Đồng hồ (cầm)',          '⌚', 0, 'Cái',   'APPLIANCES',  FALSE, ARRAY['PAWN_SHOP'], 173),
+('Trang sức vàng (cầm)',   '💍', 0, 'Cái',   'JEWELRY',     FALSE, ARRAY['PAWN_SHOP'], 174),
+('Xe máy (cầm)',           '🛵', 0, 'Cái',   'BIKE',        FALSE, ARRAY['PAWN_SHOP'], 175),
+('Camera / Máy ảnh (cầm)', '📷', 0, 'Cái',   'ELECTRONICS', FALSE, ARRAY['PAWN_SHOP'], 176),
+('Tivi (cầm)',             '📺', 0, 'Cái',   'APPLIANCES',  FALSE, ARRAY['PAWN_SHOP'], 177),
+('Đồ gia dụng (cầm)',      '🏠', 0, 'Cái',   'APPLIANCES',  FALSE, ARRAY['PAWN_SHOP'], 178),
+
+-- ── OTHER (generic fallback) ──────────────────────────────────
+('Sản phẩm',               '📦', 50000,  'Cái',   'CONVENIENCE', FALSE, ARRAY['OTHER'], 190),
+('Dịch vụ',                '🛎️',100000, 'Lần',   'HEALTH',     FALSE, ARRAY['OTHER'], 191)
+
+ON CONFLICT (name) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V008__expense_suggestions.sql
+-- ════════════════════════════════════════════════════════════
+
+-- Expense suggestions for onboarding Step 3.
+-- shop_types TEXT[]: 'ALL' = universal (shown for every shop type);
+--                     otherwise list the specific ShopType codes.
+
+CREATE TABLE IF NOT EXISTS expense_suggestions (
+    id            BIGSERIAL PRIMARY KEY,
+    name          VARCHAR(200) NOT NULL,
+    emoji         VARCHAR(20)  NOT NULL DEFAULT '💰',
+    category_code VARCHAR(50)  NOT NULL DEFAULT 'OTHER',
+    shop_types    TEXT[]       NOT NULL DEFAULT '{}',
+    display_order INT          NOT NULL DEFAULT 0,
+    CONSTRAINT uq_expense_suggestion_name UNIQUE (name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_expense_suggestions_shop_types
+    ON expense_suggestions USING GIN(shop_types);
+
+-- ─── UNIVERSAL (all shop types) ─────────────────────────────────────────────
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Tiền thuê mặt bằng',          '🏠', 'RENT',         '{ALL}', 1),
+  ('Tiền điện',                    '⚡', 'ELECTRICITY',  '{ALL}', 2),
+  ('Tiền nước',                    '💧', 'WATER',        '{ALL}', 3),
+  ('Internet / WiFi',              '📶', 'INTERNET',     '{ALL}', 4),
+  ('Tiền điện thoại',              '📱', 'PHONE',        '{ALL}', 5),
+  ('Lương nhân viên',              '👥', 'SALARY_EXTRA', '{ALL}', 6),
+  ('Vệ sinh cửa hàng',             '🧹', 'CLEANING',     '{ALL}', 7),
+  ('Sửa chữa / bảo trì',           '🔩', 'MAINTENANCE',  '{ALL}', 8),
+  ('Phí phần mềm quản lý',         '💻', 'SOFTWARE',     '{ALL}', 9),
+  ('Chi phí quảng cáo / fanpage',  '📣', 'MARKETING',    '{ALL}', 10),
+  ('Phí ngân hàng / chuyển khoản', '🏦', 'BANK_FEE',     '{ALL}', 11),
+  ('Bảo hiểm cửa hàng',            '🛡️', 'INSURANCE',    '{ALL}', 12),
+  ('Thuế môn bài / phí kinh doanh','🏛️', 'TAX',          '{ALL}', 13),
+  ('Camera / thiết bị an ninh',    '🎥', 'EQUIPMENT',    '{ALL}', 14),
+  ('In ấn / văn phòng phẩm',       '🖨️', 'SUPPLIES',     '{ALL}', 15),
+  ('Trang trí / nội thất cửa hàng','🪑', 'EQUIPMENT',    '{ALL}', 16),
+  ('Đồng phục nhân viên',          '👕', 'SALARY_EXTRA', '{ALL}', 17),
+  ('Ăn uống nhân viên',            '🍜', 'FOOD_STAFF',   '{ALL}', 18),
+  ('Chi phí giao hàng',            '🛵', 'TRANSPORT',    '{ALL}', 19),
+  ('Bao bì / túi đựng',            '🛍️', 'PACKAGING',    '{ALL}', 20)
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── FOOD & BEVERAGE / RESTAURANT / COFFEE SHOP ─────────────────────────────
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Nguyên liệu / thực phẩm',      '🥩', 'SUPPLIES',   '{FOOD_BEVERAGE,RESTAURANT,COFFEE_SHOP}', 1),
+  ('Gas / nhiên liệu nấu ăn',       '🔥', 'EQUIPMENT',  '{FOOD_BEVERAGE,RESTAURANT,COFFEE_SHOP}', 2),
+  ('Dụng cụ bếp / nhà hàng',        '🍳', 'EQUIPMENT',  '{FOOD_BEVERAGE,RESTAURANT,COFFEE_SHOP}', 3),
+  ('Nguyên liệu cà phê / trà',      '☕', 'SUPPLIES',   '{COFFEE_SHOP,RESTAURANT}',              4),
+  ('Ly / cốc / đồ pha chế',         '🧋', 'PACKAGING',  '{COFFEE_SHOP,FOOD_BEVERAGE,RESTAURANT}', 5),
+  ('Phí hoa hồng ứng dụng giao đồ ăn','🛵','TRANSPORT', '{FOOD_BEVERAGE,RESTAURANT,COFFEE_SHOP}', 6)
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── PHARMACY ────────────────────────────────────────────────────────────────
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Tủ lạnh bảo quản thuốc',           '❄️', 'EQUIPMENT', '{PHARMACY}', 1),
+  ('Phí kiểm định / giấy phép dược phẩm','📋', 'TAX',      '{PHARMACY}', 2),
+  ('Bao bì đóng gói thuốc',            '💊', 'PACKAGING', '{PHARMACY}', 3)
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── FASHION ─────────────────────────────────────────────────────────────────
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Phí sàn thương mại điện tử',   '🛒', 'MARKETING', '{FASHION}', 1),
+  ('Móc treo / giá trưng bày',      '🪝', 'EQUIPMENT', '{FASHION}', 2),
+  ('Bao bì / túi thời trang',       '🛍️', 'PACKAGING', '{FASHION}', 3)
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── ELECTRONICS ─────────────────────────────────────────────────────────────
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Linh kiện / phụ kiện thay thế',        '⚙️', 'SUPPLIES',    '{ELECTRONICS}', 1),
+  ('Chi phí bảo hành / dịch vụ sau bán',   '🔧', 'MAINTENANCE', '{ELECTRONICS}', 2)
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── JEWELRY / PAWN SHOP ─────────────────────────────────────────────────────
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Chi phí giám định hàng hóa',        '💎', 'EQUIPMENT', '{JEWELRY,PAWN_SHOP}', 1),
+  ('Két sắt / thiết bị bảo mật',        '🔐', 'EQUIPMENT', '{JEWELRY,PAWN_SHOP}', 2),
+  ('Phí bảo hiểm hàng quý giá',         '🛡️', 'INSURANCE', '{JEWELRY,PAWN_SHOP}', 3)
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── BARBER SHOP / SALON ─────────────────────────────────────────────────────
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Vật tư dịch vụ (dao, kéo, hóa chất)', '💈', 'SUPPLIES',     '{BARBER_SHOP}', 1),
+  ('Khăn / đồ vệ sinh cá nhân',           '🧴', 'CLEANING',     '{BARBER_SHOP}', 2),
+  ('Bảo trì / thuê ghế cắt tóc',          '💺', 'MAINTENANCE',  '{BARBER_SHOP}', 3)
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── CONVENIENCE STORE ───────────────────────────────────────────────────────
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Phí kiểm kho / kiểm đếm hàng', '📋', 'SUPPLIES',  '{CONVENIENCE_STORE}', 1),
+  ('Túi nilon / bao bì siêu thị',   '🛍️', 'PACKAGING', '{CONVENIENCE_STORE}', 2)
+ON CONFLICT (name) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V009__product_duration_minutes.sql
+-- ════════════════════════════════════════════════════════════
+
+-- Add duration_minutes to products for timed services (e.g. barber shop)
+ALTER TABLE product
+    ADD COLUMN IF NOT EXISTS duration_minutes INT NOT NULL DEFAULT 0;

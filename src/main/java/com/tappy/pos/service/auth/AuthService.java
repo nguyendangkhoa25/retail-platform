@@ -163,6 +163,9 @@ public class AuthService {
         activityLogService.logAsync(tenantKey, user.getUsername(), user.getFullName(),
                 ActivityAction.LOGIN, null, null, "Đăng nhập", clientIp);
 
+        boolean setupComplete = isMasterUser
+                || (tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().isSetupComplete());
+
         if (StringUtils.isNotEmpty(user.getRequireAction())) {
             log.info("User {} requires action: {}", loginRequest.getUsername(), user.getRequireAction());
             return AuthResponse.requiredAction(user.getUsername(), user.getRequireAction(),
@@ -180,7 +183,8 @@ public class AuthService {
                 refreshToken,
                 jwtTokenProvider.getTokenExpirationMs(),
                 user.getUsername(),
-                1000L
+                1000L,
+                setupComplete
         );
     }
 
@@ -287,12 +291,16 @@ public class AuthService {
         log.info("New access token generated for user: {} with roles: {}, features: {}, isMasterUser: {}",
                 username, roleNames, featureNames.size(), isMasterUser);
 
+        boolean refreshSetupComplete = isMasterUser
+                || (tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().isSetupComplete());
+
         return AuthResponse.of(
                 accessToken,
                 refreshToken,
                 jwtTokenProvider.getTokenExpirationMs(),
                 user.getUsername(),
-                10000L
+                10000L,
+                refreshSetupComplete
         );
     }
 
@@ -356,6 +364,94 @@ public class AuthService {
                 });
 
         return mapToDTO(user);
+    }
+
+    /**
+     * Login with PIN (mobile only — no turnstile required)
+     */
+    public AuthResponse loginWithPin(String username, String pin, String clientIp, String userAgent) {
+        User user = userRepository.findByUsernameTenantScoped(username)
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.unauthorized")));
+        if (Boolean.FALSE.equals(user.getAccountNonLocked())) throw new AccountLockedException(messageService.getMessage("error.account.locked"));
+        if (!user.getActive()) throw new BadRequestException(messageService.getMessage("error.user.inactive"));
+        if (user.getPinHash() == null || !passwordEncoder.matches(pin, user.getPinHash())) {
+            int attempts = (user.getFailedLoginAttempts() == null ? 0 : user.getFailedLoginAttempts()) + 1;
+            user.setFailedLoginAttempts(attempts);
+            if (attempts >= MAX_FAILED_ATTEMPTS) {
+                user.setAccountNonLocked(false);
+            }
+            userRepository.save(user);
+            throw new BadRequestException("Sai mã PIN.");
+        }
+        user.setFailedLoginAttempts(0);
+        userRepository.save(user);
+
+        boolean isMasterUser = tenantContext.getCurrentTenant() == null;
+        List<String> roleNames = user.getRoles().stream()
+                .map(com.tappy.pos.model.entity.auth.Role::getName)
+                .toList();
+        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
+        String sessionId = UUID.randomUUID().toString();
+        String shopType = tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().getShopType() != null
+                ? tenantContext.getCurrentTenant().getShopType().name() : null;
+        String tenantId = isMasterUser ? "master" : tenantContext.getCurrentTenant().getTenantId();
+        String accessToken = jwtTokenProvider.generateTokenWithSession(user.getUsername(), roleNames, featureNames, isMasterUser, sessionId, shopType, tenantId);
+        String tenantKey = isMasterUser ? SessionRegistry.MASTER_KEY : tenantContext.getCurrentTenant().getTenantId();
+        sessionRegistry.register(tenantKey, user.getUsername(), new SessionInfo(sessionId, clientIp, userAgent, java.time.LocalDateTime.now()));
+        String refreshToken = generateRefreshToken(user);
+        boolean pinSetupComplete = !isMasterUser
+                && tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().isSetupComplete();
+        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, pinSetupComplete);
+    }
+
+    /**
+     * Set up PIN for a user
+     */
+    public void setupPin(String username, String pin) {
+        User user = userRepository.findByUsernameTenantScoped(username)
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.unauthorized")));
+        user.setPinHash(passwordEncoder.encode(pin));
+        userRepository.save(user);
+    }
+
+    /**
+     * Register a new user (mobile self-registration — stub)
+     */
+    public AuthResponse registerUser(String phone, String password, String clientIp, String userAgent) {
+        if (userRepository.findByUsernameTenantScoped(phone).isPresent()) {
+            throw new BadRequestException("Số điện thoại đã được đăng ký.");
+        }
+        User user = User.builder()
+                .username(phone)
+                .password(passwordEncoder.encode(password))
+                .active(true)
+                .accountNonLocked(true)
+                .credentialsNonExpired(true)
+                .accountNonExpired(true)
+                .requireAction("")
+                .failedLoginAttempts(0)
+                .build();
+        userRepository.save(user);
+        boolean isMasterUser = tenantContext.getCurrentTenant() == null;
+        List<String> roleNames = user.getRoles().stream()
+                .map(com.tappy.pos.model.entity.auth.Role::getName)
+                .toList();
+        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
+        String shopType = tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().getShopType() != null
+                ? tenantContext.getCurrentTenant().getShopType().name() : null;
+        String tenantId = isMasterUser ? "master" : tenantContext.getCurrentTenant().getTenantId();
+        String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(user.getUsername(), roleNames, featureNames, isMasterUser, shopType, tenantId);
+        String refreshToken = generateRefreshToken(user);
+        // Registration creates a user with no shop yet; routing will direct them to the onboarding wizard.
+        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false);
+    }
+
+    /**
+     * Request password reset (silent no-op — don't reveal if account exists)
+     */
+    public void requestPasswordReset(String phone) {
+        log.info("Password reset requested for: {}", phone);
+        // Silent no-op — don't reveal if account exists
     }
 
     /**

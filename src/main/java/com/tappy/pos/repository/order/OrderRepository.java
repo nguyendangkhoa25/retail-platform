@@ -184,4 +184,23 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status IN :statuses")
     Long countActiveByCreatedBy(@Param("username") String username, @Param("statuses") Collection<Order.OrderStatus> statuses);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.createdAt >= :from AND o.createdAt <= :to")
+    long countByDateRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = :status AND o.createdAt >= :from AND o.createdAt <= :to")
+    long countByDateRangeAndStatus(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, @Param("status") Order.OrderStatus status);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('day', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getDailyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT oi.product_name, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.subtotal),0) as rev " +
+           "FROM order_items oi JOIN orders o ON oi.order_id = o.id " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_at >= :since " +
+           "GROUP BY oi.product_name ORDER BY cnt DESC",
+           nativeQuery = true)
+    List<Object[]> getTopProductsSince(@Param("since") LocalDateTime since, org.springframework.data.domain.Pageable pageable);
 }

@@ -38,7 +38,8 @@ public class TenantSeedService {
     private static final Map<ShopType, String> DML_FILES = Map.ofEntries(
         Map.entry(ShopType.PAWN_SHOP,          "db/tenant/pawn_store.sql"),
         Map.entry(ShopType.CONVENIENCE_STORE,  "db/tenant/convenience_store.sql"),
-        Map.entry(ShopType.JEWELRY,            "db/tenant/jewelry_store.sql")
+        Map.entry(ShopType.JEWELRY,            "db/tenant/jewelry_store.sql"),
+        Map.entry(ShopType.BARBER_SHOP,        "db/tenant/barber_shop.sql")
     );
     private static final String DEFAULT_DML = "db/tenant/general.sql";
 

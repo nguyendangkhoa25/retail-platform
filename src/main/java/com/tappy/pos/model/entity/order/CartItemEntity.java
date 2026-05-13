@@ -113,6 +113,9 @@ public class CartItemEntity {
     @Column(name = "variants", columnDefinition = "jsonb")
     private String variants;
 
+    @Column(name = "variant_id")
+    private Long variantId;
+
     @Column(name = "assigned_employee_id")
     private Long assignedEmployeeId;
 

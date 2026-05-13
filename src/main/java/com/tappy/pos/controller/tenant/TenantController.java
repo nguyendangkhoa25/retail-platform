@@ -2,6 +2,7 @@ package com.tappy.pos.controller.tenant;
 
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.tenant.TenantDTO;
+import com.tappy.pos.model.dto.tenant.TenantStatusResponse;
 import com.tappy.pos.service.tenant.TenantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +53,20 @@ public class TenantController {
         log.info("Retrieved tenant: {}", tenantId);
         return ResponseEntity.ok(
                 ApiResponse.success(tenant, "Tenant retrieved successfully")
+        );
+    }
+
+    /**
+     * GET /api/tenants/{shopId}/status
+     * Public endpoint for mobile app — check shop existence and activation status.
+     * Returns ACTIVE, SUSPENDED, or NOT_FOUND. Always returns HTTP 200.
+     */
+    @GetMapping("/{shopId}/status")
+    public ResponseEntity<ApiResponse<TenantStatusResponse>> checkStatus(@PathVariable String shopId) {
+        log.info("Request: Check tenant status for: {}", shopId);
+        TenantStatusResponse status = tenantService.checkStatus(shopId);
+        return ResponseEntity.ok(
+                ApiResponse.success(status, "Status retrieved successfully")
         );
     }
 }

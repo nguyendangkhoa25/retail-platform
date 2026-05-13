@@ -23,6 +23,7 @@ public class CreatePurchaseOrderRequest {
     @Data
     public static class ItemRequest {
         private Long productId;
+        private Long variantId;
         @NotNull
         private String productName;
         private String productSku;

@@ -16,6 +16,7 @@ import com.tappy.pos.model.enums.ActivityAction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -112,6 +113,14 @@ public class InventoryServiceImpl implements InventoryService {
         
         log.info("Retrieved {} inventory records for productId: {}", inventories.getTotalElements(), productId);
         return inventories.map(InventoryDTO::fromEntity);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<InventoryDTO> getInventoryByProductIdAndVariantId(Long productId, Long variantId, Pageable pageable) {
+        return inventoryRepository.findByProductIdAndVariantId(productId, variantId)
+                .map(inv -> (Page<InventoryDTO>) new PageImpl<>(List.of(InventoryDTO.fromEntity(inv)), pageable, 1))
+                .orElse(new PageImpl<>(List.of(), pageable, 0));
     }
 
     @Override

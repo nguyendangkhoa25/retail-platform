@@ -97,13 +97,13 @@ public class TenantProvisioningService {
             "DASHBOARD", "ORDER", "MY_WORK", "PRODUCT", "PROMOTION",
             "EMPLOYEE", "SALARY", "CUSTOMER", "LOYALTY", "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
-            "ACTIVITY_LOG", "PAWN", "NOTIFICATION", "FEEDBACK"
+            "ACTIVITY_LOG", "PAWN", "COMMISSION", "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "MY_WORK", "PRODUCT", "PROMOTION",
             "EMPLOYEE", "CUSTOMER", "LOYALTY", "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
-            "ACTIVITY_LOG", "PAWN", "NOTIFICATION", "FEEDBACK"
+            "ACTIVITY_LOG", "PAWN", "COMMISSION", "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "CUSTOMER", "PROMOTION",
@@ -122,7 +122,7 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.SERVICE_STAFF.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "ORDER", "POS", "CUSTOMER",
+            "DASHBOARD", "MY_WORK", "ORDER", "POS", "CUSTOMER", "COMMISSION",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.TECHNICIAN.getCode(), Arrays.asList(
@@ -130,13 +130,72 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.RECEPTIONIST.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS",
+            "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "COMMISSION",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.CLEANER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "NOTIFICATION"
         ));
         ROLE_FEATURES = m;
+    }
+
+    /**
+     * Provision a self-registered tenant using the user's existing encoded password.
+     * Called from the mobile self-provision flow so the tenant-scoped user shares
+     * the same credential hash as the master-scope registration user.
+     */
+    @Transactional
+    public void provisionWithEncodedPassword(Tenant tenant, String adminUsername,
+                                              String encodedPassword, String shopAddress) {
+        log.info("Provisioning self-registered tenant: {}", tenant.getTenantId());
+        String tenantId = tenant.getTenantId();
+
+        seedRoles(new java.util.ArrayList<>(ROLE_FEATURES.keySet()), tenantId);
+        seedRoleFeatureMappings(ROLE_FEATURES);
+
+        try { seedShopInfo(tenant, shopAddress, tenantId); }
+        catch (Exception e) { log.warn("seedShopInfo failed for {}: {}", tenantId, e.getMessage()); }
+
+        try { seedDefaultConfig(tenant.getShopType()); }
+        catch (Exception e) { log.warn("seedDefaultConfig failed for {}: {}", tenantId, e.getMessage()); }
+
+        try { seedWalkInCustomer(tenantId); }
+        catch (Exception e) { log.warn("seedWalkInCustomer failed for {}: {}", tenantId, e.getMessage()); }
+
+        User adminUser = seedShopOwnerUserEncoded(tenant, adminUsername, encodedPassword, tenantId);
+
+        try { seedShopOwnerEmployee(tenant, adminUser, tenantId); }
+        catch (Exception e) { log.warn("seedShopOwnerEmployee failed for {}: {}", tenantId, e.getMessage()); }
+
+        log.info("Self-registered provisioning complete for tenant: {}", tenantId);
+    }
+
+    private User seedShopOwnerUserEncoded(Tenant tenant, String adminUsername,
+                                           String encodedPassword, String tenantId) {
+        Optional<User> existing = userRepository.findByUsernameTenantScoped(adminUsername);
+        if (existing.isPresent()) {
+            log.info("Tenant-scoped user '{}' already exists in: {}", adminUsername, tenantId);
+            return existing.get();
+        }
+        Role shopOwnerRole = roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), tenantId)
+                .orElseThrow(() -> new RuntimeException("SHOP_OWNER role not found after seeding"));
+        User admin = User.builder()
+                .username(adminUsername)
+                .password(encodedPassword)
+                .fullName(tenant.getContactPersonName() != null ? tenant.getContactPersonName() : "Admin")
+                .email(tenant.getContactPersonEmail())
+                .active(true)
+                .accountNonLocked(true)
+                .credentialsNonExpired(true)
+                .accountNonExpired(true)
+                .requireAction(null)
+                .lang("vi")
+                .build();
+        admin.setTenantId(tenantId);
+        admin.getRoles().add(shopOwnerRole);
+        User saved = userRepository.save(admin);
+        log.info("Created tenant-scoped SHOP_OWNER user '{}' for tenant: {}", adminUsername, tenantId);
+        return saved;
     }
 
     @Transactional

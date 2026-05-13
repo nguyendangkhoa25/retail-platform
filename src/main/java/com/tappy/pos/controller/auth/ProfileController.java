@@ -146,6 +146,24 @@ public class ProfileController {
     }
 
     /**
+     * PUT /profiles/me
+     * Update current user's basic info (alias for /profiles/info that doesn't require username in body)
+     */
+    @PutMapping("/me")
+    public ResponseEntity<ApiResponse<UserProfile>> updateMe(@RequestBody ProfileRequest request) {
+        String username = getCurrentUsername();
+        // Build a request that uses the authenticated username
+        ProfileRequest normalized = ProfileRequest.builder()
+                .username(username)
+                .fullName(request.getFullName())
+                .email(request.getEmail())
+                .build();
+        UserProfile response = profileService.updateProfileInfo(username, normalized);
+        log.info("Profile /me updated: {}", username);
+        return ResponseEntity.ok(ApiResponse.success(response, "Profile updated successfully"));
+    }
+
+    /**
      * GET /profiles/preferences
      * Get the current user's preferences JSON (autocomplete history, etc.)
      */

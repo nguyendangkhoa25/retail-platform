@@ -23,4 +23,8 @@ public interface ShopExpenseService {
     void delete(Long id);
 
     List<ExpenseCategoryBreakdownDTO> getCategoryBreakdown(Integer year, Integer month);
+
+    java.util.Map<String, Object> getSummary(LocalDate from, LocalDate to);
+
+    java.util.List<java.util.Map<String, Object>> getChart(LocalDate from, LocalDate to);
 }

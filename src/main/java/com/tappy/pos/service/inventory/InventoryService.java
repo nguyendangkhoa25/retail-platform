@@ -26,6 +26,12 @@ public interface InventoryService {
     Page<InventoryDTO> getInventoryByProductId(Long productId, Pageable pageable);
 
     /**
+     * Get inventory for a specific (product, variant) pair.
+     * Returns empty if no record exists — callers treat that as out-of-stock.
+     */
+    Page<InventoryDTO> getInventoryByProductIdAndVariantId(Long productId, Long variantId, Pageable pageable);
+
+    /**
      * Get all inventory items with pagination
      */
     Page<InventoryDTO> getAllInventory(Pageable pageable);

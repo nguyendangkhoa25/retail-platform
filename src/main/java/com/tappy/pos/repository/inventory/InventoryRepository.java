@@ -102,6 +102,30 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     Optional<Inventory> findActiveByProductId(@Param("productId") Long productId);
 
     /**
+     * Variant-aware lookup: find the inventory record for a specific (product, variant) pair.
+     * Used by CartServiceImpl and PurchaseOrderService for per-variant stock operations.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.product.id = :productId AND i.variant.id = :variantId")
+    Optional<Inventory> findByProductIdAndVariantIdForUpdate(@Param("productId") Long productId,
+                                                              @Param("variantId") Long variantId);
+
+    @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.product.id = :productId AND i.variant.id = :variantId")
+    Optional<Inventory> findByProductIdAndVariantId(@Param("productId") Long productId,
+                                                     @Param("variantId") Long variantId);
+
+    /**
+     * Find the product-level inventory row (variant_id IS NULL).
+     * Used when zeroing out product-level stock on first variant creation.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.product.id = :productId AND i.variant IS NULL")
+    Optional<Inventory> findProductLevelInventoryForUpdate(@Param("productId") Long productId);
+
+    @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.product.id = :productId AND i.variant IS NULL")
+    Optional<Inventory> findProductLevelInventory(@Param("productId") Long productId);
+
+    /**
      * Locate products by name, SKU, batch, or any shelf location field
      */
     @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.status = 'ACTIVE' AND " +
@@ -120,6 +144,12 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
      */
     @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.status = :status")
     Page<Inventory> findByStatus(@Param("status") Inventory.InventoryStatus status, Pageable pageable);
+
+    @Query("SELECT COUNT(i) FROM Inventory i WHERE i.deleted = false AND i.quantityInStock = 0")
+    long countOutOfStock();
+
+    @Query("SELECT COUNT(i) FROM Inventory i WHERE i.deleted = false AND i.quantityInStock > 0 AND i.quantityInStock <= i.reorderLevel")
+    long countLowStock();
 
 }
 

@@ -86,6 +86,10 @@ public class Tenant {
     @Column(name = "vendor_id")
     private Long vendorId;
 
+    @Builder.Default
+    @Column(name = "setup_complete", nullable = false)
+    private boolean setupComplete = true;
+
     @PrePersist
     protected void onCreate() {
         createdAt = System.currentTimeMillis();

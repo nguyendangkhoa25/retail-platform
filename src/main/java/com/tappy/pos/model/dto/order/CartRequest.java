@@ -30,8 +30,13 @@ public class CartRequest {
 
     @Min(value = 1, message = "Quantity must be at least 1")
     private Integer quantity;
-    
+
+    /** Optional staff-override price. When present and > 0, replaces the catalogue price for this line item. */
+    @DecimalMin(value = "0.0", message = "Unit price must be >= 0")
+    private BigDecimal unitPrice;
+
     private Map<String, String> variants;
+    private Long variantId;
     
     // Update quantity
     private Long cartItemId;

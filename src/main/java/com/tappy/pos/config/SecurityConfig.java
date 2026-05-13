@@ -52,6 +52,9 @@ public class SecurityConfig {
                         .requestMatchers("/gold-prices/price-board").permitAll()
                         .requestMatchers("/contact").permitAll()
                         .requestMatchers("/integrations/oauth/callback").permitAll()
+                        .requestMatchers("/shop-types").permitAll()
+                        .requestMatchers("/product-templates").permitAll()
+                        .requestMatchers("/expense-suggestions").permitAll()
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )

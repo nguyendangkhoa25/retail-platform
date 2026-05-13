@@ -6,16 +6,24 @@ import com.tappy.pos.model.dto.order.CancelOrderRequest;
 import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
+import com.tappy.pos.model.dto.order.WorkItemDTO;
+import com.tappy.pos.model.dto.order.WorkItemSummaryDTO;
 import com.tappy.pos.service.order.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.tappy.pos.annotation.RequiresFeature;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -77,6 +85,172 @@ public class OrderController {
         log.info("Endpoint: GET /orders/my-work/stats - filter: {}", filterType);
         MyWorkStatsDTO stats = orderService.getMyWorkStats(filterType, day, month, year);
         return ResponseEntity.ok(ApiResponse.success(stats, "My work stats retrieved successfully"));
+    }
+
+    // ── Item-level work queue (MY_WORK feature) ────────────────────────────────
+
+    /**
+     * GET /api/orders/work-items/available
+     * Returns unassigned PENDING items in active orders — the pool any employee can pick from.
+     */
+    @GetMapping("/work-items/available")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<Page<WorkItemDTO>>> getAvailableWorkItems(
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/work-items/available - page: {}, size: {}", page, size);
+        Page<WorkItemDTO> items = orderService.getAvailableWorkItems(PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(items, "Available work items retrieved successfully"));
+    }
+
+    /**
+     * PUT /api/orders/work-items/{itemId}/pickup
+     * Claim an unassigned item — assign it to the current employee.
+     */
+    @PutMapping("/work-items/{itemId}/pickup")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<WorkItemDTO>> pickupWorkItem(@PathVariable Long itemId) {
+        log.info("Endpoint: PUT /orders/work-items/{}/pickup", itemId);
+        WorkItemDTO item = orderService.pickupWorkItem(itemId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item picked up successfully"));
+    }
+
+    /**
+     * PUT /api/orders/work-items/{itemId}/unpick
+     * Release a PENDING item back to the unassigned pool.
+     */
+    @PutMapping("/work-items/{itemId}/unpick")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<WorkItemDTO>> unpickWorkItem(@PathVariable Long itemId) {
+        log.info("Endpoint: PUT /orders/work-items/{}/unpick", itemId);
+        WorkItemDTO item = orderService.unpickWorkItem(itemId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item released to pool successfully"));
+    }
+
+    /**
+     * GET /api/orders/work-items
+     * Returns all order items assigned to the current employee (all statuses).
+     */
+    @GetMapping("/work-items")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<Page<WorkItemDTO>>> getMyWorkItems(
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/work-items - page: {}, size: {}", page, size);
+        Page<WorkItemDTO> items = orderService.getMyWorkItems(PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(items, "Work items retrieved successfully"));
+    }
+
+    /**
+     * GET /api/orders/work-items/pending
+     * Returns PENDING + IN_PROGRESS items assigned to the current employee.
+     */
+    @GetMapping("/work-items/pending")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<Page<WorkItemDTO>>> getMyPendingWorkItems(
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/work-items/pending - page: {}, size: {}", page, size);
+        Page<WorkItemDTO> items = orderService.getMyPendingWorkItems(PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(items, "Pending work items retrieved successfully"));
+    }
+
+    /**
+     * PUT /api/orders/work-items/{itemId}/start
+     * Transition item PENDING → IN_PROGRESS.
+     */
+    @PutMapping("/work-items/{itemId}/start")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<WorkItemDTO>> startWorkItem(@PathVariable Long itemId) {
+        log.info("Endpoint: PUT /orders/work-items/{}/start", itemId);
+        WorkItemDTO item = orderService.startWorkItem(itemId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item started successfully"));
+    }
+
+    /**
+     * PUT /api/orders/work-items/{itemId}/complete
+     * Transition item IN_PROGRESS → COMPLETED.
+     */
+    @PutMapping("/work-items/{itemId}/complete")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<WorkItemDTO>> completeWorkItem(@PathVariable Long itemId) {
+        log.info("Endpoint: PUT /orders/work-items/{}/complete", itemId);
+        WorkItemDTO item = orderService.completeWorkItem(itemId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item completed successfully"));
+    }
+
+    /**
+     * PUT /api/orders/work-items/{itemId}/release
+     * Transition item IN_PROGRESS → PENDING.
+     */
+    @PutMapping("/work-items/{itemId}/release")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<WorkItemDTO>> releaseWorkItem(@PathVariable Long itemId) {
+        log.info("Endpoint: PUT /orders/work-items/{}/release", itemId);
+        WorkItemDTO item = orderService.releaseWorkItem(itemId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item released successfully"));
+    }
+
+    // ── Completed work item history ────────────────────────────────────────────
+
+    /**
+     * GET /api/orders/work-items/completed
+     * Paginated list of the current employee's completed items, filterable by period and searchable.
+     *
+     * filterType: DAY | WEEK | MONTH | YEAR  (default DAY)
+     * keyword: optional search across product name, order number, customer name
+     */
+    @GetMapping("/work-items/completed")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<Page<WorkItemDTO>>> getMyCompletedWorkItems(
+            @RequestParam(defaultValue = "DAY") String filterType,
+            @RequestParam(required = false) Integer day,
+            @RequestParam(required = false) Integer month,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/work-items/completed - filter: {}, keyword: {}", filterType, keyword);
+        Page<WorkItemDTO> items = orderService.getMyCompletedWorkItems(
+                filterType, day, month, year, keyword, PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(items, "Completed work items retrieved successfully"));
+    }
+
+    /**
+     * GET /api/orders/work-items/summary
+     * Summary stats (count, revenue, total duration minutes) for the current employee over a period.
+     */
+    @GetMapping("/work-items/summary")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<WorkItemSummaryDTO>> getMyWorkItemSummary(
+            @RequestParam(defaultValue = "DAY") String filterType,
+            @RequestParam(required = false) Integer day,
+            @RequestParam(required = false) Integer month,
+            @RequestParam(required = false) Integer year) {
+        log.info("Endpoint: GET /orders/work-items/summary - filter: {}", filterType);
+        WorkItemSummaryDTO summary = orderService.getMyWorkItemSummary(filterType, day, month, year);
+        return ResponseEntity.ok(ApiResponse.success(summary, "Work item summary retrieved successfully"));
+    }
+
+    /**
+     * GET /api/orders/work-items/trend
+     * Bar chart data for the current employee's completed items.
+     *
+     * filterType DAY   → data points by hour  (label: "08:00")
+     * filterType WEEK  → data points by day   (label: "2026-05-12")
+     * filterType MONTH → data points by day   (label: "2026-05-12")
+     * filterType YEAR  → data points by month (label: "5")
+     */
+    @GetMapping("/work-items/trend")
+    @RequiresFeature("MY_WORK")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getMyWorkItemTrend(
+            @RequestParam(defaultValue = "DAY") String filterType,
+            @RequestParam(required = false) Integer day,
+            @RequestParam(required = false) Integer month,
+            @RequestParam(required = false) Integer year) {
+        log.info("Endpoint: GET /orders/work-items/trend - filter: {}", filterType);
+        List<Map<String, Object>> trend = orderService.getMyWorkItemTrend(filterType, day, month, year);
+        return ResponseEntity.ok(ApiResponse.success(trend, "Work item trend retrieved successfully"));
     }
 
     /**
@@ -208,5 +382,40 @@ public class OrderController {
         return ResponseEntity.ok()
                 .contentType(new MediaType("text", "html", java.nio.charset.StandardCharsets.UTF_8))
                 .body(html);
+    }
+
+    @GetMapping("/summary")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getOrderSummary(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String paymentMethod) {
+        log.info("Endpoint: GET /orders/summary from={} to={}", from, to);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getOrderSummary(from, to, status, paymentMethod), "OK"));
+    }
+
+    @GetMapping("/chart")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getOrderChart(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "day") String granularity) {
+        log.info("Endpoint: GET /orders/chart from={} to={} granularity={}", from, to, granularity);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getOrderChart(from, to, granularity), "OK"));
+    }
+
+    @GetMapping("/top-products")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopProducts(
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "30") int days) {
+        log.info("Endpoint: GET /orders/top-products limit={} days={}", limit, days);
+        LocalDateTime fromDt = LocalDateTime.now().minusDays(days);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getTopProducts(limit, fromDt), "OK"));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteOrder(@PathVariable Long id) {
+        log.info("Endpoint: DELETE /orders/{}", id);
+        orderService.softDeleteOrder(id);
+        return ResponseEntity.ok(ApiResponse.success(null, "Order deleted"));
     }
 }

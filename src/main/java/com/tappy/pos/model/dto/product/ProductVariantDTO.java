@@ -24,4 +24,6 @@ public class ProductVariantDTO {
     private BigDecimal price;
     private BigDecimal costOverride;
     private String status;
+    /** Current stock count from the variant's inventory record; null if no record exists. */
+    private Long quantityInStock;
 }

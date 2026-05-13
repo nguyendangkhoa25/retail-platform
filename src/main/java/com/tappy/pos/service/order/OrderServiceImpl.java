@@ -11,17 +11,24 @@ import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
+import com.tappy.pos.model.dto.order.WorkItemDTO;
+import com.tappy.pos.model.dto.order.WorkItemSummaryDTO;
 import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.model.entity.order.OrderItem;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
 import com.tappy.pos.model.entity.finance.BankAccount;
+import com.tappy.pos.model.entity.employee.Employee;
+import com.tappy.pos.repository.auth.UserRepository;
+import com.tappy.pos.repository.employee.EmployeeRepository;
 import com.tappy.pos.repository.finance.BankAccountRepository;
+import com.tappy.pos.repository.order.OrderItemRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.tenant.ShopInfoRepository;
 import com.tappy.pos.util.ReceiptHtmlBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,6 +39,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import com.tappy.pos.service.customer.LoyaltyService;
 import com.tappy.pos.service.inventory.InventoryService;
@@ -46,8 +54,11 @@ import com.tappy.pos.config.FeatureContext;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final ShopInfoRepository shopInfoRepository;
     private final BankAccountRepository bankAccountRepository;
+    private final UserRepository userRepository;
+    private final EmployeeRepository employeeRepository;
     private final LoyaltyService loyaltyService;
     private final InventoryService inventoryService;
     private final MessageService messageService;
@@ -394,5 +405,306 @@ public class OrderServiceImpl implements OrderService {
                 .commissionRate(item.getCommissionRate())
                 .commissionAmount(item.getCommissionAmount())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getOrderSummary(LocalDate from, LocalDate to, String status, String paymentMethod) {
+        LocalDateTime fromDt = from.atStartOfDay();
+        LocalDateTime toDt = to.atTime(java.time.LocalTime.MAX);
+        BigDecimal totalRevenue = orderRepository.sumRevenueByDateRange(fromDt, toDt);
+        long orderCount = orderRepository.countByDateRange(fromDt, toDt);
+        long completedCount = orderRepository.countByDateRangeAndStatus(fromDt, toDt, Order.OrderStatus.COMPLETED);
+        long cancelledCount = orderRepository.countByDateRangeAndStatus(fromDt, toDt, Order.OrderStatus.CANCELLED);
+        BigDecimal avg = orderCount > 0 ? totalRevenue.divide(BigDecimal.valueOf(orderCount), 0, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        return java.util.Map.of("totalRevenue", totalRevenue, "orderCount", orderCount, "avgOrderValue", avg, "completedCount", completedCount, "cancelledCount", cancelledCount);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getOrderChart(LocalDate from, LocalDate to, String granularity) {
+        List<Object[]> rows = orderRepository.getDailyRevenue(from.atStartOfDay(), to.atTime(java.time.LocalTime.MAX));
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) { result.add(java.util.Map.of("label", row[0].toString(), "value", row[1])); }
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getTopProducts(int limit, LocalDateTime from) {
+        List<Object[]> rows = orderRepository.getTopProductsSince(from, org.springframework.data.domain.PageRequest.of(0, limit));
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) {
+            result.add(java.util.Map.of("name", row[0] != null ? row[0].toString() : "", "orderCount", ((Number) row[1]).longValue(), "revenue", row[2]));
+        }
+        return result;
+    }
+
+    // ── Item-level work queue (MY_WORK feature) ────────────────────────────────
+
+    @Override
+    public Page<WorkItemDTO> getAvailableWorkItems(Pageable pageable) {
+        log.info("Request: Get available (unassigned) work items");
+        return orderItemRepository.findAvailableWorkItems(pageable).map(this::mapRowToWorkItemDTO);
+    }
+
+    @Override
+    @Transactional
+    public WorkItemDTO pickupWorkItem(Long itemId) {
+        Employee employee = resolveCurrentEmployee();
+        log.info("Request: Pickup work item {} - employeeId: {}", itemId, employee.getId());
+        OrderItem item = orderItemRepository.findByIdAndAssignedEmployeeIdIsNull(itemId)
+                .orElseThrow(() -> new BadRequestException(
+                        messageService.getMessage("error.order.item.already.assigned", "")));
+        item.setAssignedEmployeeId(employee.getId());
+        item.setAssignedEmployeeName(employee.getFullName());
+        orderItemRepository.save(item);
+        log.info("Work item {} picked up by employee {}", itemId, employee.getId());
+        return loadWorkItemDTO(item);
+    }
+
+    @Override
+    @Transactional
+    public WorkItemDTO unpickWorkItem(Long itemId) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Unpick work item {} - employeeId: {}", itemId, employeeId);
+        OrderItem item = orderItemRepository.findByIdAndAssignedEmployeeId(itemId, employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.order.item.not.found", itemId)));
+        if (item.getStatus() != OrderItem.ItemStatus.PENDING) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.order.item.cannot.reassign"));
+        }
+        item.setAssignedEmployeeId(null);
+        item.setAssignedEmployeeName(null);
+        orderItemRepository.save(item);
+        log.info("Work item {} unpicked by employee {}", itemId, employeeId);
+        return loadWorkItemDTO(item);
+    }
+
+    @Override
+    public Page<WorkItemDTO> getMyWorkItems(Pageable pageable) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Get all work items - employeeId: {}", employeeId);
+        Page<Object[]> rows = orderItemRepository.findWorkItemsByEmployeeId(employeeId, pageable);
+        return rows.map(this::mapRowToWorkItemDTO);
+    }
+
+    @Override
+    public Page<WorkItemDTO> getMyPendingWorkItems(Pageable pageable) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Get pending work items - employeeId: {}", employeeId);
+        Page<Object[]> rows = orderItemRepository.findPendingWorkItemsByEmployeeId(employeeId, pageable);
+        return rows.map(this::mapRowToWorkItemDTO);
+    }
+
+    @Override
+    @Transactional
+    public WorkItemDTO startWorkItem(Long itemId) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Start work item {} - employeeId: {}", itemId, employeeId);
+        OrderItem item = orderItemRepository.findByIdAndAssignedEmployeeId(itemId, employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.order.item.not.found", itemId)));
+        if (item.getStatus() != OrderItem.ItemStatus.PENDING) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.order.item.invalid.status.for.start", item.getStatus()));
+        }
+        item.setStatus(OrderItem.ItemStatus.IN_PROGRESS);
+        orderItemRepository.save(item);
+        log.info("Work item {} started by employee {}", itemId, employeeId);
+        return loadWorkItemDTO(item);
+    }
+
+    @Override
+    @Transactional
+    public WorkItemDTO completeWorkItem(Long itemId) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Complete work item {} - employeeId: {}", itemId, employeeId);
+        OrderItem item = orderItemRepository.findByIdAndAssignedEmployeeId(itemId, employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.order.item.not.found", itemId)));
+        if (item.getStatus() == OrderItem.ItemStatus.COMPLETED) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.order.item.cannot.reassign"));
+        }
+        item.setStatus(OrderItem.ItemStatus.COMPLETED);
+        item.setCompletedAt(LocalDateTime.now());
+        orderItemRepository.save(item);
+        log.info("Work item {} completed by employee {}", itemId, employeeId);
+        return loadWorkItemDTO(item);
+    }
+
+    @Override
+    @Transactional
+    public WorkItemDTO releaseWorkItem(Long itemId) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Release work item {} - employeeId: {}", itemId, employeeId);
+        OrderItem item = orderItemRepository.findByIdAndAssignedEmployeeId(itemId, employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.order.item.not.found", itemId)));
+        if (item.getStatus() != OrderItem.ItemStatus.IN_PROGRESS) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.order.item.not.assigned", item.getStatus()));
+        }
+        item.setStatus(OrderItem.ItemStatus.PENDING);
+        orderItemRepository.save(item);
+        log.info("Work item {} released by employee {}", itemId, employeeId);
+        return loadWorkItemDTO(item);
+    }
+
+    // ── Completed work item history ────────────────────────────────────────────
+
+    @Override
+    public Page<WorkItemDTO> getMyCompletedWorkItems(String filterType, Integer day, Integer month, Integer year,
+                                                      String keyword, Pageable pageable) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Get my completed work items - employeeId: {}, filter: {}", employeeId, filterType);
+        LocalDateTime[] period = resolvePeriod(filterType, day, month, year);
+        return orderItemRepository
+                .findCompletedWorkItems(employeeId, period[0], period[1], keyword, pageable)
+                .map(this::mapRowToWorkItemDTO);
+    }
+
+    @Override
+    public WorkItemSummaryDTO getMyWorkItemSummary(String filterType, Integer day, Integer month, Integer year) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Get my work item summary - employeeId: {}, filter: {}", employeeId, filterType);
+        LocalDateTime[] period = resolvePeriod(filterType, day, month, year);
+        List<Object[]> rows = orderItemRepository.getWorkItemStats(employeeId, period[0], period[1]);
+        if (rows.isEmpty()) {
+            return WorkItemSummaryDTO.builder()
+                    .completedCount(0).totalRevenue(BigDecimal.ZERO)
+                    .totalDurationMinutes(0).totalCommission(BigDecimal.ZERO).build();
+        }
+        Object[] r = rows.get(0);
+        return WorkItemSummaryDTO.builder()
+                .completedCount(((Number) r[0]).longValue())
+                .totalRevenue(toBigDecimal(r[1]))
+                .totalDurationMinutes(((Number) r[2]).longValue())
+                .totalCommission(toBigDecimal(r[3]))
+                .build();
+    }
+
+    @Override
+    public List<Map<String, Object>> getMyWorkItemTrend(String filterType, Integer day, Integer month, Integer year) {
+        Long employeeId = resolveCurrentEmployeeId();
+        log.info("Request: Get my work item trend - employeeId: {}, filter: {}", employeeId, filterType);
+        LocalDateTime[] period = resolvePeriod(filterType, day, month, year);
+        String type = filterType != null ? filterType.toUpperCase() : "DAY";
+
+        List<Object[]> rows = switch (type) {
+            case "YEAR" -> orderItemRepository.getWorkItemTrendByMonth(employeeId, period[0], period[1]);
+            case "WEEK", "MONTH" -> orderItemRepository.getWorkItemTrendByDay(employeeId, period[0], period[1]);
+            default -> orderItemRepository.getWorkItemTrendByHour(employeeId, period[0], period[1]);
+        };
+
+        return rows.stream().map(r -> {
+            String label = switch (type) {
+                case "YEAR" -> String.valueOf(((Number) r[0]).intValue());
+                case "WEEK", "MONTH" -> r[0].toString();
+                default -> String.format("%02d:00", ((Number) r[0]).intValue());
+            };
+            Map<String, Object> point = new java.util.LinkedHashMap<>();
+            point.put("label", label);
+            point.put("count", ((Number) r[1]).longValue());
+            point.put("revenue", toBigDecimal(r[2]));
+            return point;
+        }).collect(Collectors.toList());
+    }
+
+    private Long resolveCurrentEmployeeId() {
+        return resolveCurrentEmployee().getId();
+    }
+
+    private Employee resolveCurrentEmployee() {
+        String username = getCurrentUsername();
+        var user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+        return employeeRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.employee.not.found", username)));
+    }
+
+    private WorkItemDTO mapRowToWorkItemDTO(Object[] row) {
+        return WorkItemDTO.builder()
+                .itemId(toLong(row[0]))
+                .orderId(toLong(row[1]))
+                .orderNumber(toString(row[2]))
+                .customerName(toString(row[3]))
+                .productId(toLong(row[4]))
+                .productName(toString(row[5]))
+                .quantity(toInt(row[6]))
+                .unitPrice(toBigDecimal(row[7]))
+                .amount(toBigDecimal(row[8]))
+                .durationMinutes(toInt(row[9]))
+                .status(toString(row[10]))
+                .completedAt(toLocalDateTime(row[11]))
+                .assignedEmployeeId(toLong(row[12]))
+                .assignedEmployeeName(toString(row[13]))
+                .orderCreatedAt(toLocalDateTime(row[14]))
+                .build();
+    }
+
+    private WorkItemDTO loadWorkItemDTO(OrderItem item) {
+        var order = item.getOrder();
+        return WorkItemDTO.builder()
+                .itemId(item.getId())
+                .orderId(order.getId())
+                .orderNumber(order.getOrderNumber())
+                .customerName(order.getCustomer() != null ? order.getCustomer().getName() : null)
+                .productId(item.getProductId())
+                .productName(item.getProductName())
+                .quantity(item.getQuantity())
+                .unitPrice(item.getUnitPrice())
+                .amount(item.getAmount())
+                .durationMinutes(0)
+                .status(item.getStatus().name())
+                .completedAt(item.getCompletedAt())
+                .assignedEmployeeId(item.getAssignedEmployeeId())
+                .assignedEmployeeName(item.getAssignedEmployeeName())
+                .orderCreatedAt(order.getCreatedAt())
+                .build();
+    }
+
+    private static Long toLong(Object o) {
+        if (o == null) return null;
+        if (o instanceof Long l) return l;
+        if (o instanceof Number n) return n.longValue();
+        return Long.parseLong(o.toString());
+    }
+
+    private static Integer toInt(Object o) {
+        if (o == null) return 0;
+        if (o instanceof Integer i) return i;
+        if (o instanceof Number n) return n.intValue();
+        return Integer.parseInt(o.toString());
+    }
+
+    private static BigDecimal toBigDecimal(Object o) {
+        if (o == null) return BigDecimal.ZERO;
+        if (o instanceof BigDecimal bd) return bd;
+        if (o instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+        return new BigDecimal(o.toString());
+    }
+
+    private static String toString(Object o) {
+        return o != null ? o.toString() : null;
+    }
+
+    private static LocalDateTime toLocalDateTime(Object o) {
+        if (o == null) return null;
+        if (o instanceof LocalDateTime ldt) return ldt;
+        if (o instanceof java.sql.Timestamp ts) return ts.toLocalDateTime();
+        return null;
+    }
+
+    @Override
+    @Transactional
+    public void softDeleteOrder(Long id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + id));
+        order.setDeleted(true);
+        orderRepository.save(order);
     }
 }

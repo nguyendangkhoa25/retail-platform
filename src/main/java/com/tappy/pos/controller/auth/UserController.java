@@ -1,5 +1,6 @@
 package com.tappy.pos.controller.auth;
 
+import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.auth.CreateUserRequest;
 import com.tappy.pos.model.dto.auth.UserDetailDTO;
@@ -27,6 +28,7 @@ import com.tappy.pos.annotation.RequiresFeature;
 public class UserController {
 
     private final UserService userService;
+    private final AuthContext authContext;
 
     /**
      * POST /api/users
@@ -180,6 +182,23 @@ public class UserController {
         log.info("Endpoint: DELETE /users/{}/roles/{} - Remove role from user", id, roleName);
         UserDetailDTO updatedUser = userService.removeRoleFromUser(id, roleName);
         return ResponseEntity.ok(ApiResponse.success(updatedUser, "Role removed from user successfully"));
+    }
+
+    /**
+     * DELETE /api/users/me
+     * Soft-delete the currently authenticated user's own account
+     */
+    @DeleteMapping("/me")
+    public ResponseEntity<ApiResponse<Void>> deleteMe() {
+        String username = authContext.getCurrentUsername();
+        if (username == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("UNAUTHORIZED", "Not authenticated"));
+        }
+        log.info("Endpoint: DELETE /users/me - username: {}", username);
+        UserDetailDTO user = userService.getUserByUsername(username);
+        userService.deleteUser(user.getId());
+        return ResponseEntity.ok(ApiResponse.success(null, "Account deleted"));
     }
 
     /**

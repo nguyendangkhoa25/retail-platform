@@ -37,12 +37,15 @@ public class TenantInterceptor implements HandlerInterceptor {
 
     // Paths that don't require tenant header (always use master DB)
     private static final String[] PUBLIC_PATHS = {
-            "/api/tenants",              // Get available tenants
+            "/api/tenants",              // Get available tenants + self-provision
             "/api/swagger-ui",           // Swagger UI
             "/api/v3/api-docs",          // API docs
             "/actuator",                 // Health check
             "/api/contact",              // Public lead capture from landing page
-            "/api/integrations/oauth"    // OAuth2 callback from providers (no tenant header)
+            "/api/integrations/oauth",   // OAuth2 callback from providers (no tenant header)
+            "/api/shop-types",           // Onboarding: shop type list (no tenant yet)
+            "/api/product-templates",    // Onboarding: product template list
+            "/api/expense-suggestions"   // Onboarding: expense suggestions
     };
 
     // Paths that support both tenant and non-tenant access

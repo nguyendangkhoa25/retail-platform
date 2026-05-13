@@ -21,6 +21,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -220,6 +222,11 @@ public class CustomerService {
         customer.softDelete();
         customerRepository.save(customer);
         log.info("Customer deleted successfully (soft delete) - id: {}, name: {}", customer.getId(), customer.getName());
+    }
+
+    public List<CustomerDTO> getRecentCustomers(int limit) {
+        return customerRepository.findTop(PageRequest.of(0, limit))
+                .stream().map(this::mapToDTO).collect(java.util.stream.Collectors.toList());
     }
 
     public Long getCustomerCount() {

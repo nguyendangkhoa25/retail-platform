@@ -12,7 +12,7 @@ public interface ProductService {
     ProductDTO getProductById(Long id);
     ProductDTO updateProduct(Long id, UpdateProductRequest request);
     void deleteProduct(Long id);
-    Page<ProductDTO> getAllProducts(String status, Pageable pageable);
+    Page<ProductDTO> getAllProducts(String status, Long categoryId, Pageable pageable);
     Page<ProductDTO> getProductsByType(Long productTypeId, Pageable pageable);
     Page<ProductDTO> searchProducts(String searchTerm, Pageable pageable);
     List<ProductTypeDTO> getAllProductTypes();
@@ -20,5 +20,7 @@ public interface ProductService {
     String generateSku(String name, String typeCode);
     BarcodeLookupResult lookupByBarcode(String barcode);
     void markAsSold(Long productId);
+    void setVisibility(Long id, boolean active);
+    ProductSummaryDTO getSummary();
 }
 

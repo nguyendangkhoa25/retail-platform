@@ -3,6 +3,7 @@ package com.tappy.pos.model.entity.inventory;
 import jakarta.persistence.*;
 import com.tappy.pos.model.entity.TenantAwareEntity;
 import com.tappy.pos.model.entity.product.Product;
+import com.tappy.pos.model.entity.product.ProductVariant;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -22,6 +23,10 @@ public class Inventory extends TenantAwareEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variant_id")
+    private ProductVariant variant;
 
     @Builder.Default
     @NotNull(message = "Quantity in stock is required")

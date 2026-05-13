@@ -115,6 +115,23 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getSummary(LocalDate from, LocalDate to) {
+        BigDecimal total = expenseRepository.sumByDateRange(from, to);
+        if (total == null) total = BigDecimal.ZERO;
+        return java.util.Map.of("total", total, "fixed", BigDecimal.ZERO, "variable", total, "netVsRevenue", BigDecimal.ZERO);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getChart(LocalDate from, LocalDate to) {
+        List<Object[]> rows = expenseRepository.getDailyChart(from, to);
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) { result.add(java.util.Map.of("label", row[0].toString(), "value", row[1])); }
+        return result;
+    }
+
     private ShopExpense findActive(Long id) {
         return expenseRepository.findById(id)
                 .filter(e -> !e.isDeleted())

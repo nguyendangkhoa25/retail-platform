@@ -25,6 +25,14 @@ public class ProductController {
     private final ProductService productService;
 
     /**
+     * GET /api/products/summary
+     */
+    @GetMapping("/summary")
+    public ResponseEntity<ApiResponse<ProductSummaryDTO>> getSummary() {
+        return ResponseEntity.ok(ApiResponse.success(productService.getSummary(), "Summary retrieved"));
+    }
+
+    /**
      * Get all product types (specific path must come before /{id})
      * GET /api/products/types/all
      */
@@ -93,9 +101,10 @@ public class ProductController {
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ProductDTO>>> getAllProducts(
             @RequestParam(defaultValue = "ACTIVE") String status,
+            @RequestParam(required = false) Long categoryId,
             Pageable pageable) {
-        log.info("GET /api/products - Get all products, status: {}, page: {}", status, pageable.getPageNumber());
-        Page<ProductDTO> products = productService.getAllProducts(status, pageable);
+        log.info("GET /api/products - Get all products, status: {}, categoryId: {}, page: {}", status, categoryId, pageable.getPageNumber());
+        Page<ProductDTO> products = productService.getAllProducts(status, categoryId, pageable);
         return ResponseEntity.ok(ApiResponse.success(products, "Products retrieved successfully"));
     }
 
@@ -145,6 +154,21 @@ public class ProductController {
         log.info("DELETE /api/products/{} - Delete product", id);
         productService.deleteProduct(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Product deleted successfully"));
+    }
+
+    /**
+     * PATCH /api/products/{id}/visibility
+     * Set product visibility (active/inactive)
+     */
+    @PatchMapping("/{id}/visibility")
+    public ResponseEntity<ApiResponse<Void>> setVisibility(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, Boolean> body) {
+        log.info("Endpoint: PATCH /products/{}/visibility", id);
+        Boolean active = body.get("active");
+        if (active == null) return ResponseEntity.badRequest().body(ApiResponse.error("BAD_REQUEST", "active required"));
+        productService.setVisibility(id, active);
+        return ResponseEntity.ok(ApiResponse.success(null, "Visibility updated"));
     }
 
     /**

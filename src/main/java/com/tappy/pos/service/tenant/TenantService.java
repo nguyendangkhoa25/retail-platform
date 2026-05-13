@@ -5,6 +5,7 @@ import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.tenant.CreateTenantRequest;
 import com.tappy.pos.model.dto.tenant.TenantDTO;
 import com.tappy.pos.model.dto.tenant.TenantStatsDTO;
+import com.tappy.pos.model.dto.tenant.TenantStatusResponse;
 import com.tappy.pos.model.dto.tenant.UpdateTenantRequest;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.entity.tenant.Agent;
@@ -82,6 +83,20 @@ public class TenantService {
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Public endpoint for mobile app — returns shop existence and activation status
+     * without exposing full tenant details. Never throws; always returns 200.
+     */
+    public TenantStatusResponse checkStatus(String shopId) {
+        Optional<Tenant> tenantOpt = tenantRepository.findByTenantId(shopId);
+        if (tenantOpt.isEmpty()) {
+            return new TenantStatusResponse(shopId, null, "NOT_FOUND");
+        }
+        Tenant tenant = tenantOpt.get();
+        String status = tenant.isActive() ? "ACTIVE" : "SUSPENDED";
+        return new TenantStatusResponse(shopId, tenant.getName(), status);
+    }
 
     public List<TenantDTO> getAllActiveTenants() {
         return tenantRepository.findAllByActiveTrue()

@@ -57,6 +57,7 @@ import com.tappy.pos.model.dto.goldprice.GoldPriceDTO;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.model.enums.DynamicPriceProductTypes;
 import com.tappy.pos.model.enums.ShopConfigKey;
+import com.tappy.pos.model.enums.NoInventoryProductTypes;
 import com.tappy.pos.model.enums.UniqueItemProductTypes;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.goldprice.GoldPriceService;
@@ -199,62 +200,67 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        // Step 2c: Resolve unit price — dynamic types calculate from live market rate
-        BigDecimal resolvedUnitPrice = DynamicPriceProductTypes.isDynamicPrice(product.getProductTypeCode())
-                ? calculateDynamicUnitPrice(product)
-                : product.getPrice();
+        // Step 2c: Resolve unit price — staff override wins; dynamic types use live market rate; fallback to catalogue
+        BigDecimal resolvedUnitPrice;
+        if (request.getUnitPrice() != null && request.getUnitPrice().compareTo(BigDecimal.ZERO) > 0) {
+            resolvedUnitPrice = request.getUnitPrice();
+        } else if (DynamicPriceProductTypes.isDynamicPrice(product.getProductTypeCode())) {
+            resolvedUnitPrice = calculateDynamicUnitPrice(product);
+        } else {
+            resolvedUnitPrice = product.getPrice();
+        }
 
-        // Step 3: Check stock availability via InventoryService
+        // Step 3: Check stock availability via InventoryService (skipped for no-inventory types e.g. SERVICE)
         BigDecimal resolvedUnitCost = product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO;
-        try {
-            // Get inventory for this product
-            // Using Pageable with size=1 to get first available inventory
-            var inventoryPage = inventoryService.getInventoryByProductId(
-                    request.getProductId(),
-                    org.springframework.data.domain.PageRequest.of(0, 1)
-            );
+        if (!NoInventoryProductTypes.isNoInventory(product.getProductTypeCode())) {
+            try {
+                var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
+                var inventoryPage = (request.getVariantId() != null)
+                        ? inventoryService.getInventoryByProductIdAndVariantId(request.getProductId(), request.getVariantId(), pageable)
+                        : inventoryService.getInventoryByProductId(request.getProductId(), pageable);
 
-            if (inventoryPage.isEmpty()) {
-                log.warn("No inventory found for product: {}", request.getProductId());
+                if (inventoryPage.isEmpty()) {
+                    log.warn("No inventory found for product: {}, variant: {}", request.getProductId(), request.getVariantId());
+                    throw new BadRequestException(
+                            messageService.getMessage("product.out.of.stock")
+                    );
+                }
+
+                InventoryDTO inventory = inventoryPage.getContent().get(0);
+
+                // Capture unit cost from inventory (overrides product cost_price)
+                if (inventory.getUnitCost() != null && inventory.getUnitCost().compareTo(BigDecimal.ZERO) > 0) {
+                    resolvedUnitCost = inventory.getUnitCost();
+                }
+
+                // Validate stock availability
+                if (inventory.getQuantityInStock() == null || inventory.getQuantityInStock() < request.getQuantity()) {
+                    Long available = inventory.getQuantityInStock() != null ?
+                            inventory.getQuantityInStock() : 0;
+
+                    log.warn("Insufficient stock for product {}: requested={}, available={}",
+                            request.getProductId(), request.getQuantity(), available);
+
+                    throw new BadRequestException(
+                            String.format(
+                                    messageService.getMessage("product.insufficient.stock"),
+                                    product.getName(),
+                                    available
+                            )
+                    );
+                }
+
+                log.debug("Stock validation passed. Product: {}, Stock: {}, UnitCost: {}",
+                        product.getName(), inventory.getQuantityInStock(), resolvedUnitCost);
+
+            } catch (BadRequestException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("Error checking stock for product {}: {}", request.getProductId(), e.getMessage(), e);
                 throw new BadRequestException(
-                        messageService.getMessage("product.out.of.stock")
+                        messageService.getMessage("product.stock.check.failed")
                 );
             }
-
-            InventoryDTO inventory = inventoryPage.getContent().get(0);
-
-            // Capture unit cost from inventory (overrides product cost_price)
-            if (inventory.getUnitCost() != null && inventory.getUnitCost().compareTo(BigDecimal.ZERO) > 0) {
-                resolvedUnitCost = inventory.getUnitCost();
-            }
-
-            // Validate stock availability
-            if (inventory.getQuantityInStock() == null || inventory.getQuantityInStock() < request.getQuantity()) {
-                Long available = inventory.getQuantityInStock() != null ?
-                        inventory.getQuantityInStock() : 0;
-
-                log.warn("Insufficient stock for product {}: requested={}, available={}",
-                        request.getProductId(), request.getQuantity(), available);
-
-                throw new BadRequestException(
-                        String.format(
-                                messageService.getMessage("product.insufficient.stock"),
-                                product.getName(),
-                                available
-                        )
-                );
-            }
-
-            log.debug("Stock validation passed. Product: {}, Stock: {}, UnitCost: {}",
-                    product.getName(), inventory.getQuantityInStock(), resolvedUnitCost);
-
-        } catch (BadRequestException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Error checking stock for product {}: {}", request.getProductId(), e.getMessage(), e);
-            throw new BadRequestException(
-                    messageService.getMessage("product.stock.check.failed")
-            );
         }
 
         // Step 4 & 5: Check for duplicate item and add or merge
@@ -303,23 +309,27 @@ public class CartServiceImpl implements CartService {
                     .discountType(DiscountType.NONE)
                     .discountValue(BigDecimal.ZERO)
                     .variants(variantsJson)
+                    .variantId(request.getVariantId())
                     .taxRate(itemTaxRate)
                     .build();
 
-            // Commission: only when COMMISSION feature is active and an employee is assigned.
+            // Employee assignment: always allowed when an employee ID is supplied.
+            // Commission calculation is only applied when the COMMISSION feature is also active.
             // Rate priority: manual override > product-level rate > employee default > 0
-            if (featureContext.hasFeature("COMMISSION") && request.getAssignedEmployeeId() != null) {
+            if (request.getAssignedEmployeeId() != null) {
                 employeeRepository.findById(request.getAssignedEmployeeId()).ifPresent(emp -> {
                     newItem.setAssignedEmployeeId(emp.getId());
                     newItem.setAssignedEmployeeName(emp.getFullName());
-                    BigDecimal rate = product.getCommissionRate() != null
-                            ? product.getCommissionRate()
-                            : (emp.getCommissionRate() != null ? emp.getCommissionRate() : BigDecimal.ZERO);
-                    newItem.setCommissionRate(rate);
-                    BigDecimal commAmt = request.getCommissionAmount() != null
-                            ? request.getCommissionAmount()
-                            : resolvedUnitPrice.multiply(rate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-                    newItem.setCommissionAmount(commAmt);
+                    if (featureContext.hasFeature("COMMISSION")) {
+                        BigDecimal rate = product.getCommissionRate() != null
+                                ? product.getCommissionRate()
+                                : (emp.getCommissionRate() != null ? emp.getCommissionRate() : BigDecimal.ZERO);
+                        newItem.setCommissionRate(rate);
+                        BigDecimal commAmt = request.getCommissionAmount() != null
+                                ? request.getCommissionAmount()
+                                : resolvedUnitPrice.multiply(rate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                        newItem.setCommissionAmount(commAmt);
+                    }
                 });
             }
 
@@ -634,6 +644,7 @@ public class CartServiceImpl implements CartService {
             oi.setOrder(order);
             oi.setProductId(cartItem.getProductId());
             oi.setProductName(cartItem.getProductName());
+            oi.setVariantId(cartItem.getVariantId());
             oi.setQuantity(cartItem.getQuantity());
             oi.setUnitPrice(cartItem.getUnitPrice());
             oi.setUnitCost(cartItem.getUnitCost());
@@ -903,6 +914,7 @@ public class CartServiceImpl implements CartService {
             oi.setOrder(order);
             oi.setProductId(cartItem.getProductId());
             oi.setProductName(cartItem.getProductName());
+            oi.setVariantId(cartItem.getVariantId());
             oi.setQuantity(cartItem.getQuantity());
             oi.setUnitPrice(cartItem.getUnitPrice());
             oi.setUnitCost(cartItem.getUnitCost());
@@ -915,17 +927,20 @@ public class CartServiceImpl implements CartService {
             oi.setCommissionAmount(cartItem.getCommissionAmount() != null ? cartItem.getCommissionAmount() : BigDecimal.ZERO);
             orderItems.add(oi);
 
-            // Deduct stock only for catalog items; gold items have no inventory
-            if (cartItem.getItemType() == CartItemEntity.ItemType.STANDARD) {
+            // Deduct stock only for catalog items that track inventory; gold and service items skip this
+            if (cartItem.getItemType() == CartItemEntity.ItemType.STANDARD
+                    && !NoInventoryProductTypes.isNoInventory(cartItem.getProductTypeCode())) {
                 try {
-                    var inventoryPage = inventoryService.getInventoryByProductId(
-                            cartItem.getProductId(),
-                            org.springframework.data.domain.PageRequest.of(0, 1));
+                    var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
+                    var inventoryPage = (cartItem.getVariantId() != null)
+                            ? inventoryService.getInventoryByProductIdAndVariantId(cartItem.getProductId(), cartItem.getVariantId(), pageable)
+                            : inventoryService.getInventoryByProductId(cartItem.getProductId(), pageable);
                     if (!inventoryPage.isEmpty()) {
                         Long inventoryId = inventoryPage.getContent().get(0).getId();
                         inventoryService.removeStock(inventoryId, (long) cartItem.getQuantity().intValue());
                     } else {
-                        log.warn("No inventory found for product {} — stock not deducted", cartItem.getProductId());
+                        log.warn("No inventory found for product {} variant {} — stock not deducted",
+                                cartItem.getProductId(), cartItem.getVariantId());
                     }
                 } catch (Exception e) {
                     log.warn("Inventory deduction failed for product {}: {}", cartItem.getProductId(), e.getMessage());
