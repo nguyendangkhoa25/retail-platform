@@ -33,4 +33,7 @@ public class WorkItemDTO {
     private String assignedEmployeeName;
 
     private LocalDateTime orderCreatedAt;
+
+    private BigDecimal commissionRate;
+    private BigDecimal commissionAmount;
 }

@@ -573,18 +573,18 @@ class UserServiceTest {
     void testResetUserPassword_Success() {
         // Given
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(passwordEncoder.encode("NewPass@123")).thenReturn("hashedPassword");
+        when(passwordEncoder.encode(anyString())).thenReturn("hashedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
-        PasswordResetResponse result = userService.resetUserPassword(1L, "NewPass@123");
+        PasswordResetResponse result = userService.resetUserPassword(1L);
 
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getUsername()).isEqualTo("testuser");
         assertThat(result.getRequirePasswordChange()).isTrue();
         verify(userRepository).findByIdTenantScoped(1L);
-        verify(passwordEncoder).encode("NewPass@123");
+        verify(passwordEncoder).encode(anyString());
         verify(userRepository).save(any(User.class));
     }
 
@@ -593,16 +593,17 @@ class UserServiceTest {
     void testResetUserPassword_EncodesPassword() {
         // Given
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(passwordEncoder.encode("MySecret1!")).thenReturn("hashedPassword");
+        when(passwordEncoder.encode(anyString())).thenReturn("hashedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
-        PasswordResetResponse result = userService.resetUserPassword(1L, "MySecret1!");
+        PasswordResetResponse result = userService.resetUserPassword(1L);
 
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getRequirePasswordChange()).isTrue();
-        verify(passwordEncoder).encode("MySecret1!");
+        assertThat(result.getTempPassword()).isNotNull();
+        verify(passwordEncoder).encode(anyString());
     }
 
     // ============= changePasswordOnFirstLogin Tests =============
@@ -1832,7 +1833,7 @@ class UserServiceTest {
                 .thenReturn("User not found");
 
         // When & Then
-        assertThatThrownBy(() -> userService.resetUserPassword(999L, "AnyPass1!"))
+        assertThatThrownBy(() -> userService.resetUserPassword(999L))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

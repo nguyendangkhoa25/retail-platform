@@ -188,7 +188,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    oi.product_id, oi.product_name, oi.quantity, oi.unit_price, oi.amount,
                    COALESCE(p.duration_minutes, 0) AS duration_minutes,
                    oi.status, oi.completed_at, oi.assigned_employee_id, oi.assigned_employee_name,
-                   o.created_at AS order_created_at
+                   o.created_at AS order_created_at,
+                   COALESCE(oi.commission_rate, 0) AS commission_rate,
+                   COALESCE(oi.commission_amount, 0) AS commission_amount
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             LEFT JOIN customers c ON c.id = o.customer_id

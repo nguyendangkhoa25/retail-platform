@@ -145,7 +145,7 @@ class AuthControllerTest {
         @DisplayName("valid credentials + Turnstile pass → 200 with accessToken and username")
         void validCredentials_returns200WithToken() throws Exception {
             when(turnstileService.verify(anyString(), anyString())).thenReturn(true);
-            AuthResponse authResp = AuthResponse.of("jwt-token-abc", null, 86400L, USERNAME, 1L);
+            AuthResponse authResp = AuthResponse.of("jwt-token-abc", null, 86400L, USERNAME, 1L, true, TENANT_ID);
             // Use any() (not anyString()) for IP and User-Agent: MockMvc may pass null User-Agent
             when(authService.authenticateUser(any(LoginRequest.class), any(), any()))
                     .thenReturn(authResp);
@@ -200,7 +200,7 @@ class AuthControllerTest {
         @DisplayName("Turnstile passes → 200 (existing session evicted by AuthService)")
         void success_returns200() throws Exception {
             when(turnstileService.verify(anyString(), anyString())).thenReturn(true);
-            AuthResponse authResp = AuthResponse.of("new-jwt-token", null, 86400L, USERNAME, 1L);
+            AuthResponse authResp = AuthResponse.of("new-jwt-token", null, 86400L, USERNAME, 1L, true, TENANT_ID);
             when(authService.forceLogin(any(LoginRequest.class), any(), any()))
                     .thenReturn(authResp);
 
@@ -282,7 +282,7 @@ class AuthControllerTest {
         @Test
         @DisplayName("valid ?username param and refresh cookie → 200 with new accessToken")
         void success_returns200() throws Exception {
-            AuthResponse refreshed = AuthResponse.of("refreshed-jwt", null, 86400L, USERNAME, 1L);
+            AuthResponse refreshed = AuthResponse.of("refreshed-jwt", null, 86400L, USERNAME, 1L, true, TENANT_ID);
             when(authService.getRefreshToken(any())).thenReturn("some-refresh-token");
             when(authService.refreshAccessToken(eq(USERNAME), anyString())).thenReturn(refreshed);
 

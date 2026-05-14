@@ -66,6 +66,8 @@ public class TenantProvisioningService {
         m.put(ShopType.FOOD_BEVERAGE,      "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
         m.put(ShopType.FASHION,            "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.BARBER_SHOP,        "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.NAIL_SHOP,          "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.SPA_SHOP,           "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.COFFEE_SHOP,        "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.RESTAURANT,         "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.OTHER,              "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
@@ -83,6 +85,8 @@ public class TenantProvisioningService {
         m.put(ShopType.FOOD_BEVERAGE,      "home,orders,pos,customers,dashboard,users");
         m.put(ShopType.FASHION,            "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.BARBER_SHOP,        "home,orders,customers,dashboard,users");
+        m.put(ShopType.NAIL_SHOP,          "home,orders,customers,dashboard,users");
+        m.put(ShopType.SPA_SHOP,           "home,orders,customers,dashboard,users");
         m.put(ShopType.COFFEE_SHOP,        "home,orders,pos,customers,dashboard,users");
         m.put(ShopType.RESTAURANT,         "home,orders,pos,customers,dashboard,users");
         m.put(ShopType.OTHER,              "home,pos,orders,customers,dashboard,users");
@@ -140,13 +144,12 @@ public class TenantProvisioningService {
     }
 
     /**
-     * Provision a self-registered tenant using the user's existing encoded password.
-     * Called from the mobile self-provision flow so the tenant-scoped user shares
-     * the same credential hash as the master-scope registration user.
+     * Provision a self-registered tenant by promoting the pre-provision user (tenant_id IS NULL)
+     * to the new tenant scope. No second user row is created — the registration record is updated
+     * in-place, keeping the same credential hash and ID.
      */
     @Transactional
-    public void provisionWithEncodedPassword(Tenant tenant, String adminUsername,
-                                              String encodedPassword, String shopAddress) {
+    public void provisionSelfRegistered(Tenant tenant, String adminUsername, String shopAddress) {
         log.info("Provisioning self-registered tenant: {}", tenant.getTenantId());
         String tenantId = tenant.getTenantId();
 
@@ -162,7 +165,7 @@ public class TenantProvisioningService {
         try { seedWalkInCustomer(tenantId); }
         catch (Exception e) { log.warn("seedWalkInCustomer failed for {}: {}", tenantId, e.getMessage()); }
 
-        User adminUser = seedShopOwnerUserEncoded(tenant, adminUsername, encodedPassword, tenantId);
+        User adminUser = promoteUserToTenant(tenant, adminUsername, tenantId);
 
         try { seedShopOwnerEmployee(tenant, adminUser, tenantId); }
         catch (Exception e) { log.warn("seedShopOwnerEmployee failed for {}: {}", tenantId, e.getMessage()); }
@@ -170,31 +173,34 @@ public class TenantProvisioningService {
         log.info("Self-registered provisioning complete for tenant: {}", tenantId);
     }
 
-    private User seedShopOwnerUserEncoded(Tenant tenant, String adminUsername,
-                                           String encodedPassword, String tenantId) {
-        Optional<User> existing = userRepository.findByUsernameTenantScoped(adminUsername);
-        if (existing.isPresent()) {
-            log.info("Tenant-scoped user '{}' already exists in: {}", adminUsername, tenantId);
-            return existing.get();
+    /**
+     * Promotes the pre-provision user (tenant_id IS NULL) to the target tenant.
+     * Idempotent: if the user is already scoped to this tenant (retry scenario), returns as-is.
+     */
+    private User promoteUserToTenant(Tenant tenant, String adminUsername, String tenantId) {
+        // Idempotency: already promoted in a previous attempt
+        Optional<User> alreadyScoped = userRepository.findByUsernameTenantScoped(adminUsername);
+        if (alreadyScoped.isPresent()) {
+            log.info("User '{}' already promoted to tenant: {}", adminUsername, tenantId);
+            return alreadyScoped.get();
         }
+
+        User user = userRepository.findByUsernameAndNullTenant(adminUsername)
+                .orElseThrow(() -> new RuntimeException("Pre-provision user not found: " + adminUsername));
+
         Role shopOwnerRole = roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), tenantId)
                 .orElseThrow(() -> new RuntimeException("SHOP_OWNER role not found after seeding"));
-        User admin = User.builder()
-                .username(adminUsername)
-                .password(encodedPassword)
-                .fullName(tenant.getContactPersonName() != null ? tenant.getContactPersonName() : "Admin")
-                .email(tenant.getContactPersonEmail())
-                .active(true)
-                .accountNonLocked(true)
-                .credentialsNonExpired(true)
-                .accountNonExpired(true)
-                .requireAction(null)
-                .lang("vi")
-                .build();
-        admin.setTenantId(tenantId);
-        admin.getRoles().add(shopOwnerRole);
-        User saved = userRepository.save(admin);
-        log.info("Created tenant-scoped SHOP_OWNER user '{}' for tenant: {}", adminUsername, tenantId);
+
+        user.setTenantId(tenantId);
+        if (tenant.getContactPersonName() != null && !tenant.getContactPersonName().isBlank()) {
+            user.setFullName(tenant.getContactPersonName());
+        }
+        if (tenant.getContactPersonEmail() != null) {
+            user.setEmail(tenant.getContactPersonEmail());
+        }
+        user.getRoles().add(shopOwnerRole);
+        User saved = userRepository.save(user);
+        log.info("Promoted user '{}' to tenant scope: {}", adminUsername, tenantId);
         return saved;
     }
 

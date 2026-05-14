@@ -19,7 +19,7 @@ import java.util.Set;
 public class User extends UnifiedTenantEntity {
 
     @NotBlank(message = "Username is required")
-    @Column(unique = true, nullable = false, length = 50)
+    @Column(nullable = false, length = 50)
     private String username;
 
     @Email(message = "Email should be valid")

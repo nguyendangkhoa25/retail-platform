@@ -2,6 +2,8 @@ package com.tappy.pos.service.exchangerate;
 
 import com.tappy.pos.model.dto.exchangerate.ExchangeRateResponse;
 import com.tappy.pos.model.entity.exchangerate.ExchangeRate;
+import com.tappy.pos.model.entity.exchangerate.ExchangeRateHistory;
+import com.tappy.pos.repository.exchangerate.ExchangeRateHistoryRepository;
 import com.tappy.pos.repository.exchangerate.ExchangeRateRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,7 @@ public class ExchangeRateService {
     );
 
     private final ExchangeRateRepository repository;
+    private final ExchangeRateHistoryRepository historyRepository;
     private final RestTemplate restTemplate;
 
     @Scheduled(fixedDelay = 30 * 60 * 1000, initialDelay = 0)
@@ -51,7 +54,15 @@ public class ExchangeRateService {
                 return;
             }
             repository.saveAll(rows);
-            log.info("ExchangeRateService: upserted {} rates from VCB", rows.size());
+            historyRepository.saveAll(rows.stream().map(r -> ExchangeRateHistory.builder()
+                    .currencyCode(r.getCurrencyCode())
+                    .source(r.getSource())
+                    .buyRate(r.getBuyRate())
+                    .transferRate(r.getTransferRate())
+                    .sellRate(r.getSellRate())
+                    .fetchedAt(r.getFetchedAt())
+                    .build()).toList());
+            log.info("ExchangeRateService: upserted {} rates and appended history from VCB", rows.size());
         } catch (Exception e) {
             log.error("ExchangeRateService: failed to poll VCB rates", e);
         }
@@ -70,11 +81,34 @@ public class ExchangeRateService {
                         r.getCurrencyCode(),
                         r.getBuyRate(),
                         r.getTransferRate(),
-                        r.getSellRate()
+                        r.getSellRate(),
+                        r.getFetchedAt()
                 ))
                 .toList();
 
         return new ExchangeRateResponse(SOURCE, fetchedAt, items);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExchangeRateResponse.RateItem> getHistory(String currency, int days) {
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        return historyRepository.findHistory(SOURCE, currency, since).stream()
+                .map(h -> new ExchangeRateResponse.RateItem(
+                        h.getCurrencyCode(),
+                        h.getBuyRate(),
+                        h.getTransferRate(),
+                        h.getSellRate(),
+                        h.getFetchedAt()
+                ))
+                .toList();
+    }
+
+    @Scheduled(cron = "0 0 3 * * SUN")
+    @Transactional
+    public void pruneHistory() {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(90);
+        int deleted = historyRepository.deleteOlderThan(cutoff);
+        log.info("ExchangeRateService: pruned {} history rows older than 90 days", deleted);
     }
 
     private List<ExchangeRate> parse(String xml) {

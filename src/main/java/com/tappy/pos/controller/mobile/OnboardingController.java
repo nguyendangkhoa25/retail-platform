@@ -4,13 +4,11 @@ import com.tappy.pos.config.JwtTokenProvider;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.finance.ShopExpenseRequest;
 import com.tappy.pos.model.dto.tenant.CreateTenantRequest;
-import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.ExpenseCategory;
 import com.tappy.pos.model.enums.ShopType;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleRepository;
-import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.service.finance.ShopExpenseService;
 import com.tappy.pos.service.tenant.TenantFeatureService;
 import com.tappy.pos.service.tenant.TenantProvisioningService;
@@ -42,7 +40,6 @@ public class OnboardingController {
     private final TenantFeatureService tenantFeatureService;
     private final ShopExpenseService shopExpenseService;
     private final JwtTokenProvider jwtTokenProvider;
-    private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final NamedParameterJdbcTemplate namedJdbc;
 
@@ -52,18 +49,91 @@ public class OnboardingController {
             "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG", "REVENUE", "USER"
     );
 
+    private static final Map<ShopType, List<String>> SHOP_TYPE_TENANT_FEATURES;
+    static {
+        Map<ShopType, List<String>> m = new EnumMap<>(ShopType.class);
+        List<String> serviceBase = List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "POS",
+                "CUSTOMER", "LOYALTY", "COMMISSION", "EMPLOYEE", "SALARY", "EXPENSE",
+                "REVENUE", "USER", "APPOINTMENT", "NOTIFICATION", "FEEDBACK",
+                "ACTIVITY_LOG", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT",
+                "INVOICE", "ACCOUNTING"
+        );
+        m.put(ShopType.BARBER_SHOP,      serviceBase);
+        m.put(ShopType.BARBER_SHOP_MEN, serviceBase);
+        m.put(ShopType.HAIR_SALON,      serviceBase);
+        m.put(ShopType.NAIL_SHOP,       serviceBase);
+        m.put(ShopType.LASH_PMU_STUDIO, serviceBase);
+        m.put(ShopType.SPA_SHOP,        serviceBase);
+        m.put(ShopType.MASSAGE_SHOP,    serviceBase);
+        m.put(ShopType.BEAUTY_CLINIC,   serviceBase);
+        m.put(ShopType.MAKEUP_STUDIO,   serviceBase);
+        m.put(ShopType.FOOD_BEVERAGE, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "CUSTOMER",
+                "COMMISSION", "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
+        m.put(ShopType.COFFEE_SHOP, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "CUSTOMER",
+                "COMMISSION", "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
+        m.put(ShopType.RESTAURANT, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "CUSTOMER",
+                "COMMISSION", "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
+        m.put(ShopType.CONVENIENCE_STORE, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
+                "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
+        m.put(ShopType.PHARMACY, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
+                "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
+        m.put(ShopType.ELECTRONICS, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
+                "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
+        m.put(ShopType.FASHION, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
+                "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
+        SHOP_TYPE_TENANT_FEATURES = Collections.unmodifiableMap(m);
+    }
+
     private static final Map<String, ShopType> SHOP_TYPE_MAP = Map.ofEntries(
-            Map.entry("CONVENIENCE_STORE", ShopType.CONVENIENCE_STORE),
-            Map.entry("FOOD_BEVERAGE", ShopType.FOOD_BEVERAGE),
-            Map.entry("RESTAURANT", ShopType.RESTAURANT),
-            Map.entry("FASHION", ShopType.FASHION),
-            Map.entry("ELECTRONICS", ShopType.ELECTRONICS),
-            Map.entry("BARBER_SHOP", ShopType.BARBER_SHOP),
-            Map.entry("COFFEE_SHOP", ShopType.COFFEE_SHOP),
-            Map.entry("PHARMACY", ShopType.PHARMACY),
-            Map.entry("JEWELRY", ShopType.JEWELRY),
-            Map.entry("PAWN_SHOP", ShopType.PAWN_SHOP),
-            Map.entry("OTHER", ShopType.OTHER)
+            Map.entry("CONVENIENCE_STORE",  ShopType.CONVENIENCE_STORE),
+            Map.entry("FOOD_BEVERAGE",      ShopType.FOOD_BEVERAGE),
+            Map.entry("RESTAURANT",         ShopType.RESTAURANT),
+            Map.entry("FASHION",            ShopType.FASHION),
+            Map.entry("ELECTRONICS",        ShopType.ELECTRONICS),
+            Map.entry("BARBER_SHOP",        ShopType.BARBER_SHOP),
+            Map.entry("BARBER_SHOP_MEN",    ShopType.BARBER_SHOP_MEN),
+            Map.entry("HAIR_SALON",         ShopType.HAIR_SALON),
+            Map.entry("NAIL_SHOP",          ShopType.NAIL_SHOP),
+            Map.entry("LASH_PMU_STUDIO",    ShopType.LASH_PMU_STUDIO),
+            Map.entry("SPA_SHOP",           ShopType.SPA_SHOP),
+            Map.entry("MASSAGE_SHOP",       ShopType.MASSAGE_SHOP),
+            Map.entry("BEAUTY_CLINIC",      ShopType.BEAUTY_CLINIC),
+            Map.entry("MAKEUP_STUDIO",      ShopType.MAKEUP_STUDIO),
+            Map.entry("BOOK_STORE",         ShopType.BOOK_STORE),
+            Map.entry("COFFEE_SHOP",        ShopType.COFFEE_SHOP),
+            Map.entry("PHARMACY",           ShopType.PHARMACY),
+            Map.entry("JEWELRY",            ShopType.JEWELRY),
+            Map.entry("PAWN_SHOP",          ShopType.PAWN_SHOP),
+            Map.entry("OTHER",              ShopType.OTHER)
     );
 
     private static final Map<ShopType, String> PREFIX_MAP;
@@ -74,7 +144,16 @@ public class OnboardingController {
         m.put(ShopType.RESTAURANT, "res");
         m.put(ShopType.FASHION, "fsh");
         m.put(ShopType.ELECTRONICS, "elec");
-        m.put(ShopType.BARBER_SHOP, "bar");
+        m.put(ShopType.BARBER_SHOP,     "bar");
+        m.put(ShopType.BARBER_SHOP_MEN, "barm");
+        m.put(ShopType.HAIR_SALON,      "hair");
+        m.put(ShopType.NAIL_SHOP,       "nail");
+        m.put(ShopType.LASH_PMU_STUDIO, "lash");
+        m.put(ShopType.SPA_SHOP,        "spa");
+        m.put(ShopType.MASSAGE_SHOP,    "mass");
+        m.put(ShopType.BEAUTY_CLINIC,   "bcln");
+        m.put(ShopType.MAKEUP_STUDIO,   "mkup");
+        m.put(ShopType.BOOK_STORE, "book");
         m.put(ShopType.COFFEE_SHOP, "cafe");
         m.put(ShopType.PHARMACY, "phar");
         m.put(ShopType.JEWELRY, "jwl");
@@ -92,7 +171,16 @@ public class OnboardingController {
                 shopEntry("COFFEE_SHOP", "Quán cà phê", "☕"),
                 shopEntry("FASHION", "Thời trang", "👗"),
                 shopEntry("ELECTRONICS", "Điện tử / Điện máy", "📱"),
-                shopEntry("BARBER_SHOP", "Salon / Cắt tóc", "✂️"),
+                shopEntry("BARBER_SHOP",     "Salon / Cắt tóc",            "💇"),
+                shopEntry("BARBER_SHOP_MEN", "Tiệm tóc nam / Barber",      "✂️"),
+                shopEntry("HAIR_SALON",      "Salon tóc nữ / Unisex",      "💁"),
+                shopEntry("NAIL_SHOP",       "Tiệm nail / Làm móng",       "💅"),
+                shopEntry("LASH_PMU_STUDIO", "Tiệm mi / Xăm thẩm mỹ",     "👁️"),
+                shopEntry("SPA_SHOP",        "Spa",                         "🧖"),
+                shopEntry("MASSAGE_SHOP",    "Tiệm massage",                "🤲"),
+                shopEntry("BEAUTY_CLINIC",   "Thẩm mỹ viện",               "🏥"),
+                shopEntry("MAKEUP_STUDIO",   "Tiệm trang điểm / Cô dâu",   "💄"),
+                shopEntry("BOOK_STORE", "Nhà sách", "🧖"),
                 shopEntry("PHARMACY", "Nhà thuốc / Dược phẩm", "💊"),
                 shopEntry("JEWELRY", "Trang sức / Vàng bạc", "💍"),
                 shopEntry("PAWN_SHOP", "Tiệm cầm đồ", "🏦"),
@@ -113,7 +201,7 @@ public class OnboardingController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getProductTemplates(
             @RequestParam(required = false, defaultValue = "OTHER") String shopTypeCode) {
         String sql = """
-                SELECT id, name, emoji, default_price, unit, dynamic_price
+                SELECT id, name, name_en, emoji, default_price, unit, dynamic_price
                 FROM product_suggestions
                 WHERE :shopType = ANY(shop_types)
                 ORDER BY display_order, name
@@ -124,6 +212,7 @@ public class OnboardingController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", row.get("id").toString());
             m.put("name", row.get("name"));
+            m.put("nameEn", row.getOrDefault("name_en", row.get("name")));
             m.put("emoji", row.getOrDefault("emoji", "📦"));
             m.put("price", row.get("default_price"));
             m.put("unit", row.get("unit"));
@@ -137,7 +226,7 @@ public class OnboardingController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getExpenseSuggestions(
             @RequestParam(required = false, defaultValue = "OTHER") String shopTypeCode) {
         String sql = """
-                SELECT name, emoji, category_code
+                SELECT name, name_en, emoji, category_code
                 FROM expense_suggestions
                 WHERE 'ALL' = ANY(shop_types) OR :shopType = ANY(shop_types)
                 ORDER BY
@@ -149,6 +238,7 @@ public class OnboardingController {
         List<Map<String, Object>> result = rows.stream().map(row -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", row.get("name"));
+            m.put("nameEn", row.getOrDefault("name_en", row.get("name")));
             m.put("emoji", row.getOrDefault("emoji", "💰"));
             m.put("category", row.getOrDefault("category_code", "OTHER"));
             return m;
@@ -176,15 +266,10 @@ public class OnboardingController {
         ShopType shopType = SHOP_TYPE_MAP.getOrDefault(shopTypeCode, ShopType.OTHER);
         String prefix = PREFIX_MAP.getOrDefault(shopType, "shop");
 
-        // Look up the registration user's password hash before setting tenant context.
-        // Without tenant context, RLS is scoped to tenant_id IS NULL — finds the
-        // master-scope user created during /auth/register.
-        String encodedPassword = userRepository.findByUsernameActive(username)
-                .map(User::getPassword)
-                .orElseThrow(() -> new RuntimeException("User not found: " + username));
-
         String tenantId = generateUniqueTenantId(prefix);
         String contactName = !fullName.isBlank() ? fullName : (!nickname.isBlank() ? nickname : username);
+
+        List<String> tenantFeatures = SHOP_TYPE_TENANT_FEATURES.getOrDefault(shopType, DEFAULT_TENANT_FEATURES);
 
         CreateTenantRequest createReq = CreateTenantRequest.builder()
                 .tenantId(tenantId)
@@ -194,7 +279,7 @@ public class OnboardingController {
                 .shopAddress(address.isBlank() ? null : address)
                 .contactPersonName(contactName)
                 .contactPersonPhone(username)
-                .features(DEFAULT_TENANT_FEATURES)
+                .features(tenantFeatures)
                 .adminUsername(username)
                 .adminPassword("placeholder")
                 .build();
@@ -205,8 +290,7 @@ public class OnboardingController {
         Tenant tenantEntity = tenantService.getTenantEntity(tenantId);
         tenantContext.setCurrentTenant(tenantEntity);
         try {
-            tenantProvisioningService.provisionWithEncodedPassword(
-                    tenantEntity, username, encodedPassword, address);
+            tenantProvisioningService.provisionSelfRegistered(tenantEntity, username, address);
             try {
                 tenantSeedService.seed(shopType);
             } catch (Exception e) {
@@ -245,10 +329,7 @@ public class OnboardingController {
         Object raw = body.get("products");
         if (!(raw instanceof List<?> list) || list.isEmpty()) return;
 
-        // Insert each selected product into the tenant's product table.
-        // Looks up the product_type by the suggestion's templateId to get the correct
-        // product_type_id. Falls back to the first available type if not found.
-        String sql = """
+        String insertProduct = """
                 INSERT INTO product (tenant_id, product_type_id, sku, name, price, unit, status)
                 SELECT
                     :tenantId,
@@ -270,6 +351,18 @@ public class OnboardingController {
                     SELECT 1 FROM product p
                     WHERE p.tenant_id = :tenantId AND p.name = :name AND p.deleted = FALSE
                 )
+                """;
+
+        // Assigns a product_category row when the suggestion has a category_name that
+        // matches a category seeded for this tenant (barber/nail/spa seed SQLs do this).
+        String insertCategory = """
+                INSERT INTO product_category (product_id, category_id)
+                SELECT p.id, c.id
+                FROM product p
+                JOIN product_suggestions ps ON ps.id = :templateId AND ps.category_name IS NOT NULL
+                JOIN category c ON c.name = ps.category_name AND c.tenant_id = :tenantId
+                WHERE p.tenant_id = :tenantId AND p.name = :name AND p.deleted = FALSE
+                ON CONFLICT DO NOTHING
                 """;
 
         for (Object item : list) {
@@ -300,7 +393,8 @@ public class OnboardingController {
                 params.put("price", BigDecimal.valueOf(priceNum.longValue()));
                 params.put("unit", unit);
 
-                namedJdbc.update(sql, params);
+                namedJdbc.update(insertProduct, params);
+                namedJdbc.update(insertCategory, params);
             } catch (Exception ex) {
                 log.warn("Skipped onboarding product '{}': {}", map.get("name"), ex.getMessage());
             }
@@ -354,13 +448,13 @@ public class OnboardingController {
     private String generateUniqueTenantId(String prefix) {
         for (int i = 0; i < 10; i++) {
             int suffix = ThreadLocalRandom.current().nextInt(10000, 99999);
-            String candidate = prefix + suffix;
+            String candidate = prefix + "-" + suffix;
             try {
                 tenantService.getTenantEntity(candidate);
             } catch (Exception ignored) {
                 return candidate;
             }
         }
-        return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        return prefix + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 }

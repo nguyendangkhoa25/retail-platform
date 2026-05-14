@@ -93,6 +93,26 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsernameActive(@Param("username") String username);
 
     /**
+     * Find a pre-provisioned (registration-only) user with no tenant assigned yet.
+     * Used during self-provision to promote the user to tenant scope instead of creating a second row.
+     * Bypasses current_tenant_id() so it always finds the null-tenant registration record.
+     */
+    @Query(value = "SELECT * FROM users WHERE username = :username " +
+                   "AND tenant_id IS NULL AND deleted <> true",
+           nativeQuery = true)
+    Optional<User> findByUsernameAndNullTenant(@Param("username") String username);
+
+    /**
+     * Global cross-tenant user lookup — bypasses RLS tenant filter.
+     * Prefers tenant-scoped rows (non-null tenant_id) over pre-provision rows.
+     * Use ONLY in auth flows where tenant context is not yet established (e.g. login without X-Tenant-ID).
+     */
+    @Query(value = "SELECT * FROM users WHERE username = :username AND deleted <> true " +
+                   "ORDER BY tenant_id NULLS LAST LIMIT 1",
+           nativeQuery = true)
+    Optional<User> findByUsernameGlobal(@Param("username") String username);
+
+    /**
      * Get all active usernames scoped to the current tenant.
      * Uses current_tenant_id() so this must be called within a @Transactional boundary
      * where TenantRlsAspect has already set app.current_tenant on the connection.

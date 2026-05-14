@@ -32,7 +32,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.tappy.pos.model.entity.employee.Employee;
+import com.tappy.pos.model.enums.EmployeePosition;
+
+import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -106,6 +111,7 @@ public class UserService {
         User createdUser = userRepository.save(user);
         log.info("User created successfully: {} with id: {}", createdUser.getUsername(), createdUser.getId());
 
+        autoCreateEmployee(createdUser, request.getRoleNames());
         assignVendor(createdUser.getId(), request.getVendorId());
 
         if (tenantContext.getCurrentTenant() == null) {
@@ -384,7 +390,7 @@ public class UserService {
                 .build();
     }
 
-    public PasswordResetResponse resetUserPassword(Long userId, String newPassword) {
+    public PasswordResetResponse resetUserPassword(Long userId) {
         log.info("Request: Reset user password - userId: {}", userId);
 
         User user = userRepository.findByIdTenantScoped(userId)
@@ -393,7 +399,8 @@ public class UserService {
                     return new ResourceNotFoundException(messageService.getMessage("error.user.not.found", userId));
                 });
 
-        user.setPassword(passwordEncoder.encode(newPassword));
+        String tempPassword = generateTemporaryPassword();
+        user.setPassword(passwordEncoder.encode(tempPassword));
         user.setRequireAction("CHANGE_PASSWORD");
 
         User updatedUser = userRepository.save(user);
@@ -403,6 +410,7 @@ public class UserService {
                 .userId(updatedUser.getId())
                 .username(updatedUser.getUsername())
                 .email(updatedUser.getEmail())
+                .tempPassword(tempPassword)
                 .requirePasswordChange(true)
                 .build();
     }
@@ -529,6 +537,38 @@ public class UserService {
      * Format: Random UUID (first 12 characters) + random numbers
      * Example: a1f2b3c4d5e6-1234
      */
+    private static final Map<String, EmployeePosition> ROLE_TO_POSITION = Map.of(
+        "TECHNICIAN",    EmployeePosition.TECHNICIAN,
+        "RECEPTIONIST",  EmployeePosition.RECEPTIONIST,
+        "MANAGER",       EmployeePosition.MANAGER,
+        "CLEANER",       EmployeePosition.CLEANER
+    );
+
+    private void autoCreateEmployee(User user, java.util.Set<String> roleNames) {
+        if (tenantContext.getCurrentTenantId() == null) return;
+        if (roleNames == null || roleNames.isEmpty()) return;
+        if (employeeRepository.existsByUserId(user.getId())) return;
+
+        EmployeePosition position = roleNames.stream()
+                .map(ROLE_TO_POSITION::get)
+                .filter(p -> p != null)
+                .findFirst()
+                .orElse(null);
+
+        if (position == null) return;
+
+        Employee emp = Employee.builder()
+                .fullName(user.getFullName() != null ? user.getFullName() : user.getUsername())
+                .phone(user.getUsername())
+                .position(position)
+                .hireDate(LocalDate.now())
+                .active(true)
+                .userId(user.getId())
+                .build();
+        employeeRepository.save(emp);
+        log.info("Auto-created employee record for user {} with position {}", user.getUsername(), position);
+    }
+
     private void assignVendor(Long userId, Long vendorId) {
         if (tenantContext.getCurrentTenantId() != null) return;
         clearVendorAssignment(userId);
@@ -549,11 +589,8 @@ public class UserService {
     }
 
     private String generateTemporaryPassword() {
-        String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        String numbers = String.format("%04d", (int) (Math.random() * 10000));
-        String tempPassword = uuid + "-" + numbers;
-        log.debug("Generated temporary password for reset");
-        return tempPassword;
+        int num = 1000 + (int) (Math.random() * 9000);
+        return "TAPPY-" + num;
     }
 }
 

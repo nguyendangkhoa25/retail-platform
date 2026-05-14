@@ -13,6 +13,7 @@ public record ExchangeRateResponse(
             String currencyCode,
             BigDecimal buyRate,
             BigDecimal transferRate,
-            BigDecimal sellRate
+            BigDecimal sellRate,
+            LocalDateTime fetchedAt
     ) {}
 }

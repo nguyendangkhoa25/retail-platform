@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import com.tappy.pos.service.tenant.TenantFeatureService;
+import com.tappy.pos.service.tenant.TenantService;
 import com.tappy.pos.service.audit.ActivityLogService;
 
 /**
@@ -51,6 +52,7 @@ public class AuthService {
     private final TenantContext tenantContext;
     private final RoleFeatureService roleFeatureService;
     private final TenantFeatureService tenantFeatureService;
+    private final TenantService tenantService;
     private final MessageService messageService;
     private final SessionRegistry sessionRegistry;
     private final ActivityLogService activityLogService;
@@ -80,11 +82,29 @@ public class AuthService {
             log.info("Authenticating user: {} in MASTER database", loginRequest.getUsername());
         }
 
-        User user = userRepository.findByUsernameTenantScoped(loginRequest.getUsername())
-                .orElseThrow(() -> {
-                    log.error("User not found: {}", loginRequest.getUsername());
-                    return new BadRequestException(messageService.getMessage("error.unauthorized"));
-                });
+        User user;
+        if (tenantContext.getCurrentTenant() != null) {
+            user = userRepository.findByUsernameTenantScoped(loginRequest.getUsername())
+                    .orElseThrow(() -> {
+                        log.error("User not found: {}", loginRequest.getUsername());
+                        return new BadRequestException(messageService.getMessage("error.unauthorized"));
+                    });
+        } else {
+            // No X-Tenant-ID header — global lookup for mobile/web login without known tenant
+            user = userRepository.findByUsernameGlobal(loginRequest.getUsername())
+                    .orElseThrow(() -> {
+                        log.error("User not found (global): {}", loginRequest.getUsername());
+                        return new BadRequestException(messageService.getMessage("error.unauthorized"));
+                    });
+            // If user already belongs to a tenant, restore context so feature resolution works correctly
+            if (user.getTenantId() != null) {
+                try {
+                    tenantContext.setCurrentTenant(tenantService.getTenantEntity(user.getTenantId()));
+                } catch (Exception e) {
+                    log.warn("Could not restore tenant context for user {}: {}", loginRequest.getUsername(), e.getMessage());
+                }
+            }
+        }
 
         if (Boolean.FALSE.equals(user.getAccountNonLocked())) {
             log.warn("Login attempt on locked account: {}", loginRequest.getUsername());
@@ -184,7 +204,8 @@ public class AuthService {
                 jwtTokenProvider.getTokenExpirationMs(),
                 user.getUsername(),
                 1000L,
-                setupComplete
+                setupComplete,
+                tenantId
         );
     }
 
@@ -300,7 +321,8 @@ public class AuthService {
                 jwtTokenProvider.getTokenExpirationMs(),
                 user.getUsername(),
                 10000L,
-                refreshSetupComplete
+                refreshSetupComplete,
+                refreshTenantId
         );
     }
 
@@ -401,7 +423,7 @@ public class AuthService {
         String refreshToken = generateRefreshToken(user);
         boolean pinSetupComplete = !isMasterUser
                 && tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().isSetupComplete();
-        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, pinSetupComplete);
+        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, pinSetupComplete, tenantId);
     }
 
     /**
@@ -443,7 +465,7 @@ public class AuthService {
         String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(user.getUsername(), roleNames, featureNames, isMasterUser, shopType, tenantId);
         String refreshToken = generateRefreshToken(user);
         // Registration creates a user with no shop yet; routing will direct them to the onboarding wizard.
-        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false);
+        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false, null);
     }
 
     /**

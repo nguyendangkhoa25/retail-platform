@@ -39,14 +39,24 @@ public class TenantSeedService {
         Map.entry(ShopType.PAWN_SHOP,          "db/tenant/pawn_store.sql"),
         Map.entry(ShopType.CONVENIENCE_STORE,  "db/tenant/convenience_store.sql"),
         Map.entry(ShopType.JEWELRY,            "db/tenant/jewelry_store.sql"),
-        Map.entry(ShopType.BARBER_SHOP,        "db/tenant/barber_shop.sql")
+        Map.entry(ShopType.BARBER_SHOP,        "db/tenant/barber_shop.sql"),
+        Map.entry(ShopType.BARBER_SHOP_MEN,    "db/tenant/barber_shop_men.sql"),
+        Map.entry(ShopType.HAIR_SALON,         "db/tenant/hair_salon.sql"),
+        Map.entry(ShopType.NAIL_SHOP,          "db/tenant/nail_shop.sql"),
+        Map.entry(ShopType.LASH_PMU_STUDIO,    "db/tenant/lash_pmu_studio.sql"),
+        Map.entry(ShopType.SPA_SHOP,           "db/tenant/spa_shop.sql"),
+        Map.entry(ShopType.MASSAGE_SHOP,       "db/tenant/massage_shop.sql"),
+        Map.entry(ShopType.BEAUTY_CLINIC,      "db/tenant/beauty_clinic.sql"),
+        Map.entry(ShopType.MAKEUP_STUDIO,      "db/tenant/makeup_studio.sql")
     );
     private static final String DEFAULT_DML = "db/tenant/general.sql";
 
     /** Service-type shops get a "Phiếu dịch vụ" POS receipt template. */
     private static final Set<ShopType> SERVICE_SHOP_TYPES = EnumSet.of(
-        ShopType.BARBER_SHOP, ShopType.COFFEE_SHOP,
-        ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT
+        ShopType.BARBER_SHOP, ShopType.BARBER_SHOP_MEN, ShopType.HAIR_SALON,
+        ShopType.NAIL_SHOP, ShopType.LASH_PMU_STUDIO, ShopType.SPA_SHOP,
+        ShopType.MASSAGE_SHOP, ShopType.BEAUTY_CLINIC, ShopType.MAKEUP_STUDIO,
+        ShopType.COFFEE_SHOP, ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT
     );
 
     /**

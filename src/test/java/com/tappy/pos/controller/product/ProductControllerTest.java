@@ -176,7 +176,7 @@ class ProductControllerTest {
         void withFeature_returns200() throws Exception {
             Page<ProductDTO> page = new PageImpl<>(List.of(
                     ProductDTO.builder().id(1L).name("Cà phê").price(BigDecimal.valueOf(25000)).build()));
-            when(productService.getAllProducts(anyString(), any(Pageable.class))).thenReturn(page);
+            when(productService.getAllProducts(anyString(), any(), any(Pageable.class))).thenReturn(page);
 
             mockMvc.perform(get("/products")
                     .header("Authorization", bearerToken("PRODUCT"))
@@ -190,7 +190,7 @@ class ProductControllerTest {
         @Test
         @DisplayName("?status=INACTIVE forwarded to service")
         void statusParam_passedToService() throws Exception {
-            when(productService.getAllProducts(eq("INACTIVE"), any(Pageable.class))).thenReturn(Page.empty());
+            when(productService.getAllProducts(eq("INACTIVE"), any(), any(Pageable.class))).thenReturn(Page.empty());
 
             mockMvc.perform(get("/products")
                     .param("status", "INACTIVE")
@@ -198,7 +198,7 @@ class ProductControllerTest {
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isOk());
 
-            verify(productService).getAllProducts(eq("INACTIVE"), any(Pageable.class));
+            verify(productService).getAllProducts(eq("INACTIVE"), any(), any(Pageable.class));
         }
     }
 

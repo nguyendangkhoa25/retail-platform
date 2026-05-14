@@ -264,7 +264,7 @@ class ProductServiceImplTest {
                 Product.ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(productPage);
 
         // When
-        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", Pageable.unpaged());
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, Pageable.unpaged());
 
         // Then
         assertThat(result).isNotNull();
@@ -580,7 +580,7 @@ class ProductServiceImplTest {
                 Product.ProductStatus.INACTIVE, Pageable.unpaged())).thenReturn(productPage);
 
         // When
-        Page<ProductDTO> result = productService.getAllProducts("INACTIVE", Pageable.unpaged());
+        Page<ProductDTO> result = productService.getAllProducts("INACTIVE", null, Pageable.unpaged());
 
         // Then
         assertThat(result).isNotNull();
@@ -596,7 +596,7 @@ class ProductServiceImplTest {
                 any(Product.ProductStatus.class), any(Pageable.class))).thenReturn(emptyPage);
 
         // When
-        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", Pageable.unpaged());
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, Pageable.unpaged());
 
         // Then
         assertThat(result.getContent()).isEmpty();

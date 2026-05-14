@@ -643,6 +643,8 @@ public class OrderServiceImpl implements OrderService {
                 .assignedEmployeeId(toLong(row[12]))
                 .assignedEmployeeName(toString(row[13]))
                 .orderCreatedAt(toLocalDateTime(row[14]))
+                .commissionRate(row.length > 15 ? toBigDecimal(row[15]) : null)
+                .commissionAmount(row.length > 16 ? toBigDecimal(row[16]) : null)
                 .build();
     }
 
