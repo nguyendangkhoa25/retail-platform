@@ -7,15 +7,16 @@ import lombok.Getter;
  */
 @Getter
 public enum SubscriptionType {
-    TRIAL("Gói Dùng thử"),
-    BASIC("Gói Cơ bản"),
-    PREMIUM("Gói Cao cấp"),
-    ENTERPRISE("Gói Doanh nghiệp lớn");
+    TRIAL("Dùng thử"),
+    STARTER("Khởi đầu"),
+    BASIC("Cơ bản"),
+    PRO("Chuyên nghiệp"),
+    ENTERPRISE("Doanh nghiệp");
 
-    private final String description;
+    private final String displayName;
 
-    SubscriptionType(String description) {
-        this.description = description;
+    SubscriptionType(String displayName) {
+        this.displayName = displayName;
     }
 
     public String getTypeName() {

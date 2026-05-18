@@ -66,7 +66,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     public EmployeeDTO create(CreateEmployeeRequest request) {
         log.info("Creating employee: {}", request.getFullName());
 
-        EmployeePosition position = parsePosition(request.getPosition());
+        EmployeePosition position = request.getPosition() != null ? parsePosition(request.getPosition()) : null;
 
         if (request.getUserId() != null) {
             if (employeeRepository.existsByUserId(request.getUserId())) {
@@ -80,6 +80,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         Employee employee = Employee.builder()
                 .tenantId(tenantContext.getCurrentTenantId())
                 .fullName(request.getFullName())
+                .nickName(request.getNickName())
                 .phone(request.getPhone())
                 .email(request.getEmail())
                 .position(position)
@@ -118,6 +119,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         Employee employee = findById(id);
 
         if (request.getFullName() != null) employee.setFullName(request.getFullName());
+        if (request.getNickName() != null) employee.setNickName(request.getNickName());
         if (request.getPhone() != null) employee.setPhone(request.getPhone());
         if (request.getEmail() != null) employee.setEmail(request.getEmail());
         if (request.getPosition() != null) employee.setPosition(parsePosition(request.getPosition()));
@@ -195,6 +197,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         return EmployeeDTO.builder()
                 .id(e.getId())
                 .fullName(e.getFullName())
+                .nickName(e.getNickName())
                 .phone(e.getPhone())
                 .email(e.getEmail())
                 .position(e.getPosition() != null ? e.getPosition().name() : null)

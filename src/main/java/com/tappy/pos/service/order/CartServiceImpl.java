@@ -48,9 +48,13 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import com.tappy.pos.service.inventory.InventoryService;
+import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.service.product.ProductService;
 import com.tappy.pos.service.tenant.ShopConfigService;
 import com.tappy.pos.service.tenant.ShopInfoService;
+import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.model.enums.RoleEnum;
+import java.text.NumberFormat;
 import com.tappy.pos.service.customer.LoyaltyService;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.model.dto.goldprice.GoldPriceDTO;
@@ -62,6 +66,7 @@ import com.tappy.pos.model.enums.UniqueItemProductTypes;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.goldprice.GoldPriceService;
 import com.tappy.pos.service.table.TableService;
+import com.tappy.pos.service.subscription.SubscriptionService;
 
 /**
  * Cart Service Implementation
@@ -100,6 +105,8 @@ public class CartServiceImpl implements CartService {
     private final EmployeeRepository employeeRepository;
     private final FeatureContext featureContext;
     private final TableService tableService;
+    private final NotificationService notificationService;
+    private final SubscriptionService subscriptionService;
 
     /**
      * Initialize a new cart session
@@ -758,6 +765,7 @@ public class CartServiceImpl implements CartService {
     @Override
     public CheckoutResponse checkout(String cartId, CheckoutRequest request) {
         log.info("Checkout requested for cart: {}", cartId);
+        subscriptionService.checkOrderLimit();
 
         CartEntity cart = cartRepository.findByCartId(cartId)
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("cart.not.found")));
@@ -985,6 +993,18 @@ public class CartServiceImpl implements CartService {
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
                 ActivityAction.ORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
                 "Tạo đơn hàng #" + savedOrder.getOrderNumber(), null);
+
+        // --- Notify SHOP_OWNER + MANAGER of new order (fire-and-forget) ---
+        String formattedTotal = NumberFormat.getNumberInstance(new java.util.Locale("vi", "VN"))
+                .format(total.longValue()) + " ₫";
+        String customerSuffix = resolvedCustomerName != null ? " · " + resolvedCustomerName : "";
+        notificationService.pushToRolesAsync(
+                Notification.NotificationType.ORDER,
+                messageService.getMessage("notification.order.new.title", savedOrder.getOrderNumber()),
+                messageService.getMessage("notification.order.new.message", formattedTotal, customerSuffix),
+                "ORDER", savedOrder.getId(),
+                List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                tenantContext.getCurrentTenantId());
 
         // --- Mark cart completed ---
         cart.setStatus(CartStatus.COMPLETED);

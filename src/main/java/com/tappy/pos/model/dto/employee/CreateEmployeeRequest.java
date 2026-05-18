@@ -11,9 +11,9 @@ import java.time.LocalDate;
 public class CreateEmployeeRequest {
     @NotBlank
     private String fullName;
+    private String nickName;
     private String phone;
     private String email;
-    @NotNull
     private String position;
     private String department;
     private LocalDate hireDate;

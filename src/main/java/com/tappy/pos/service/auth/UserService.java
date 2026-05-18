@@ -87,6 +87,7 @@ public class UserService {
                 .accountNonExpired(true)
                 .requireAction("CHANGE_PASSWORD")
                 .build();
+        user.setTenantId(tenantContext.getCurrentTenantId());
 
         // Assign roles if provided
         if (request.getRoleNames() != null && !request.getRoleNames().isEmpty()) {
@@ -545,7 +546,8 @@ public class UserService {
     );
 
     private void autoCreateEmployee(User user, java.util.Set<String> roleNames) {
-        if (tenantContext.getCurrentTenantId() == null) return;
+        String currentTenantId = tenantContext.getCurrentTenantId();
+        if (currentTenantId == null) return;
         if (roleNames == null || roleNames.isEmpty()) return;
         if (employeeRepository.existsByUserId(user.getId())) return;
 
@@ -557,14 +559,16 @@ public class UserService {
 
         if (position == null) return;
 
-        Employee emp = Employee.builder()
-                .fullName(user.getFullName() != null ? user.getFullName() : user.getUsername())
-                .phone(user.getUsername())
-                .position(position)
-                .hireDate(LocalDate.now())
-                .active(true)
-                .userId(user.getId())
-                .build();
+        Employee emp = new Employee();
+        emp.setTenantId(currentTenantId);
+        emp.setFullName(user.getFullName() != null ? user.getFullName() : user.getUsername());
+        emp.setPhone(user.getUsername());
+        emp.setPosition(position);
+        emp.setHireDate(java.time.LocalDate.now());
+        emp.setActive(true);
+        emp.setUserId(user.getId());
+        emp.setDeleted(false);
+        log.info("Creating employee for user {} in tenant {}", user.getUsername(), currentTenantId);
         employeeRepository.save(emp);
         log.info("Auto-created employee record for user {} with position {}", user.getUsername(), position);
     }

@@ -98,10 +98,10 @@ public class TenantProvisioningService {
     static {
         Map<String, List<String>> m = new LinkedHashMap<>();
         m.put(RoleEnum.SHOP_OWNER.getCode(), Arrays.asList(
-            "DASHBOARD", "ORDER", "MY_WORK", "PRODUCT", "PROMOTION",
+            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
             "EMPLOYEE", "SALARY", "CUSTOMER", "LOYALTY", "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
-            "ACTIVITY_LOG", "PAWN", "COMMISSION", "NOTIFICATION", "FEEDBACK"
+            "ACTIVITY_LOG", "PAWN", "COMMISSION", "NOTIFICATION", "FEEDBACK", "APPOINTMENT"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "MY_WORK", "PRODUCT", "PROMOTION",
@@ -338,6 +338,7 @@ public class TenantProvisioningService {
                 .name("Khách lẻ")
                 .phone("0000000000")
                 .notes("Khách hàng lẻ - không có thông tin liên hệ")
+                .walkIn(true)
                 .build();
         walkIn.setTenantId(tenantId);
         customerRepository.save(walkIn);

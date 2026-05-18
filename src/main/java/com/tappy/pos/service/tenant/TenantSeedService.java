@@ -57,11 +57,15 @@ public class TenantSeedService {
     );
     private static final String DEFAULT_DML = "db/tenant/general.sql";
 
-    /** Service-type shops get a "Phiếu dịch vụ" POS receipt template. */
+    /** Beauty/personal-service shops — get "Phiếu dịch vụ" template without table label. */
     private static final Set<ShopType> SERVICE_SHOP_TYPES = EnumSet.of(
         ShopType.BARBER_SHOP, ShopType.BARBER_SHOP_MEN, ShopType.HAIR_SALON,
         ShopType.NAIL_SHOP, ShopType.LASH_PMU_STUDIO, ShopType.SPA_SHOP,
-        ShopType.MASSAGE_SHOP, ShopType.BEAUTY_CLINIC, ShopType.MAKEUP_STUDIO,
+        ShopType.MASSAGE_SHOP, ShopType.BEAUTY_CLINIC, ShopType.MAKEUP_STUDIO
+    );
+
+    /** F&B shops — get "Phiếu dịch vụ" template WITH showTable enabled. */
+    private static final Set<ShopType> FOOD_SHOP_TYPES = EnumSet.of(
         ShopType.COFFEE_SHOP, ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT,
         ShopType.PUB, ShopType.PUB_SEAFOOD, ShopType.PUB_GOAT, ShopType.PUB_BEEF
     );
@@ -78,9 +82,12 @@ public class TenantSeedService {
         String templateName;
         String configJson;
 
-        if (SERVICE_SHOP_TYPES.contains(shopType)) {
+        if (FOOD_SHOP_TYPES.contains(shopType)) {
             templateName = "Phiếu dịch vụ";
-            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false,\"showTable\":true}";
+        } else if (SERVICE_SHOP_TYPES.contains(shopType)) {
+            templateName = "Phiếu dịch vụ";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false,\"showTable\":false}";
         } else if (shopType == ShopType.PHARMACY) {
             templateName = "Hóa đơn thuốc";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nChúc bạn mau hồi phục!\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
@@ -90,6 +97,15 @@ public class TenantSeedService {
         } else if (shopType == ShopType.FASHION || shopType == ShopType.ELECTRONICS) {
             templateName = "Phiếu bảo hành";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nVui lòng giữ hóa đơn để bảo hành.\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+        } else if (shopType == ShopType.JEWELRY) {
+            // Jewelry shops get: PAWN_STAMP contract + Gold Guarantee Certificate (POS_RECEIPT variant)
+            seedPawnContractTemplates();
+            seedGoldCertificateTemplate();
+            return;
+        } else if (shopType == ShopType.PAWN_SHOP) {
+            // Pawn shops already get PAWN_STAMP via DML; seed explicitly here as safety net.
+            seedPawnContractTemplates();
+            return;
         } else {
             // No type-specific template for other shop types
             return;
@@ -119,6 +135,76 @@ public class TenantSeedService {
                 conn.rollback(sp);
                 log.warn("Could not seed print template for shopType {}: {}", shopType, e.getMessage());
             }
+        });
+    }
+
+    /**
+     * Seeds a POS_RECEIPT template configured as a Gold Guarantee Certificate
+     * ("Phiếu bảo hành vàng"). Unlike a standard sales receipt, it has a
+     * certificate-style header, shows the customer name, suppresses cash-paid /
+     * change rows, and does not auto-close so the owner can review before printing.
+     */
+    private void seedGoldCertificateTemplate() {
+        final String name   = "Phiếu bảo hành vàng";
+        final String config = "{\"headerText\":\"GIẤY CHỨNG NHẬN CHẤT LƯỢNG VÀNG\"," +
+                "\"footerText\":\"Cảm ơn quý khách đã tin tưởng!\\nVui lòng giữ phiếu này để được bảo hành.\"," +
+                "\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true," +
+                "\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":false," +
+                "\"paperWidth\":\"80mm\",\"autoClose\":false,\"showVietQr\":false,\"showTable\":false}";
+
+        Session session = entityManager.unwrap(Session.class);
+        session.doWork(conn -> {
+            Savepoint sp = conn.setSavepoint();
+            try (Statement st = conn.createStatement()) {
+                st.execute(
+                    "INSERT INTO print_templates " +
+                    "(tenant_id, template_type, name, config_json, is_default, deleted, created_at, updated_at) " +
+                    "VALUES (" +
+                    "  current_setting('app.current_tenant', true)," +
+                    "  'POS_RECEIPT'," +
+                    "  '" + name.replace("'", "''") + "'," +
+                    "  '" + config.replace("'", "''") + "'," +
+                    "  FALSE, FALSE, NOW(), NOW()" +
+                    ") ON CONFLICT (template_type, name, tenant_id) DO NOTHING"
+                );
+                conn.releaseSavepoint(sp);
+                log.info("Seeded gold guarantee certificate template");
+            } catch (Exception e) {
+                conn.rollback(sp);
+                log.warn("Could not seed gold certificate template: {}", e.getMessage());
+            }
+        });
+    }
+
+    /** Seeds the two PAWN_STAMP templates (blank-paper default + custom pre-printed layout). */
+    private void seedPawnContractTemplates() {
+        Session session = entityManager.unwrap(Session.class);
+        session.doWork(conn -> {
+            String[][] templates = {
+                {"Mặc định",   "{\"variant\":\"default\"}", "TRUE"},
+                {"Tùy chỉnh", "{\"variant\":\"custom\"}",  "FALSE"},
+            };
+            for (String[] tpl : templates) {
+                Savepoint sp = conn.setSavepoint();
+                try (Statement st = conn.createStatement()) {
+                    st.execute(
+                        "INSERT INTO print_templates " +
+                        "(tenant_id, template_type, name, config_json, is_default, deleted, created_at, updated_at) " +
+                        "VALUES (" +
+                        "  current_setting('app.current_tenant', true)," +
+                        "  'PAWN_STAMP'," +
+                        "  '" + tpl[0].replace("'", "''") + "'," +
+                        "  '" + tpl[1].replace("'", "''") + "'," +
+                        "  " + tpl[2] + ", FALSE, NOW(), NOW()" +
+                        ") ON CONFLICT (template_type, name, tenant_id) DO NOTHING"
+                    );
+                    conn.releaseSavepoint(sp);
+                } catch (Exception e) {
+                    conn.rollback(sp);
+                    log.warn("Could not seed PAWN_STAMP template '{}': {}", tpl[0], e.getMessage());
+                }
+            }
+            log.info("Seeded PAWN_STAMP contract templates (Mặc định + Tùy chỉnh)");
         });
     }
 

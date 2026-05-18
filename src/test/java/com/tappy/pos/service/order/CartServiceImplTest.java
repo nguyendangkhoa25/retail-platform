@@ -66,6 +66,8 @@ import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.model.entity.employee.Employee;
 import com.tappy.pos.repository.employee.EmployeeRepository;
+import com.tappy.pos.service.table.TableService;
+import com.tappy.pos.service.notification.NotificationService;
 
 import java.util.Set;
 
@@ -121,6 +123,12 @@ class CartServiceImplTest {
     @Mock
     private FeatureContext featureContext;
 
+    @Mock
+    private TableService tableService;
+
+    @Mock
+    private NotificationService notificationService;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -158,7 +166,9 @@ class CartServiceImplTest {
             tenantContext,
             goldPriceService,
             employeeRepository,
-            featureContext
+            featureContext,
+            tableService,
+            notificationService
         );
     }
 

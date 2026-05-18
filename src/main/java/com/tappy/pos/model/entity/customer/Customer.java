@@ -71,6 +71,10 @@ public class Customer extends TenantAwareEntity {
     @Column(name = "permanent_address", length = 500)
     private String permanentAddress;
 
+    @Builder.Default
+    @Column(name = "walk_in", nullable = false)
+    private boolean walkIn = false;
+
     // Loyalty
     @Builder.Default
     @Column(name = "loyalty_points", nullable = false)

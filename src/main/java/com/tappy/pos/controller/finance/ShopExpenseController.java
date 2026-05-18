@@ -1,10 +1,14 @@
 package com.tappy.pos.controller.finance;
 
+import com.tappy.pos.annotation.RequiresFeature;
 import com.tappy.pos.model.dto.ApiResponse;
+import com.tappy.pos.model.dto.finance.DefaultExpenseDTO;
+import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
 import com.tappy.pos.model.dto.finance.ExpenseCategoryBreakdownDTO;
 import com.tappy.pos.model.dto.finance.ShopExpenseDTO;
 import com.tappy.pos.model.dto.finance.ShopExpenseRequest;
 import com.tappy.pos.model.enums.ExpenseCategory;
+import com.tappy.pos.service.finance.DefaultExpenseService;
 import com.tappy.pos.service.finance.ShopExpenseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
-import com.tappy.pos.annotation.RequiresFeature;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -27,6 +31,7 @@ import com.tappy.pos.annotation.RequiresFeature;
 public class ShopExpenseController {
 
     private final ShopExpenseService expenseService;
+    private final DefaultExpenseService defaultExpenseService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ShopExpenseDTO>> create(@Valid @RequestBody ShopExpenseRequest request) {
@@ -86,33 +91,43 @@ public class ShopExpenseController {
     @GetMapping("/chart")
     public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getChart(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        log.info("Endpoint: GET /expenses/chart from={} to={}", from, to);
-        return ResponseEntity.ok(ApiResponse.success(expenseService.getChart(from, to), "OK"));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "day") String granularity) {
+        log.info("Endpoint: GET /expenses/chart from={} to={} granularity={}", from, to, granularity);
+        return ResponseEntity.ok(ApiResponse.success(expenseService.getChart(from, to, granularity), "OK"));
     }
 
     @GetMapping("/defaults")
-    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getDefaults() {
-        return ResponseEntity.ok(ApiResponse.success(java.util.List.of(), "OK"));
+    public ResponseEntity<ApiResponse<List<DefaultExpenseDTO>>> getDefaults() {
+        log.info("Endpoint: GET /expenses/defaults");
+        return ResponseEntity.ok(ApiResponse.success(defaultExpenseService.findAll(), "OK"));
     }
 
     @PostMapping("/defaults")
-    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> createDefault(@RequestBody java.util.Map<String, Object> body) {
-        return ResponseEntity.ok(ApiResponse.success(body, "Created"));
+    public ResponseEntity<ApiResponse<DefaultExpenseDTO>> createDefault(@Valid @RequestBody DefaultExpenseRequest request) {
+        log.info("Endpoint: POST /expenses/defaults");
+        return ResponseEntity.ok(ApiResponse.success(defaultExpenseService.create(request), "Created"));
     }
 
     @PutMapping("/defaults/{id}")
-    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> updateDefault(@PathVariable Long id, @RequestBody java.util.Map<String, Object> body) {
-        return ResponseEntity.ok(ApiResponse.success(body, "Updated"));
+    public ResponseEntity<ApiResponse<DefaultExpenseDTO>> updateDefault(
+            @PathVariable Long id,
+            @Valid @RequestBody DefaultExpenseRequest request) {
+        log.info("Endpoint: PUT /expenses/defaults/{}", id);
+        return ResponseEntity.ok(ApiResponse.success(defaultExpenseService.update(id, request), "Updated"));
     }
 
     @DeleteMapping("/defaults/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteDefault(@PathVariable Long id) {
+        log.info("Endpoint: DELETE /expenses/defaults/{}", id);
+        defaultExpenseService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Deleted"));
     }
 
     @PostMapping("/clone-defaults")
-    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> cloneDefaults(@RequestBody java.util.Map<String, Object> body) {
-        return ResponseEntity.ok(ApiResponse.success(java.util.List.of(), "Cloned"));
+    public ResponseEntity<ApiResponse<List<ShopExpenseDTO>>> cloneDefaults(@RequestBody Map<String, String> body) {
+        String month = body.get("month");
+        log.info("Endpoint: POST /expenses/clone-defaults month={}", month);
+        return ResponseEntity.ok(ApiResponse.success(defaultExpenseService.cloneToMonth(month), "Cloned"));
     }
 }

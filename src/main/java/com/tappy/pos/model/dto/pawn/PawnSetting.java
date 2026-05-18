@@ -11,4 +11,6 @@ public class PawnSetting {
     private BigDecimal interestRate;
     private int interestType;
     private int dueDate;
+    /** Comma-separated accepted pawn item type codes, e.g. "GOLD,ELECTRONICS,WATCH" */
+    private String acceptedTypes;
 }

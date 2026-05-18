@@ -23,6 +23,9 @@ public class Employee extends TenantAwareEntity {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
+    @Column(name = "nick_name", length = 100)
+    private String nickName;
+
     @Column(name = "phone")
     private String phone;
 
@@ -30,7 +33,7 @@ public class Employee extends TenantAwareEntity {
     private String email;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "position", nullable = false)
+    @Column(name = "position")
     private EmployeePosition position;
 
     @Column(name = "department")

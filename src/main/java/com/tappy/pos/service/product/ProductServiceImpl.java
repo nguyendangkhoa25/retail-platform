@@ -75,6 +75,7 @@ public class ProductServiceImpl implements ProductService {
 
         // Create product
         Product product = Product.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .productType(productType)
                 .sku(request.getSku())
                 .barcode(request.getBarcode())

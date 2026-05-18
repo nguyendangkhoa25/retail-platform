@@ -18,6 +18,7 @@ import java.util.Map;
 public interface OrderService {
 
     Page<OrderDTO> getAllOrders(String status, String orderType, Pageable pageable);
+    Page<OrderDTO> getAllOrdersFiltered(String status, String paymentMethod, LocalDate from, LocalDate to, Pageable pageable);
 
     Page<OrderDTO> searchOrders(String keyword, Pageable pageable);
 
@@ -49,6 +50,12 @@ public interface OrderService {
 
     List<Map<String, Object>> getTopProducts(int limit, LocalDateTime from);
 
+    List<Map<String, Object>> getTopProductsByRange(int limit, LocalDateTime from, LocalDateTime to);
+
+    List<Map<String, Object>> getTopCustomersByRange(int limit, LocalDateTime from, LocalDateTime to);
+
+    List<Map<String, Object>> getTopEmployeesByRange(int limit, LocalDateTime from, LocalDateTime to);
+
     void softDeleteOrder(Long id);
 
     // ── Item-level work queue (MY_WORK feature) ────────────────────────────────
@@ -74,4 +81,16 @@ public interface OrderService {
     WorkItemSummaryDTO getMyWorkItemSummary(String filterType, Integer day, Integer month, Integer year);
 
     List<Map<String, Object>> getMyWorkItemTrend(String filterType, Integer day, Integer month, Integer year);
+
+    // ── Customer-scoped analytics ──────────────────────────────────────────────
+    Map<String, Object> getCustomerOrderSummary(Long customerId, LocalDate from, LocalDate to);
+
+    List<Map<String, Object>> getCustomerOrderChart(Long customerId, LocalDate from, LocalDate to, String granularity);
+
+    // ── Staff-scoped analytics (orders created by a specific username) ─────────
+    Map<String, Object> getStaffOrderSummary(String createdBy, LocalDate from, LocalDate to);
+
+    List<Map<String, Object>> getStaffOrderChart(String createdBy, LocalDate from, LocalDate to, String granularity);
+
+    Page<OrderDTO> getStaffOrders(String createdBy, String status, LocalDate from, LocalDate to, Pageable pageable);
 }

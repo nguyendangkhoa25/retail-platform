@@ -23,14 +23,19 @@ public enum ShopConfigKey {
     // POS
     CASH_DENOMINATIONS("cash_denominations", "POS", false),
     POS_MODE("pos_mode", "POS", false),
+    AUTO_PRINT("auto_print", "POS", false),
+    VAT_ENABLED("vat_enabled", "POS", false),
+    QUICK_PHRASES("quick_phrases", "POS", false),
 
     // PAWN
     PAWN_INTEREST_RATE("pawn_interest_rate", "PAWN", false),
     PAWN_INTEREST_TYPE("pawn_interest_type", "PAWN", false),
+    PAWN_CALC_MODE("pawn_calc_mode", "PAWN", false),
     PAWN_DUE_DATE("pawn_due_date", "PAWN", false),
     PAWN_EXCLUDE_VISIBLE_ITEM("pawn_exclude_visible_item", "PAWN", false),
     PAWN_CATEGORY_CONFIG("pawn_category_config", "PAWN", false),
     PAWN_DENOMINATIONS("pawn_denominations", "PAWN", false),
+    PAWN_ACCEPTED_TYPES("pawn_accepted_types", "PAWN", false),
 
     // DASHBOARD
     DASHBOARD_WIDGETS("dashboard_widgets", "DASHBOARD", false),

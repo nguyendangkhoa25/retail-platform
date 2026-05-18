@@ -21,12 +21,14 @@ public class GoldPriceController {
     private final GoldPriceService goldPriceService;
 
     @GetMapping
+    @RequiresFeature("GOLD_PRICE")
     public ResponseEntity<ApiResponse<List<GoldPriceDTO>>> getAllPrices() {
         log.info("Endpoint: GET /gold-prices");
         return ResponseEntity.ok(ApiResponse.success(goldPriceService.getAllPrices(), "OK"));
     }
 
     @GetMapping("/current")
+    @RequiresFeature("GOLD_PRICE")
     public ResponseEntity<ApiResponse<GoldPriceDTO>> getCurrentPrice() {
         log.info("Endpoint: GET /gold-prices/current");
         List<GoldPriceDTO> all = goldPriceService.getAllPrices();
@@ -35,6 +37,7 @@ public class GoldPriceController {
     }
 
     @GetMapping("/history")
+    @RequiresFeature("GOLD_PRICE")
     public ResponseEntity<ApiResponse<List<GoldPriceDTO>>> getHistory(
             @RequestParam(defaultValue = "30") int days) {
         log.info("Endpoint: GET /gold-prices/history days={}", days);
@@ -67,6 +70,7 @@ public class GoldPriceController {
 
     /** Used by PawnForm and future jewelry/order forms to auto-suggest prices when a category is selected. */
     @GetMapping("/for-category/{categoryId}")
+    @RequiresFeature({"GOLD_PRICE", "PAWN"})
     public ResponseEntity<ApiResponse<GoldPriceDTO>> getPriceForCategory(@PathVariable Long categoryId) {
         log.info("Endpoint: GET /gold-prices/for-category/{}", categoryId);
         return ResponseEntity.ok(ApiResponse.success(goldPriceService.getPriceForCategory(categoryId), "OK"));

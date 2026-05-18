@@ -1,8 +1,11 @@
 package com.tappy.pos.service.tenant;
 
 import com.tappy.pos.model.dto.pawn.PawnSetting;
+import com.tappy.pos.model.dto.tenant.MobileShopInfoDTO;
+import com.tappy.pos.model.dto.tenant.PosConfigDTO;
 import com.tappy.pos.model.dto.tenant.PublicShopInfoDTO;
 import com.tappy.pos.model.dto.tenant.ShopInfoDTO;
+import com.tappy.pos.model.dto.tenant.UpdateMobileShopConfigRequest;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
 import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.repository.tenant.ShopInfoRepository;
@@ -14,8 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -86,6 +93,59 @@ public class ShopInfoService {
         return mapToDTO(saved);
     }
 
+    public MobileShopInfoDTO getMobileShopConfig(String shopTypeCode) {
+        ShopInfo shopInfo = findOrCreate();
+        return MobileShopInfoDTO.builder()
+                .shopName(shopInfo.getShopName())
+                .address(shopInfo.getAddress())
+                .phone(shopInfo.getPhone())
+                .description(shopInfo.getDescription())
+                .logoUrl(shopInfo.getLogoUrl())
+                .shopTypeCode(shopTypeCode)
+                .posMode(shopConfigService.getString(ShopConfigKey.POS_MODE, "STANDARD"))
+                .build();
+    }
+
+    public MobileShopInfoDTO updateMobileShopConfig(UpdateMobileShopConfigRequest req) {
+        ShopInfo shopInfo = findOrCreate();
+        if (req.getShopName() != null && !req.getShopName().isBlank())
+            shopInfo.setShopName(req.getShopName());
+        if (req.getAddress() != null)     shopInfo.setAddress(req.getAddress());
+        if (req.getPhone() != null)       shopInfo.setPhone(req.getPhone());
+        if (req.getDescription() != null) shopInfo.setDescription(req.getDescription());
+        shopInfoRepository.save(shopInfo);
+        String shopTypeCode = null; // caller passes tenantContext separately if needed
+        return getMobileShopConfig(shopTypeCode);
+    }
+
+    public PosConfigDTO getPosConfig() {
+        return PosConfigDTO.builder()
+                .posMode(shopConfigService.getString(ShopConfigKey.POS_MODE, "STANDARD"))
+                .autoPrint(shopConfigService.getBoolean(ShopConfigKey.AUTO_PRINT, false))
+                .vatEnabled(shopConfigService.getBoolean(ShopConfigKey.VAT_ENABLED, false))
+                .cashDenominations(shopConfigService.getString(ShopConfigKey.CASH_DENOMINATIONS))
+                .quickPhrases(parseQuickPhrases())
+                .build();
+    }
+
+    public PosConfigDTO updatePosConfig(PosConfigDTO dto) {
+        if (dto.getPosMode() != null)       shopConfigService.set(ShopConfigKey.POS_MODE, dto.getPosMode());
+        if (dto.getAutoPrint() != null)     shopConfigService.set(ShopConfigKey.AUTO_PRINT, dto.getAutoPrint());
+        if (dto.getVatEnabled() != null)    shopConfigService.set(ShopConfigKey.VAT_ENABLED, dto.getVatEnabled());
+        if (dto.getCashDenominations() != null) shopConfigService.set(ShopConfigKey.CASH_DENOMINATIONS, dto.getCashDenominations());
+        if (dto.getQuickPhrases() != null)  shopConfigService.set(ShopConfigKey.QUICK_PHRASES, String.join("||", dto.getQuickPhrases()));
+        return getPosConfig();
+    }
+
+    private List<String> parseQuickPhrases() {
+        String raw = shopConfigService.getString(ShopConfigKey.QUICK_PHRASES);
+        if (raw == null || raw.isBlank()) return Collections.emptyList();
+        return Arrays.stream(raw.split("\\|\\|"))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toList());
+    }
+
     public Double getDefaultTaxRate() {
         return shopConfigService.getDouble(ShopConfigKey.DEFAULT_TAX_RATE, 0.0);
     }
@@ -98,6 +158,7 @@ public class ShopInfoService {
         if (pawnSetting.getInterestRate() != null) shopConfigService.set(ShopConfigKey.PAWN_INTEREST_RATE, pawnSetting.getInterestRate());
         if (pawnSetting.getInterestType() > 0)     shopConfigService.set(ShopConfigKey.PAWN_INTEREST_TYPE, pawnSetting.getInterestType());
         if (pawnSetting.getDueDate() > 0)          shopConfigService.set(ShopConfigKey.PAWN_DUE_DATE, pawnSetting.getDueDate());
+        if (pawnSetting.getAcceptedTypes() != null) shopConfigService.set(ShopConfigKey.PAWN_ACCEPTED_TYPES, pawnSetting.getAcceptedTypes());
         return pawnSetting;
     }
 
@@ -108,6 +169,7 @@ public class ShopInfoService {
                         : BigDecimal.ZERO)
                 .interestType(shopConfigService.getInt(ShopConfigKey.PAWN_INTEREST_TYPE, 30))
                 .dueDate(shopConfigService.getInt(ShopConfigKey.PAWN_DUE_DATE, 30))
+                .acceptedTypes(shopConfigService.getString(ShopConfigKey.PAWN_ACCEPTED_TYPES))
                 .build();
     }
 

@@ -43,6 +43,9 @@ public class Tenant {
     @Column(name = "max_users")
     private Integer maxUsers;
 
+    @Column(name = "max_orders_per_month")
+    private Integer maxOrdersPerMonth;
+
     @Column(name = "features", columnDefinition = "TEXT")
     private String features; // Comma-separated list of features
 

@@ -51,6 +51,14 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "ORDER BY f.name ASC", nativeQuery = true)
     List<String> findActiveFeatureNamesByRoleNames(@Param("roleNames") List<String> roleNames);
 
+    @Query(value = "SELECT DISTINCT f.name FROM features f " +
+           "INNER JOIN role_features rf ON f.id = rf.feature_id " +
+           "INNER JOIN roles r ON rf.role_id = r.id " +
+           "WHERE r.name IN :roleNames AND f.deleted = FALSE AND f.active = TRUE " +
+           "AND r.tenant_id = :tenantId " +
+           "ORDER BY f.name ASC", nativeQuery = true)
+    List<String> findActiveFeatureNamesByRoleNamesAndTenantId(@Param("roleNames") List<String> roleNames, @Param("tenantId") String tenantId);
+
     @Query(value = "SELECT COUNT(*) > 0 FROM role_features rf " +
            "INNER JOIN roles r ON rf.role_id = r.id " +
            "INNER JOIN features f ON rf.feature_id = f.id " +

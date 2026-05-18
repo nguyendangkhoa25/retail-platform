@@ -1,5 +1,6 @@
 package com.tappy.pos.controller.customer;
 
+import com.tappy.pos.annotation.RequiresFeature;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.customer.CreateCustomerRequest;
 import com.tappy.pos.model.dto.customer.CustomerDTO;
@@ -7,14 +8,19 @@ import com.tappy.pos.model.dto.customer.UpdateCustomerRequest;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.service.customer.CustomerService;
 import com.tappy.pos.service.order.OrderService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.tappy.pos.annotation.RequiresFeature;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -56,7 +62,7 @@ public class CustomerController {
      *   }
      */
     @PostMapping
-    public ResponseEntity<ApiResponse<CustomerDTO>> createCustomer(@RequestBody CreateCustomerRequest request) {
+    public ResponseEntity<ApiResponse<CustomerDTO>> createCustomer(@Valid @RequestBody CreateCustomerRequest request) {
         log.info("Endpoint: POST /customers - Create new customer - name: {}, phone: {}, email: {}",
                 request.getName(), request.getPhone(), request.getEmail());
         CustomerDTO customer = customerService.createCustomer(request);
@@ -193,6 +199,25 @@ public class CustomerController {
         log.info("Endpoint: GET /customers/{}/orders", id);
         Page<OrderDTO> orders = orderService.getOrdersByCustomerId(id, pageable);
         return ResponseEntity.ok(ApiResponse.success(orders, "Customer orders retrieved successfully"));
+    }
+
+    @GetMapping("/{id}/orders/summary")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getCustomerOrderSummary(
+            @PathVariable Long id,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /customers/{}/orders/summary from={} to={}", id, from, to);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getCustomerOrderSummary(id, from, to), "OK"));
+    }
+
+    @GetMapping("/{id}/orders/chart")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getCustomerOrderChart(
+            @PathVariable Long id,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "day") String granularity) {
+        log.info("Endpoint: GET /customers/{}/orders/chart from={} to={} granularity={}", id, from, to, granularity);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getCustomerOrderChart(id, from, to, granularity), "OK"));
     }
 }
 

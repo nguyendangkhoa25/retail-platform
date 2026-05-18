@@ -7,6 +7,7 @@ import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.AccountLockedException;
 import com.tappy.pos.exception.DeviceConflictException;
+import com.tappy.pos.exception.DuplicateResourceException;
 import com.tappy.pos.model.dto.auth.AuthResponse;
 import com.tappy.pos.model.dto.auth.LoginRequest;
 import com.tappy.pos.model.dto.auth.UserDTO;
@@ -14,6 +15,7 @@ import com.tappy.pos.model.entity.auth.RefreshToken;
 import com.tappy.pos.model.entity.auth.Role;
 import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.model.enums.RoleEnum;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RefreshTokenRepository;
 import com.tappy.pos.repository.auth.UserRepository;
@@ -96,12 +98,21 @@ public class AuthService {
                         log.error("User not found (global): {}", loginRequest.getUsername());
                         return new BadRequestException(messageService.getMessage("error.unauthorized"));
                     });
-            // If user already belongs to a tenant, restore context so feature resolution works correctly
             if (user.getTenantId() != null) {
+                // Shop user — restore tenant context so feature resolution works correctly
                 try {
                     tenantContext.setCurrentTenant(tenantService.getTenantEntity(user.getTenantId()));
                 } catch (Exception e) {
                     log.warn("Could not restore tenant context for user {}: {}", loginRequest.getUsername(), e.getMessage());
+                }
+            } else {
+                // No tenantId — only valid for master/agent roles
+                boolean isMasterRole = user.getRoles().stream()
+                        .anyMatch(r -> RoleEnum.MASTER_TENANT.getCode().equals(r.getName())
+                                    || RoleEnum.AGENT.getCode().equals(r.getName()));
+                if (!isMasterRole) {
+                    log.warn("User {} has no tenant and no master role — rejecting login", loginRequest.getUsername());
+                    throw new BadRequestException(messageService.getMessage("error.user.no.tenant"));
                 }
             }
         }
@@ -257,11 +268,33 @@ public class AuthService {
             throw new UnauthorizedException(messageService.getMessage("error.refresh.token.invalid"));
         }
 
-        User user = userRepository.findByUsernameTenantScoped(username)
-                .orElseThrow(() -> {
-                    String errorMessage = messageService.getMessage("error.user.not.found", username);
-                    return new ResourceNotFoundException(errorMessage);
-                });
+        // If no X-Tenant-ID was sent (e.g. mobile refresh without header), do a global lookup
+        // and restore tenant context so feature intersection works correctly.
+        User user;
+        if (tenantContext.getCurrentTenant() != null) {
+            user = userRepository.findByUsernameTenantScoped(username)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            messageService.getMessage("error.user.not.found", username)));
+        } else {
+            user = userRepository.findByUsernameGlobal(username)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            messageService.getMessage("error.user.not.found", username)));
+            if (user.getTenantId() != null) {
+                try {
+                    tenantContext.setCurrentTenant(tenantService.getTenantEntity(user.getTenantId()));
+                } catch (Exception e) {
+                    log.warn("Could not restore tenant context during token refresh for user {}: {}",
+                            username, e.getMessage());
+                }
+            } else {
+                boolean isMasterRole = user.getRoles().stream()
+                        .anyMatch(r -> RoleEnum.MASTER_TENANT.getCode().equals(r.getName())
+                                    || RoleEnum.AGENT.getCode().equals(r.getName()));
+                if (!isMasterRole) {
+                    throw new UnauthorizedException(messageService.getMessage("error.user.no.tenant"));
+                }
+            }
+        }
 
         if (StringUtils.isNotEmpty(user.getRequireAction())) {
             String errorMessage = messageService.getMessage("error.refresh.token.required");
@@ -440,8 +473,8 @@ public class AuthService {
      * Register a new user (mobile self-registration — stub)
      */
     public AuthResponse registerUser(String phone, String password, String clientIp, String userAgent) {
-        if (userRepository.findByUsernameTenantScoped(phone).isPresent()) {
-            throw new BadRequestException("Số điện thoại đã được đăng ký.");
+        if (userRepository.findByUsernameGlobal(phone).isPresent()) {
+            throw new DuplicateResourceException("Số điện thoại đã được đăng ký.");
         }
         User user = User.builder()
                 .username(phone)
@@ -466,6 +499,16 @@ public class AuthService {
         String refreshToken = generateRefreshToken(user);
         // Registration creates a user with no shop yet; routing will direct them to the onboarding wizard.
         return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false, null);
+    }
+
+    /**
+     * Remove PIN for a user (disables PIN login)
+     */
+    public void deletePin(String username) {
+        User user = userRepository.findByUsernameTenantScoped(username)
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.unauthorized")));
+        user.setPinHash(null);
+        userRepository.save(user);
     }
 
     /**

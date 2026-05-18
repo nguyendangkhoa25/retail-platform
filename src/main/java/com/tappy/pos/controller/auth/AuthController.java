@@ -198,6 +198,16 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(authResponse, "Registration successful"));
     }
 
+    @DeleteMapping("/pin")
+    public ResponseEntity<ApiResponse<Void>> deletePin() {
+        String username = authContext.getCurrentUsername();
+        if (username == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("UNAUTHORIZED", "Not authenticated"));
+        log.info("Delete PIN request for user: {}", username);
+        authService.deletePin(username);
+        return ResponseEntity.ok(ApiResponse.success(null, "PIN removed successfully"));
+    }
+
     @PostMapping("/password-reset/request")
     public ResponseEntity<ApiResponse<Void>> requestPasswordReset(@RequestBody java.util.Map<String, String> body) {
         String phone = body.get("phone");

@@ -67,6 +67,7 @@ public class ReceiptHtmlBuilder {
                 cfg.isShowOrderNumber() ? order.getOrderNumber() : null,
                 cfg.isShowDateTime() ? displayDate : null,
                 cfg.isShowCustomer() ? customerName : null,
+                cfg.isShowTable() ? order.getTableLabel() : null,
                 items,
                 order.getDiscountAmount(),
                 order.getTotalAmount(),
@@ -116,6 +117,7 @@ public class ReceiptHtmlBuilder {
                 cfg.isShowOrderNumber() ? "(chưa hoàn tất)" : null,
                 cfg.isShowDateTime() ? LocalDateTime.now() : null,
                 cfg.isShowCustomer() ? req.getCustomerName() : null,
+                cfg.isShowTable() ? req.getTableLabel() : null,
                 items,
                 req.getTotalDiscount(),
                 req.getTotal(),
@@ -140,6 +142,7 @@ public class ReceiptHtmlBuilder {
             String orderNumber,
             LocalDateTime date,
             String customerName,
+            String tableLabel,
             List<ReceiptItem> items,
             BigDecimal totalDiscount,
             BigDecimal total,
@@ -286,6 +289,7 @@ public class ReceiptHtmlBuilder {
                 (orderNumber != null ? "  <p class=\"center meta\">Số: " + escHtml(orderNumber) + "</p>\n" : "") +
                 (!displayDate.isBlank() ? "  <p class=\"center meta\">" + displayDate + "</p>\n" : "") +
                 (customerName != null ? "  <p class=\"center meta\">Khách: " + escHtml(customerName) + "</p>\n" : "") +
+                (tableLabel != null && !tableLabel.isBlank() ? "  <p class=\"center meta\">Bàn: " + escHtml(tableLabel) + "</p>\n" : "") +
                 "  <table>\n" +
                 "    <thead>\n" +
                 "      <tr>\n" +

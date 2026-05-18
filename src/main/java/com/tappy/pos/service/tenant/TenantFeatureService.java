@@ -62,8 +62,10 @@ public class TenantFeatureService {
 //            return new ArrayList<>(tenantFeatures);
 //        }
 
-        // Step 2: Get features assigned to the roles
-        List<String> roleFeatures = roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames);
+        // Step 2: Get features assigned to the roles — use explicit tenantId to avoid
+        // relying on app.current_tenant session var, which may be NULL when login is
+        // called without X-Tenant-ID (tenant auto-detection path).
+        List<String> roleFeatures = roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(roleNames, currentTenant.getTenantId());
         log.info("Roles {} have {} features assigned", roleNames, roleFeatures.size());
 
         // Step 3: Get intersection - features in both tenant and role

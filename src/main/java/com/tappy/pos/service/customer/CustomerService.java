@@ -291,6 +291,7 @@ public class CustomerService {
                 .createdAt(customer.getCreatedAt())
                 .loyaltyPoints(customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0)
                 .totalSpent(customer.getTotalSpent())
+                .walkIn(customer.isWalkIn())
                 .build();
     }
 }

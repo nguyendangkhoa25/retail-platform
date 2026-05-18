@@ -5,6 +5,7 @@ import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.auth.SessionInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -162,6 +163,16 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle OrderLimitExceededException - 402 Payment Required
+     */
+    @ExceptionHandler(OrderLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOrderLimitExceeded(OrderLimitExceededException ex) {
+        log.warn("Order limit exceeded: {}", ex.getMessage());
+        return ResponseEntity.status(402)
+                .body(ApiResponse.error("ORDER_LIMIT_EXCEEDED", ex.getMessage()));
+    }
+
+    /**
      * Handle BusinessException - 422 Unprocessable Entity
      */
     @ExceptionHandler(BusinessException.class)
@@ -235,6 +246,16 @@ public class GlobalExceptionHandler {
         String error = messageService.getMessage("error.type.mismatch", ex.getName(), typeName);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("TYPE_MISMATCH", error));
+    }
+
+    /**
+     * Handle DB unique / FK constraint violations - 409 Conflict
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.error("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+        String msg = messageService.getMessage("error.data.integrity.violation");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("CONFLICT", msg));
     }
 
     /**

@@ -23,6 +23,7 @@ public class ReceiptPreviewRequest {
     private BigDecimal changeAmount;
 
     private String customerName;
+    private String tableLabel;
 
     @Data
     public static class PreviewItem {

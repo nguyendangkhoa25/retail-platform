@@ -12,7 +12,10 @@ import com.tappy.pos.repository.inventory.InventoryRepository;
 import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.model.enums.RoleEnum;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -37,6 +40,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final MessageService messageService;
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
+    private final NotificationService notificationService;
 
     @Override
     public InventoryDTO createInventory(CreateInventoryRequest request) {
@@ -335,7 +339,8 @@ public class InventoryServiceImpl implements InventoryService {
             throw new BadRequestException(errorMessage);
         }
 
-        inventory.setQuantityInStock(inventory.getQuantityInStock() - quantity);
+        long stockBefore = inventory.getQuantityInStock();
+        inventory.setQuantityInStock(stockBefore - quantity);
         Inventory updated = inventoryRepository.save(inventory);
         log.info("Stock removed successfully - id: {}, quantity: {}, newTotal: {}", id, quantity, updated.getQuantityInStock());
 
@@ -343,6 +348,19 @@ public class InventoryServiceImpl implements InventoryService {
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
                 "Xuất kho: " + updated.getProduct().getName() + " -" + quantity + " → " + updated.getQuantityInStock(), null);
+
+        // Fire low-stock notification only when stock first crosses the reorder threshold.
+        if (stockBefore > updated.getReorderLevel() && updated.getQuantityInStock() <= updated.getReorderLevel()) {
+            String productName = updated.getProduct().getName();
+            notificationService.pushToRolesAsync(
+                    Notification.NotificationType.LOW_STOCK,
+                    messageService.getMessage("notification.inventory.low_stock.title", productName),
+                    messageService.getMessage("notification.inventory.low_stock.message",
+                            updated.getQuantityInStock(), updated.getReorderLevel()),
+                    "INVENTORY", updated.getId(),
+                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    tenantContext.getCurrentTenantId());
+        }
 
         return InventoryDTO.fromEntity(updated);
     }

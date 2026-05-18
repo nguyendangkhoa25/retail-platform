@@ -22,6 +22,7 @@ import com.tappy.pos.annotation.RequiresFeature;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -276,6 +277,24 @@ public class OrderController {
     }
 
     /**
+     * GET /api/orders/list
+     * Filtered, paginated order list for the Report screen.
+     * Supports from, to (date range on createdAt), status, and paymentMethod.
+     */
+    @GetMapping("/list")
+    public ResponseEntity<ApiResponse<Page<OrderDTO>>> getOrdersList(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String paymentMethod,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/list - status:{} paymentMethod:{} from:{} to:{} page:{}", status, paymentMethod, from, to, page);
+        Page<OrderDTO> orders = orderService.getAllOrdersFiltered(status, paymentMethod, from, to, PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(orders, "Orders retrieved successfully"));
+    }
+
+    /**
      * GET /api/orders/search
      * Full-text search across orderNumber and customer name.
      *
@@ -406,10 +425,41 @@ public class OrderController {
     @GetMapping("/top-products")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopProducts(
             @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(defaultValue = "30") int days) {
-        log.info("Endpoint: GET /orders/top-products limit={} days={}", limit, days);
+        log.info("Endpoint: GET /orders/top-products limit={} from={} to={} days={}", limit, from, to, days);
+        if (from != null && to != null) {
+            LocalDateTime fromDt = from.atStartOfDay();
+            LocalDateTime toDt = to.atTime(LocalTime.MAX);
+            return ResponseEntity.ok(ApiResponse.success(orderService.getTopProductsByRange(limit, fromDt, toDt), "OK"));
+        }
         LocalDateTime fromDt = LocalDateTime.now().minusDays(days);
         return ResponseEntity.ok(ApiResponse.success(orderService.getTopProducts(limit, fromDt), "OK"));
+    }
+
+    @GetMapping("/top-customers")
+    @RequiresFeature("CUSTOMER")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopCustomers(
+            @RequestParam(defaultValue = "5") int limit,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /orders/top-customers limit={} from={} to={}", limit, from, to);
+        LocalDateTime fromDt = from.atStartOfDay();
+        LocalDateTime toDt = to.atTime(LocalTime.MAX);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getTopCustomersByRange(limit, fromDt, toDt), "OK"));
+    }
+
+    @GetMapping("/top-employees")
+    @RequiresFeature("ORDER_VIEW_ALL")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopEmployees(
+            @RequestParam(defaultValue = "5") int limit,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /orders/top-employees limit={} from={} to={}", limit, from, to);
+        LocalDateTime fromDt = from.atStartOfDay();
+        LocalDateTime toDt = to.atTime(LocalTime.MAX);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getTopEmployeesByRange(limit, fromDt, toDt), "OK"));
     }
 
     @DeleteMapping("/{id}")
@@ -417,5 +467,42 @@ public class OrderController {
         log.info("Endpoint: DELETE /orders/{}", id);
         orderService.softDeleteOrder(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Order deleted"));
+    }
+
+    // ── Staff performance endpoints (requires ORDER_VIEW_ALL) ──────────────────
+
+    @GetMapping("/by-staff/summary")
+    @RequiresFeature("ORDER_VIEW_ALL")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getStaffOrderSummary(
+            @RequestParam String createdBy,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /orders/by-staff/summary createdBy={} from={} to={}", createdBy, from, to);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getStaffOrderSummary(createdBy, from, to), "OK"));
+    }
+
+    @GetMapping("/by-staff/chart")
+    @RequiresFeature("ORDER_VIEW_ALL")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getStaffOrderChart(
+            @RequestParam String createdBy,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "day") String granularity) {
+        log.info("Endpoint: GET /orders/by-staff/chart createdBy={} from={} to={} granularity={}", createdBy, from, to, granularity);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getStaffOrderChart(createdBy, from, to, granularity), "OK"));
+    }
+
+    @GetMapping("/by-staff")
+    @RequiresFeature("ORDER_VIEW_ALL")
+    public ResponseEntity<ApiResponse<Page<OrderDTO>>> getStaffOrders(
+            @RequestParam String createdBy,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        log.info("Endpoint: GET /orders/by-staff createdBy={} status={} page={}", createdBy, status, page);
+        return ResponseEntity.ok(ApiResponse.success(
+                orderService.getStaffOrders(createdBy, status, from, to, PageRequest.of(page, size)), "OK"));
     }
 }

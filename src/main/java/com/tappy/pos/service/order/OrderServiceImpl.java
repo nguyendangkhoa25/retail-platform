@@ -108,6 +108,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public Page<OrderDTO> getAllOrdersFiltered(String status, String paymentMethod, java.time.LocalDate from, java.time.LocalDate to, Pageable pageable) {
+        boolean canViewAll = featureContext.hasFeature("ORDER_VIEW_ALL");
+        String username = getCurrentUsername();
+        Page<Order> orders = canViewAll
+                ? orderRepository.findAllFiltered(status, paymentMethod, from, to, pageable)
+                : orderRepository.findAllFilteredByUser(username, status, paymentMethod, from, to, pageable);
+        return orders.map(this::mapToDTO);
+    }
+
+    @Override
     public Page<OrderDTO> searchOrders(String keyword, Pageable pageable) {
         log.info("Request: Search orders - keyword: {}, page: {}", keyword, pageable.getPageNumber());
         boolean canViewAll = featureContext.hasFeature("ORDER_VIEW_ALL");
@@ -441,7 +451,15 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public java.util.List<java.util.Map<String, Object>> getOrderChart(LocalDate from, LocalDate to, String granularity) {
-        List<Object[]> rows = orderRepository.getDailyRevenue(from.atStartOfDay(), to.atTime(java.time.LocalTime.MAX));
+        java.time.LocalDateTime dtFrom = from.atStartOfDay();
+        java.time.LocalDateTime dtTo = to.atTime(java.time.LocalTime.MAX);
+        List<Object[]> rows = switch (granularity == null ? "day" : granularity) {
+            case "hour"  -> orderRepository.getHourlyRevenue(dtFrom, dtTo);
+            case "week"  -> orderRepository.getWeeklyRevenue(dtFrom, dtTo);
+            case "month" -> orderRepository.getMonthlyRevenue(dtFrom, dtTo);
+            case "year"  -> orderRepository.getYearlyRevenue(dtFrom, dtTo);
+            default      -> orderRepository.getDailyRevenue(dtFrom, dtTo);
+        };
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Object[] row : rows) { result.add(java.util.Map.of("label", row[0].toString(), "value", row[1])); }
         return result;
@@ -451,6 +469,44 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public java.util.List<java.util.Map<String, Object>> getTopProducts(int limit, LocalDateTime from) {
         List<Object[]> rows = orderRepository.getTopProductsSince(from, org.springframework.data.domain.PageRequest.of(0, limit));
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) {
+            result.add(java.util.Map.of("name", row[0] != null ? row[0].toString() : "", "orderCount", ((Number) row[1]).longValue(), "revenue", row[2]));
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getTopProductsByRange(int limit, LocalDateTime from, LocalDateTime to) {
+        List<Object[]> rows = orderRepository.getTopProductsByRange(from, to, org.springframework.data.domain.PageRequest.of(0, limit));
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) {
+            result.add(java.util.Map.of("name", row[0] != null ? row[0].toString() : "", "orderCount", ((Number) row[1]).longValue(), "revenue", row[2]));
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getTopCustomersByRange(int limit, LocalDateTime from, LocalDateTime to) {
+        List<Object[]> rows = orderRepository.getTopCustomersByRange(from, to, org.springframework.data.domain.PageRequest.of(0, limit));
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) {
+            java.util.Map<String, Object> item = new java.util.HashMap<>();
+            item.put("name", row[0] != null ? row[0].toString() : "");
+            item.put("orderCount", ((Number) row[1]).longValue());
+            item.put("totalSpend", row[2]);
+            item.put("customerId", row[3] != null ? row[3].toString() : "");
+            result.add(item);
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getTopEmployeesByRange(int limit, LocalDateTime from, LocalDateTime to) {
+        List<Object[]> rows = orderRepository.getTopEmployeesByRange(from, to, org.springframework.data.domain.PageRequest.of(0, limit));
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Object[] row : rows) {
             result.add(java.util.Map.of("name", row[0] != null ? row[0].toString() : "", "orderCount", ((Number) row[1]).longValue(), "revenue", row[2]));
@@ -726,5 +782,76 @@ public class OrderServiceImpl implements OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + id));
         order.setDeleted(true);
         orderRepository.save(order);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getCustomerOrderSummary(Long customerId, LocalDate from, LocalDate to) {
+        LocalDateTime dtFrom = from.atStartOfDay();
+        LocalDateTime dtTo = to.atTime(java.time.LocalTime.MAX);
+        BigDecimal totalRevenue = orderRepository.sumRevenueByCustomerAndDateRange(customerId, dtFrom, dtTo);
+        if (totalRevenue == null) totalRevenue = BigDecimal.ZERO;
+        long orderCount = orderRepository.countByCustomerAndDateRange(customerId, dtFrom, dtTo);
+        long completedCount = orderRepository.countByCustomerAndDateRangeAndStatus(customerId, dtFrom, dtTo, "COMPLETED");
+        BigDecimal avg = completedCount > 0
+                ? totalRevenue.divide(BigDecimal.valueOf(completedCount), 0, java.math.RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        return java.util.Map.of(
+                "totalRevenue", totalRevenue,
+                "orderCount", orderCount,
+                "completedCount", completedCount,
+                "avgOrderValue", avg);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getStaffOrderSummary(String createdBy, LocalDate from, LocalDate to) {
+        LocalDateTime dtFrom = from.atStartOfDay();
+        LocalDateTime dtTo = to.atTime(java.time.LocalTime.MAX);
+        BigDecimal totalRevenue = orderRepository.sumRevenueByCreatedBy(createdBy, dtFrom, dtTo);
+        if (totalRevenue == null) totalRevenue = BigDecimal.ZERO;
+        long orderCount = orderRepository.countByCreatedByAndDateRange(createdBy, dtFrom, dtTo);
+        long completedCount = orderRepository.countByCreatedByAndDateRangeAndStatus(createdBy, "COMPLETED", dtFrom, dtTo);
+        long cancelledCount = orderRepository.countByCreatedByAndDateRangeAndStatus(createdBy, "CANCELLED", dtFrom, dtTo);
+        BigDecimal avg = orderCount > 0 ? totalRevenue.divide(BigDecimal.valueOf(orderCount), 0, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        return java.util.Map.of("totalRevenue", totalRevenue, "orderCount", orderCount, "avgOrderValue", avg, "completedCount", completedCount, "cancelledCount", cancelledCount);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getStaffOrderChart(String createdBy, LocalDate from, LocalDate to, String granularity) {
+        LocalDateTime dtFrom = from.atStartOfDay();
+        LocalDateTime dtTo = to.atTime(java.time.LocalTime.MAX);
+        List<Object[]> rows = switch (granularity == null ? "day" : granularity) {
+            case "week"  -> orderRepository.getWeeklyRevenueByCreatedBy(createdBy, dtFrom, dtTo);
+            case "month" -> orderRepository.getMonthlyRevenueByCreatedBy(createdBy, dtFrom, dtTo);
+            case "year"  -> orderRepository.getYearlyRevenueByCreatedBy(createdBy, dtFrom, dtTo);
+            default      -> orderRepository.getDailyRevenueByCreatedBy(createdBy, dtFrom, dtTo);
+        };
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) { result.add(java.util.Map.of("label", row[0].toString(), "value", row[1])); }
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OrderDTO> getStaffOrders(String createdBy, String status, LocalDate from, LocalDate to, Pageable pageable) {
+        return orderRepository.findAllByCreatedBy(createdBy, status, from, to, pageable).map(this::mapToDTO);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getCustomerOrderChart(Long customerId, LocalDate from, LocalDate to, String granularity) {
+        LocalDateTime dtFrom = from.atStartOfDay();
+        LocalDateTime dtTo = to.atTime(java.time.LocalTime.MAX);
+        List<Object[]> rows = switch (granularity == null ? "day" : granularity) {
+            case "week"  -> orderRepository.getWeeklyRevenueByCustomer(customerId, dtFrom, dtTo);
+            case "month" -> orderRepository.getMonthlyRevenueByCustomer(customerId, dtFrom, dtTo);
+            case "year"  -> orderRepository.getYearlyRevenueByCustomer(customerId, dtFrom, dtTo);
+            default      -> orderRepository.getDailyRevenueByCustomer(customerId, dtFrom, dtTo);
+        };
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) { result.add(java.util.Map.of("label", row[0].toString(), "value", row[1])); }
+        return result;
     }
 }

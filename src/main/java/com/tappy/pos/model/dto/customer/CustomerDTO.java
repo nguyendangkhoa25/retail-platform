@@ -41,5 +41,6 @@ public class CustomerDTO {
     // Loyalty summary
     private Integer loyaltyPoints;
     private BigDecimal totalSpent;
+    private boolean walkIn;
 }
 

@@ -24,6 +24,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.stream.Collectors;
 import com.tappy.pos.annotation.RequiresFeature;
+import com.tappy.pos.config.FeatureContext;
 
 @Slf4j
 @RestController
@@ -37,6 +38,7 @@ public class DashboardController {
     private final CustomerRepository customerRepository;
     private final EmployeeRepository employeeRepository;
     private final PawnRepository pawnRepository;
+    private final FeatureContext featureContext;
 
     @GetMapping("/summary")
     public ResponseEntity<DashboardSummaryDTO> getSummary() {
@@ -58,12 +60,19 @@ public class DashboardController {
         Long monthItemsSold = orderItemRepository.sumItemsSoldByMonth(year, month);
         Long yearItemsSold  = orderItemRepository.sumItemsSoldByYear(year);
 
-        // Pawn KPIs
-        Long       activePawnContracts   = pawnRepository.countActivePawnContracts();
-        BigDecimal activePawnAmount      = pawnRepository.sumActivePawnAmount();
-        Long       monthNewPawnContracts = pawnRepository.countNewPawnsByMonth(year, month);
-        BigDecimal monthNewPawnAmount    = pawnRepository.sumNewPawnAmountByMonth(year, month);
-        Long       monthInterestEarned   = pawnRepository.sumInterestEarnedByMonth(year, month);
+        // Pawn KPIs — only queried when shop has PAWN feature; absent returns null (frontend hides pawn section)
+        Long       activePawnContracts   = null;
+        BigDecimal activePawnAmount      = null;
+        Long       monthNewPawnContracts = null;
+        BigDecimal monthNewPawnAmount    = null;
+        Long       monthInterestEarned   = null;
+        if (featureContext.hasFeature("PAWN")) {
+            activePawnContracts   = pawnRepository.countActivePawnContracts();
+            activePawnAmount      = pawnRepository.sumActivePawnAmount();
+            monthNewPawnContracts = pawnRepository.countNewPawnsByMonth(year, month);
+            monthNewPawnAmount    = pawnRepository.sumNewPawnAmountByMonth(year, month);
+            monthInterestEarned   = pawnRepository.sumInterestEarnedByMonth(year, month);
+        }
 
         List<Order> recent = orderRepository.findRecentCompleted(PageRequest.of(0, 10));
         List<DashboardSummaryDTO.RecentOrderDTO> recentDTOs = recent.stream()
@@ -114,11 +123,16 @@ public class DashboardController {
         LocalDateTime fromDt = LocalDate.parse(from).atStartOfDay();
         LocalDateTime toDt   = LocalDate.parse(to).atTime(LocalTime.MAX);
 
-        Long       itemsSold      = orderItemRepository.sumItemsSoldByDateRange(fromDt, toDt);
-        BigDecimal revenue        = orderRepository.sumRevenueByDateRange(fromDt, toDt);
-        Long       newPawnContracts  = pawnRepository.countNewPawnsByDateRange(fromDt, toDt);
-        BigDecimal newPawnAmount     = pawnRepository.sumNewPawnAmountByDateRange(fromDt, toDt);
-        Long       interestEarned    = pawnRepository.sumInterestEarnedByDateRange(fromDt, toDt);
+        Long       itemsSold         = orderItemRepository.sumItemsSoldByDateRange(fromDt, toDt);
+        BigDecimal revenue           = orderRepository.sumRevenueByDateRange(fromDt, toDt);
+        Long       newPawnContracts  = null;
+        BigDecimal newPawnAmount     = null;
+        Long       interestEarned    = null;
+        if (featureContext.hasFeature("PAWN")) {
+            newPawnContracts = pawnRepository.countNewPawnsByDateRange(fromDt, toDt);
+            newPawnAmount    = pawnRepository.sumNewPawnAmountByDateRange(fromDt, toDt);
+            interestEarned   = pawnRepository.sumInterestEarnedByDateRange(fromDt, toDt);
+        }
 
         return ResponseEntity.ok(DashboardKpiDTO.builder()
                 .itemsSold(itemsSold)

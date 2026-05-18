@@ -52,7 +52,6 @@ public class TenantInterceptor implements HandlerInterceptor {
     private static final String[] FLEXIBLE_PATHS = {
             "/api/auth",
             "/api/users",
-            "/api/employees",
             "/api/multi-tenants",        // Tenant management (master DB only)
             "/api/profiles",             // Profile management (works for both master and tenant users)
             "/api/feedback",             // Feedback (stored in master DB, accessible from any tenant)

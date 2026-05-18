@@ -129,12 +129,20 @@ public class MarketGoldPriceService {
 
     // ── Core poll logic ───────────────────────────────────────────────────────
 
+    private static final Map<String, String> SOURCE_REFERER = Map.of(
+            SJC,    "https://sjc.com.vn/",
+            MIHONG, "https://mihong.vn/",
+            PNJ,    "https://www.pnj.com.vn/",
+            BTMC,   "https://www.btmc.vn/"
+    );
+
     private void poll(String source, String url, Function<String, List<RawItem>> parser) {
         try {
             HttpHeaders headers = new HttpHeaders();
-            headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-            headers.set("Referer", "https://sjc.com.vn/");
+            headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+            headers.set("Referer", SOURCE_REFERER.getOrDefault(source, "https://google.com/"));
             headers.set("Accept", "application/json, text/plain, */*");
+            headers.set("Accept-Language", "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7");
 
             String body = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class).getBody();
             if (body == null || body.isBlank()) {

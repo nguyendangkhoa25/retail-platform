@@ -37,6 +37,9 @@ Every request carries an `X-Tenant-ID` header:
 5. `TenantInterceptor.afterCompletion` always calls `tenantContext.clear()` to prevent cross-request leakage.
 
 The `X-Tenant-ID: master` special value leaves tenant context empty, disabling RLS on tenant tables and giving access to master tables only. Two AOP annotations enforce access:
+
+> **Critical gotcha — `current_tenant_id()` in auth flows:**
+> `TenantRlsAspect` sets `app.current_tenant` once at `@Transactional` start. If a method begins with no tenant context (e.g. login without `X-Tenant-ID`) and then calls `tenantContext.setCurrentTenant(tenant)` mid-method, the DB session variable remains NULL for the rest of that transaction — even though `tenantContext.getCurrentTenant()` now returns non-null. Any query using `current_tenant_id()` or `r.tenant_id IS NOT DISTINCT FROM current_tenant_id()` will still see NULL and return wrong results (master rows only, not shop rows). **Rule:** queries called from auth flows (login, refresh, onboarding) that need tenant-scoped data must use an explicit `tenantId` bind parameter instead of `current_tenant_id()`. See `RoleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId()` as the reference implementation.
 - `@MasterDatabaseOnly` — endpoint requires no tenant context + `MASTER_TENANT` role + `isMasterUser=true` (used on master-admin controllers like `MultiTenantController`, `FeedbackController` admin endpoints).
 - `@RequiresFeature("NAME")` — endpoint requires the named feature in the caller's JWT (used on all shop and shared controllers). See Feature Access Model below.
 

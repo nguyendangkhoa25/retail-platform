@@ -48,6 +48,10 @@ public class ReceiptTemplateConfig {
     @Builder.Default
     private boolean showVietQr = false;
 
+    /** Print the table label (e.g. "Bàn 3") on the receipt — useful for F&B shops. */
+    @Builder.Default
+    private boolean showTable = false;
+
     public static ReceiptTemplateConfig defaults() {
         return ReceiptTemplateConfig.builder().build();
     }

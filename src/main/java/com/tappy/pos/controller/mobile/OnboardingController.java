@@ -9,6 +9,8 @@ import com.tappy.pos.model.enums.ExpenseCategory;
 import com.tappy.pos.model.enums.ShopType;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleRepository;
+import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
+import com.tappy.pos.service.finance.DefaultExpenseService;
 import com.tappy.pos.service.finance.ShopExpenseService;
 import com.tappy.pos.service.tenant.TenantFeatureService;
 import com.tappy.pos.service.tenant.TenantProvisioningService;
@@ -39,6 +41,7 @@ public class OnboardingController {
     private final TenantSeedService tenantSeedService;
     private final TenantFeatureService tenantFeatureService;
     private final ShopExpenseService shopExpenseService;
+    private final DefaultExpenseService defaultExpenseService;
     private final JwtTokenProvider jwtTokenProvider;
     private final RoleRepository roleRepository;
     private final NamedParameterJdbcTemplate namedJdbc;
@@ -105,6 +108,14 @@ public class OnboardingController {
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
         ));
+        List<String> pawnBase = List.of(
+                "DASHBOARD", "PAWN", "ORDER", "ORDER_VIEW_ALL", "CUSTOMER",
+                "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACCOUNTING"
+        );
+        m.put(ShopType.PAWN_SHOP, pawnBase);
+        m.put(ShopType.JEWELRY,   pawnBase);
         SHOP_TYPE_TENANT_FEATURES = Collections.unmodifiableMap(m);
     }
 
@@ -208,11 +219,11 @@ public class OnboardingController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getProductTemplates(
             @RequestParam(required = false, defaultValue = "OTHER") String shopTypeCode) {
         String sql = """
-                SELECT id, name, name_en, emoji, default_price, unit, dynamic_price
+                SELECT id, name, name_en, emoji, default_price, unit, dynamic_price,
+                       duration_minutes, category_name
                 FROM product_suggestions
                 WHERE :shopType = ANY(shop_types)
                 ORDER BY display_order, name
-                LIMIT 25
                 """;
         List<Map<String, Object>> rows = namedJdbc.queryForList(sql, Map.of("shopType", shopTypeCode));
         List<Map<String, Object>> result = rows.stream().map(row -> {
@@ -224,6 +235,8 @@ public class OnboardingController {
             m.put("price", row.get("default_price"));
             m.put("unit", row.get("unit"));
             m.put("dynamicPrice", Boolean.TRUE.equals(row.get("dynamic_price")));
+            m.put("durationMinutes", row.getOrDefault("duration_minutes", 0));
+            m.put("categoryName", row.get("category_name"));
             return m;
         }).toList();
         return ResponseEntity.ok(ApiResponse.success(result, "OK"));
@@ -289,6 +302,7 @@ public class OnboardingController {
                 .features(tenantFeatures)
                 .adminUsername(username)
                 .adminPassword("placeholder")
+                .expirationDate(LocalDate.now().plusYears(1))
                 .build();
 
         tenantService.createTenant(createReq);
@@ -300,6 +314,7 @@ public class OnboardingController {
             tenantProvisioningService.provisionSelfRegistered(tenantEntity, username, address);
             try {
                 tenantSeedService.seed(shopType);
+                tenantSeedService.seedShopTypeTemplates(shopType);
             } catch (Exception e) {
                 log.warn("DML seed non-fatal failure for {}: {}", tenantId, e.getMessage());
             }
@@ -307,6 +322,8 @@ public class OnboardingController {
             seedOnboardingProducts(body, tenantId);
             seedOnboardingExpenses(body);
             seedOnboardingTables(body, tenantId);
+            seedOnboardingPawnTypes(body, tenantId, shopType);
+            seedOnboardingPawnInterest(body, tenantId, shopType);
 
             List<String> roleNames = roleRepository.findByNameAndTenantId("SHOP_OWNER", tenantId)
                     .map(r -> List.of(r.getName()))
@@ -337,8 +354,9 @@ public class OnboardingController {
         Object raw = body.get("products");
         if (!(raw instanceof List<?> list) || list.isEmpty()) return;
 
-        String insertProduct = """
-                INSERT INTO product (tenant_id, product_type_id, sku, name, price, unit, status)
+        String upsertProduct = """
+                INSERT INTO product
+                    (tenant_id, product_type_id, sku, name, price, unit, duration_minutes, status)
                 SELECT
                     :tenantId,
                     COALESCE(
@@ -354,11 +372,14 @@ public class OnboardingController {
                     :name,
                     :price,
                     :unit,
+                    :durationMinutes,
                     'ACTIVE'
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM product p
-                    WHERE p.tenant_id = :tenantId AND p.name = :name AND p.deleted = FALSE
-                )
+                ON CONFLICT (sku, tenant_id) DO UPDATE SET
+                    name             = EXCLUDED.name,
+                    price            = EXCLUDED.price,
+                    unit             = EXCLUDED.unit,
+                    duration_minutes = EXCLUDED.duration_minutes,
+                    status           = EXCLUDED.status
                 """;
 
         // Assigns a product_category row when the suggestion has a category_name that
@@ -369,8 +390,26 @@ public class OnboardingController {
                 FROM product p
                 JOIN product_suggestions ps ON ps.id = :templateId AND ps.category_name IS NOT NULL
                 JOIN category c ON c.name = ps.category_name AND c.tenant_id = :tenantId
-                WHERE p.tenant_id = :tenantId AND p.name = :name AND p.deleted = FALSE
+                WHERE p.tenant_id = :tenantId AND p.sku = :sku AND p.deleted = FALSE
                 ON CONFLICT DO NOTHING
+                """;
+
+        String upsertInventory = """
+                INSERT INTO inventory
+                    (tenant_id, product_id, quantity_in_stock, reorder_level, reorder_quantity,
+                     unit_cost, warehouse_location, status, inventory_type, last_restock_date)
+                SELECT
+                    :tenantId,
+                    p.id,
+                    :quantityInStock, 0, 0,
+                    :costPrice,
+                    'Kho chính',
+                    'ACTIVE',
+                    'RETAIL',
+                    NOW()
+                FROM product p
+                WHERE p.tenant_id = :tenantId AND p.sku = :sku AND p.deleted = FALSE
+                ON CONFLICT (product_id) DO NOTHING
                 """;
 
         for (Object item : list) {
@@ -389,20 +428,30 @@ public class OnboardingController {
                     try { templateIdNum = Long.parseLong(s); } catch (NumberFormatException ignored) {}
                 }
 
+                Number durationNum = (Number) map.getOrDefault("durationMinutes", 0);
+
                 String unit = (String) map.getOrDefault("unit", "Cái");
                 int suffix = ThreadLocalRandom.current().nextInt(10000, 99999);
                 String sku = "SUG-" + suffix;
+
+                long priceVal = priceNum.longValue();
+                // Cost price defaults to 70% of sell price for inventory tracking
+                long costPriceVal = Math.round(priceVal * 0.7);
 
                 Map<String, Object> params = new HashMap<>();
                 params.put("tenantId", tenantId);
                 params.put("templateId", templateIdNum != null ? templateIdNum.longValue() : -1L);
                 params.put("sku", sku);
                 params.put("name", name);
-                params.put("price", BigDecimal.valueOf(priceNum.longValue()));
+                params.put("price", BigDecimal.valueOf(priceVal));
                 params.put("unit", unit);
+                params.put("durationMinutes", durationNum.intValue());
+                params.put("costPrice", BigDecimal.valueOf(costPriceVal));
+                params.put("quantityInStock", durationNum.intValue() > 0 ? 99999 : 0);
 
-                namedJdbc.update(insertProduct, params);
+                namedJdbc.update(upsertProduct, params);
                 namedJdbc.update(insertCategory, params);
+                namedJdbc.update(upsertInventory, params);
             } catch (Exception ex) {
                 log.warn("Skipped onboarding product '{}': {}", map.get("name"), ex.getMessage());
             }
@@ -414,6 +463,7 @@ public class OnboardingController {
         if (!(raw instanceof List<?> list) || list.isEmpty()) return;
 
         LocalDate today = LocalDate.now();
+        int order = 0;
         for (Object item : list) {
             if (!(item instanceof Map)) continue;
             @SuppressWarnings("unchecked")
@@ -421,6 +471,9 @@ public class OnboardingController {
             try {
                 Number amount = (Number) map.get("monthlyAmount");
                 if (amount == null || amount.longValue() <= 0) continue;
+
+                String name = (String) map.get("name");
+                if (name == null || name.isBlank()) continue;
 
                 String categoryCode = (String) map.getOrDefault("category", "OTHER");
                 ExpenseCategory category;
@@ -430,23 +483,28 @@ public class OnboardingController {
                     category = ExpenseCategory.OTHER;
                 }
 
-                Number paymentDay = (Number) map.get("paymentDate");
-                LocalDate expenseDate = today;
-                if (paymentDay != null) {
-                    int day = paymentDay.intValue();
-                    int maxDay = today.lengthOfMonth();
-                    expenseDate = today.withDayOfMonth(Math.min(day, maxDay));
-                }
+                Number paymentDayNum = (Number) map.get("paymentDate");
+                int paymentDay = paymentDayNum != null ? paymentDayNum.intValue() : 1;
+                int maxDay = today.lengthOfMonth();
+                LocalDate expenseDate = today.withDayOfMonth(Math.min(paymentDay, maxDay));
 
-                String note = (String) map.getOrDefault("note", "");
-
+                // Write shop expense for current month
                 ShopExpenseRequest req = new ShopExpenseRequest();
                 req.setAmount(BigDecimal.valueOf(amount.longValue()));
                 req.setCategory(category);
-                req.setDescription(note.isBlank() ? null : note);
+                req.setDescription(name);
                 req.setExpenseDate(expenseDate);
-
                 shopExpenseService.create(req);
+
+                // Write default template so future months can clone it
+                DefaultExpenseRequest defReq = new DefaultExpenseRequest();
+                defReq.setDescription(name);
+                defReq.setAmount(BigDecimal.valueOf(amount.longValue()));
+                defReq.setCategory(category);
+                defReq.setPaymentDay(paymentDay);
+                defReq.setDisplayOrder(order++);
+                defaultExpenseService.create(defReq);
+
             } catch (Exception ex) {
                 log.warn("Skipped onboarding expense due to error: {}", ex.getMessage());
             }
@@ -457,6 +515,10 @@ public class OnboardingController {
             ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT, ShopType.COFFEE_SHOP,
             ShopType.PUB, ShopType.PUB_SEAFOOD, ShopType.PUB_GOAT, ShopType.PUB_BEEF
     );
+
+    private static final Set<ShopType> PAWN_SHOP_TYPES = Set.of(ShopType.PAWN_SHOP, ShopType.JEWELRY);
+
+    private static final String ALL_PAWN_TYPES = "GOLD,ELECTRONICS,MOTORBIKE,CAR,WATCH,REAL_ESTATE,GENERAL,OTHER";
 
     private void seedOnboardingTables(Map<String, Object> body, String tenantId) {
         Object raw = body.get("tables");
@@ -492,6 +554,87 @@ public class OnboardingController {
             } catch (Exception ex) {
                 log.warn("Skipped onboarding table '{}': {}", map.get("tableNumber"), ex.getMessage());
             }
+        }
+    }
+
+    private void seedOnboardingPawnTypes(Map<String, Object> body, String tenantId, ShopType shopType) {
+        if (!PAWN_SHOP_TYPES.contains(shopType)) return;
+
+        // Jewelry shops explicitly opted out of pawn during onboarding
+        if (Boolean.FALSE.equals(body.get("hasPawnFeature"))) return;
+
+        Object raw = body.get("pawnTypes");
+        String acceptedTypes;
+        if (raw instanceof List<?> list && !list.isEmpty()) {
+            // User made a selection during onboarding — use it
+            acceptedTypes = list.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .filter(s -> !s.isBlank())
+                    .reduce((a, b) -> a + "," + b)
+                    .orElse(ALL_PAWN_TYPES);
+        } else {
+            // No selection (skipped) — default to all types
+            acceptedTypes = ALL_PAWN_TYPES;
+        }
+
+        String upsert = """
+                INSERT INTO shop_config (tenant_id, config_key, config_value, config_group, encrypted)
+                VALUES (:tenantId, 'pawn_accepted_types', :value, 'PAWN', FALSE)
+                ON CONFLICT (tenant_id, config_key) DO UPDATE SET config_value = EXCLUDED.config_value
+                """;
+        try {
+            namedJdbc.update(upsert, Map.of("tenantId", tenantId, "value", acceptedTypes));
+            log.info("Seeded pawn_accepted_types={} for tenant {}", acceptedTypes, tenantId);
+        } catch (Exception ex) {
+            log.warn("Could not seed pawn_accepted_types for {}: {}", tenantId, ex.getMessage());
+        }
+    }
+
+    private void seedOnboardingPawnInterest(Map<String, Object> body, String tenantId, ShopType shopType) {
+        if (!PAWN_SHOP_TYPES.contains(shopType)) return;
+
+        // Jewelry shops explicitly opted out of pawn during onboarding
+        if (Boolean.FALSE.equals(body.get("hasPawnFeature"))) return;
+
+        Object rateRaw = body.get("pawnInterestRate");
+        String rate = null;
+        if (rateRaw instanceof String s && !s.isBlank()) rate = s;
+        else if (rateRaw instanceof Number n) rate = n.toString();
+
+        String calcMode = (String) body.getOrDefault("pawnCalcMode", "DAILY_30");
+        if (calcMode == null || calcMode.isBlank()) calcMode = "DAILY_30";
+
+        int periodDays = switch (calcMode) {
+            case "DAILY_25" -> 25;
+            case "BIWEEKLY" -> 15;
+            default         -> 30;
+        };
+
+        Object dueDateRaw = body.get("pawnDueDate");
+        String dueDate = null;
+        if (dueDateRaw instanceof Number n) dueDate = String.valueOf(n.intValue());
+        else if (dueDateRaw instanceof String s && !s.isBlank()) dueDate = s;
+
+        String upsert = """
+                INSERT INTO shop_config (tenant_id, config_key, config_value, config_group, encrypted)
+                VALUES (:tenantId, :key, :value, 'PAWN', FALSE)
+                ON CONFLICT (tenant_id, config_key) DO UPDATE SET config_value = EXCLUDED.config_value
+                """;
+
+        try {
+            namedJdbc.update(upsert, Map.of("tenantId", tenantId, "key", "pawn_calc_mode",      "value", calcMode));
+            namedJdbc.update(upsert, Map.of("tenantId", tenantId, "key", "pawn_interest_type",  "value", String.valueOf(periodDays)));
+            if (rate != null) {
+                namedJdbc.update(upsert, Map.of("tenantId", tenantId, "key", "pawn_interest_rate", "value", rate));
+            }
+            if (dueDate != null) {
+                namedJdbc.update(upsert, Map.of("tenantId", tenantId, "key", "pawn_due_date", "value", dueDate));
+            }
+            log.info("Seeded pawn interest config for tenant {}: rate={}, calcMode={}, periodDays={}, dueDate={}",
+                    tenantId, rate, calcMode, periodDays, dueDate);
+        } catch (Exception ex) {
+            log.warn("Could not seed pawn interest config for {}: {}", tenantId, ex.getMessage());
         }
     }
 

@@ -76,4 +76,29 @@ public interface ShopExpenseRepository extends JpaRepository<ShopExpense, Long> 
 
     @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY-MM-DD') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
     List<Object[]> getDailyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', expense_date), 'YYYY-MM-DD') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
+    List<Object[]> getWeeklyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY-MM') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
+    List<Object[]> getMonthlyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
+    List<Object[]> getYearlyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense WHERE deleted = FALSE " +
+           "AND expense_date >= :from AND expense_date <= :to AND category IN (:categories)",
+           nativeQuery = true)
+    BigDecimal sumByDateRangeAndCategories(
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("categories") List<String> categories);
+
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM shop_expense WHERE deleted = FALSE " +
+           "AND description = :desc AND expense_date >= :from AND expense_date <= :to)",
+           nativeQuery = true)
+    boolean existsByDescriptionAndDateRange(
+            @Param("desc") String description,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 }

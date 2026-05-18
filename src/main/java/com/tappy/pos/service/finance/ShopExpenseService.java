@@ -27,4 +27,5 @@ public interface ShopExpenseService {
     java.util.Map<String, Object> getSummary(LocalDate from, LocalDate to);
 
     java.util.List<java.util.Map<String, Object>> getChart(LocalDate from, LocalDate to);
+    java.util.List<java.util.Map<String, Object>> getChart(LocalDate from, LocalDate to, String granularity);
 }

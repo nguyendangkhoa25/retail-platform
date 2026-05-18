@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     active_by               VARCHAR(100) DEFAULT NULL,
     created_by              VARCHAR(100) DEFAULT NULL,
     updated_by              VARCHAR(100) DEFAULT NULL,
+    setup_complete           BOOLEAN      NOT NULL DEFAULT TRUE,
     vendor_id               BIGINT       DEFAULT NULL,
     CONSTRAINT fk_tenant_vendor FOREIGN KEY (vendor_id) REFERENCES agents (id) ON DELETE SET NULL,
     CONSTRAINT uq_tenants_tenant_id UNIQUE (tenant_id)
@@ -287,7 +288,8 @@ CREATE TABLE IF NOT EXISTS attribute_group (
     updated_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
     deleted         BOOLEAN      NOT NULL DEFAULT FALSE,
     deleted_at      TIMESTAMP    DEFAULT NULL,
-    CONSTRAINT fk_ag_product_type FOREIGN KEY (product_type_id) REFERENCES product_type (id)
+    CONSTRAINT fk_ag_product_type          FOREIGN KEY (product_type_id) REFERENCES product_type (id),
+    CONSTRAINT uq_attr_group_code_type     UNIQUE (code, product_type_id)
 );
 
 -- 4.3 attribute_definition
@@ -2230,6 +2232,8 @@ CREATE TABLE IF NOT EXISTS product_suggestions (
     dynamic_price    BOOLEAN      NOT NULL DEFAULT FALSE,
     shop_types       TEXT[]       NOT NULL DEFAULT '{}',
     display_order    INT          NOT NULL DEFAULT 0,
+    category_name    VARCHAR(200) DEFAULT NULL,
+    name_en          VARCHAR(200) DEFAULT NULL,
     CONSTRAINT uq_product_suggestion_name UNIQUE (name)
 );
 
@@ -2416,6 +2420,7 @@ CREATE TABLE IF NOT EXISTS expense_suggestions (
     category_code VARCHAR(50)  NOT NULL DEFAULT 'OTHER',
     shop_types    TEXT[]       NOT NULL DEFAULT '{}',
     display_order INT          NOT NULL DEFAULT 0,
+    name_en       VARCHAR(200) DEFAULT NULL,
     CONSTRAINT uq_expense_suggestion_name UNIQUE (name)
 );
 
@@ -2511,3 +2516,1724 @@ ON CONFLICT (name) DO NOTHING;
 -- Add duration_minutes to products for timed services (e.g. barber shop)
 ALTER TABLE product
     ADD COLUMN IF NOT EXISTS duration_minutes INT NOT NULL DEFAULT 0;
+
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V002__add_setup_complete_to_tenant.sql
+-- (Column already added to CREATE TABLE tenants above)
+-- ════════════════════════════════════════════════════════════
+-- setup_complete BOOLEAN NOT NULL DEFAULT TRUE has been added
+-- directly to the CREATE TABLE tenants definition above.
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V003__product_suggestions_category.sql
+-- (category_name column added to CREATE TABLE product_suggestions above)
+-- ════════════════════════════════════════════════════════════
+
+-- ── Backfill BARBER_SHOP category_name values ─────────────────
+UPDATE product_suggestions SET category_name = 'Cắt tóc nam'        WHERE name = 'Cắt tóc nam';
+UPDATE product_suggestions SET category_name = 'Cắt tóc nữ'         WHERE name = 'Cắt tóc nữ';
+UPDATE product_suggestions SET category_name = 'Cắt tóc nam'        WHERE name = 'Cắt tóc trẻ em';
+UPDATE product_suggestions SET category_name = 'Nhuộm & Uốn'        WHERE name = 'Nhuộm tóc';
+UPDATE product_suggestions SET category_name = 'Nhuộm & Uốn'        WHERE name = 'Uốn tóc';
+UPDATE product_suggestions SET category_name = 'Nhuộm & Uốn'        WHERE name = 'Duỗi tóc';
+UPDATE product_suggestions SET category_name = 'Gội đầu & Massage'  WHERE name = 'Gội đầu';
+UPDATE product_suggestions SET category_name = 'Chăm sóc râu'       WHERE name = 'Cạo râu';
+UPDATE product_suggestions SET category_name = 'Gội đầu & Massage'  WHERE name = 'Massage đầu';
+UPDATE product_suggestions SET category_name = 'Gội đầu & Massage'  WHERE name = 'Phục hồi tóc';
+UPDATE product_suggestions SET category_name = 'Tạo kiểu & Combo'   WHERE name = 'Tạo kiểu tóc';
+
+-- ── NAIL_SHOP suggestions ─────────────────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Sơn màu thường (tay)',    '💅', 80000,   'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 200, 'Sơn móng thường'),
+('Sơn màu thường (chân)',   '💅', 70000,   'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 201, 'Sơn móng thường'),
+('Sơn French',             '💅', 100000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 202, 'Sơn móng thường'),
+('Sơn gel (tay)',          '💅', 150000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 210, 'Gel & Acrylic'),
+('Sơn gel (chân)',         '💅', 120000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 211, 'Gel & Acrylic'),
+('Đắp bột acrylic',       '💅', 300000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 212, 'Gel & Acrylic'),
+('Đắp gel builder',       '💅', 280000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 213, 'Gel & Acrylic'),
+('Tháo gel / Tháo bột',   '💅', 80000,   'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 214, 'Gel & Acrylic'),
+('Vẽ nail',               '🎨', 200000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 220, 'Vẽ nail & Nghệ thuật'),
+('Nail art',              '🎨', 300000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 221, 'Vẽ nail & Nghệ thuật'),
+('Đính đá nail',          '💎', 150000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 222, 'Vẽ nail & Nghệ thuật'),
+('Nail ombre',            '🎨', 250000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 223, 'Vẽ nail & Nghệ thuật'),
+('Manicure',              '✋', 100000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 230, 'Chăm sóc bàn tay'),
+('Dưỡng ẩm tay',         '🧴', 80000,   'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 231, 'Chăm sóc bàn tay'),
+('Pedicure',              '🦶', 130000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 240, 'Chăm sóc bàn chân'),
+('Tẩy da chết chân',     '🦶', 100000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 241, 'Chăm sóc bàn chân'),
+('Combo tay + chân',     '💅', 130000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 250, 'Combo & Gói dịch vụ'),
+('Combo gel tay + chân', '💅', 250000,  'Lần',   'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 251, 'Combo & Gói dịch vụ')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── SPA_SHOP suggestions ──────────────────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Massage thư giãn 60p',   '💆', 350000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 300, 'Massage'),
+('Massage thư giãn 90p',   '💆', 500000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 301, 'Massage'),
+('Massage đầu & cổ',      '💆', 200000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 302, 'Massage'),
+('Massage bàn chân',      '🦶', 200000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 303, 'Massage'),
+('Massage đá nóng',       '🪨', 600000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 304, 'Massage'),
+('Massage tinh dầu',      '🌿', 450000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 305, 'Massage'),
+('Chăm sóc da mặt cơ bản','✨', 250000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 310, 'Chăm sóc da mặt'),
+('Chăm sóc da mặt chuyên sâu','✨', 400000, 'Lần', 'SERVICE', FALSE, ARRAY['SPA_SHOP'], 311, 'Chăm sóc da mặt'),
+('Nặn mụn',              '🫧', 300000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 312, 'Chăm sóc da mặt'),
+('Đắp mặt nạ dưỡng ẩm',  '🎭', 150000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 313, 'Chăm sóc da mặt'),
+('Tẩy tế bào chết toàn thân','🧖', 300000,'Lần',  'SERVICE', FALSE, ARRAY['SPA_SHOP'], 320, 'Chăm sóc cơ thể'),
+('Ủ trắng toàn thân',    '🧖', 400000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 321, 'Chăm sóc cơ thể'),
+('Wax lông nách',        '✂️', 80000,   'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 330, 'Waxing & Triệt lông'),
+('Wax lông chân',        '✂️', 200000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 331, 'Waxing & Triệt lông'),
+('Wax bikini',           '✂️', 200000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 332, 'Waxing & Triệt lông'),
+('Trị nám, tàn nhang',   '✨', 500000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 340, 'Điều trị đặc biệt'),
+('Trị mụn lưng',        '🫧', 350000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 341, 'Điều trị đặc biệt'),
+('Combo mặt + massage',  '💆', 600000,  'Lần',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 350, 'Combo & Liệu trình'),
+('Liệu trình 5 buổi',   '📋', 1800000, 'Gói',   'SERVICE', FALSE, ARRAY['SPA_SHOP'], 351, 'Combo & Liệu trình')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── NAIL_SHOP expense suggestions ─────────────────────────────
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Sơn / gel / bột nail',            '💅', 'SUPPLIES',    '{NAIL_SHOP}', 1),
+  ('Đèn UV / máy khoan nail',         '🔧', 'EQUIPMENT',   '{NAIL_SHOP}', 2),
+  ('Khăn / bông tẩy trang / phụ kiện','🧴', 'CLEANING',    '{NAIL_SHOP}', 3)
+ON CONFLICT (name) DO NOTHING;
+
+-- ── SPA_SHOP expense suggestions ──────────────────────────────
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Dầu massage / tinh dầu aromatherapy','🌿', 'SUPPLIES',   '{SPA_SHOP}', 1),
+  ('Kem dưỡng / mặt nạ / vật tư spa',   '🧴', 'SUPPLIES',   '{SPA_SHOP}', 2),
+  ('Khăn / đồ vải spa',                 '🛁', 'CLEANING',   '{SPA_SHOP}', 3),
+  ('Máy massage / thiết bị spa',        '🔧', 'EQUIPMENT',  '{SPA_SHOP}', 4)
+ON CONFLICT (name) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V004__exchange_rate_history.sql
+-- ════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS exchange_rate_history (
+    id          BIGSERIAL PRIMARY KEY,
+    currency_code VARCHAR(3)    NOT NULL,
+    source        VARCHAR(50)   NOT NULL,
+    buy_rate      NUMERIC(18,4),
+    transfer_rate NUMERIC(18,4),
+    sell_rate     NUMERIC(18,4),
+    fetched_at    TIMESTAMP     NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_erh_currency_fetched
+    ON exchange_rate_history (currency_code, fetched_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_erh_fetched_at
+    ON exchange_rate_history (fetched_at DESC);
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V005__market_gold_prices.sql
+-- ════════════════════════════════════════════════════════════
+
+-- Market gold price cache — one row per (ktype, source), upserted every poll cycle
+CREATE TABLE IF NOT EXISTS market_gold_prices (
+    ktype       VARCHAR(30)   NOT NULL,
+    source      VARCHAR(20)   NOT NULL,
+    name        VARCHAR(150)  NOT NULL,
+    buy_price   NUMERIC(20,0),
+    sell_price  NUMERIC(20,0),
+    fetched_at  TIMESTAMP     NOT NULL,
+    PRIMARY KEY (ktype, source)
+);
+
+-- Full history — appended on every poll, pruned weekly (90-day retention)
+CREATE TABLE IF NOT EXISTS market_gold_price_history (
+    id          BIGSERIAL     PRIMARY KEY,
+    ktype       VARCHAR(30)   NOT NULL,
+    source      VARCHAR(20)   NOT NULL,
+    name        VARCHAR(150)  NOT NULL,
+    buy_price   NUMERIC(20,0),
+    sell_price  NUMERIC(20,0),
+    fetched_at  TIMESTAMP     NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mgph_source_ktype_fetched
+    ON market_gold_price_history (source, ktype, fetched_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_mgph_fetched_at
+    ON market_gold_price_history (fetched_at DESC);
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V006__appointments.sql
+-- Bug fix: original used INSERT INTO features (code, name, description)
+-- but features table has no 'code' column. Fixed to use explicit id.
+-- ════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS appointments (
+    id                  BIGSERIAL PRIMARY KEY,
+    tenant_id           VARCHAR(50)  NOT NULL,
+    appointment_number  VARCHAR(20)  NOT NULL,
+    customer_id         BIGINT,
+    customer_name       VARCHAR(255) NOT NULL,
+    customer_phone      VARCHAR(20),
+    scheduled_date      DATE         NOT NULL,
+    scheduled_start_time TIME        NOT NULL,
+    duration_minutes    INT          NOT NULL DEFAULT 60,
+    status              VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    note                TEXT,
+    linked_order_id     BIGINT,
+    created_by          VARCHAR(255) NOT NULL,
+    created_at          TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMP    NOT NULL DEFAULT NOW(),
+    deleted             BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at          TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS appointment_services (
+    id                      BIGSERIAL PRIMARY KEY,
+    appointment_id          BIGINT       NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+    product_id              BIGINT       NOT NULL,
+    product_name            VARCHAR(255) NOT NULL,
+    unit_price              DECIMAL(15,2) NOT NULL DEFAULT 0,
+    duration_minutes        INT          NOT NULL DEFAULT 0,
+    assigned_employee_id    BIGINT,
+    assigned_employee_name  VARCHAR(255)
+);
+
+-- RLS policies
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointments FORCE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'appointments' AND policyname = 'appointments_tenant_isolation'
+    ) THEN
+        CREATE POLICY appointments_tenant_isolation ON appointments
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+
+-- Unique appointment number per tenant
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_number
+    ON appointments (tenant_id, appointment_number)
+    WHERE deleted = FALSE;
+
+-- Fast lookup by date
+CREATE INDEX IF NOT EXISTS idx_appointments_tenant_date
+    ON appointments (tenant_id, scheduled_date)
+    WHERE deleted = FALSE;
+
+-- APPOINTMENT feature (id=202601038)
+INSERT INTO features (id, name, display_name, description, active, deleted)
+VALUES (202601038, 'APPOINTMENT', 'Lịch Hẹn', 'Quản lý lịch hẹn với khách hàng, đặt lịch và xác nhận', TRUE, FALSE)
+ON CONFLICT (id) DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('features', 'id'), 202601038, true);
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V007__beauty_shop_suggestions.sql
+-- ════════════════════════════════════════════════════════════
+
+-- ── BARBER_SHOP_MEN product suggestions ──────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Cắt tóc thường (nam)',        '💇', 80000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 400, 'Cắt tóc'),
+('Cắt Fade',                    '💇', 150000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 401, 'Cắt tóc'),
+('Cắt Undercut',                '💇', 150000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 402, 'Cắt tóc'),
+('Cắt tóc trẻ em (nam)',        '👦', 60000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 403, 'Cắt tóc'),
+('Cạo râu thường',              '🪒', 50000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 410, 'Cạo & Chăm sóc râu'),
+('Cạo râu + định hình râu',     '🪒', 80000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 411, 'Cạo & Chăm sóc râu'),
+('Trim & tỉa râu',              '🪒', 40000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 412, 'Cạo & Chăm sóc râu'),
+('Gội đầu + massage đầu (nam)', '💆', 80000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 420, 'Gội đầu & Massage'),
+('Massage đầu cổ vai 20p',      '💆', 100000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 421, 'Gội đầu & Massage'),
+('Tạo kiểu sáp / wax tóc',     '✨', 50000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 430, 'Tạo kiểu'),
+('Nhuộm tóc nam',               '💈', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 431, 'Tạo kiểu'),
+('Combo cắt + cạo râu',         '💈', 180000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 440, 'Combo'),
+('Combo cắt + gội + massage đầu','💈', 200000, 'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 441, 'Combo')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── HAIR_SALON product suggestions ───────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Cắt tóc nữ ngắn',              '✂️', 120000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 450, 'Cắt tóc'),
+('Cắt tóc nữ dài',               '✂️', 150000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 451, 'Cắt tóc'),
+('Cắt tỉa layer',                '✂️', 130000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 452, 'Cắt tóc'),
+('Nhuộm màu thời trang',         '🎨', 400000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 460, 'Nhuộm tóc'),
+('Nhuộm highlight / ombre',      '🎨', 600000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 461, 'Nhuộm tóc'),
+('Nhuộm phủ bạc',                '🎨', 300000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 462, 'Nhuộm tóc'),
+('Uốn xoăn Hàn Quốc',           '💫', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 470, 'Uốn & Duỗi'),
+('Duỗi phồng / duỗi thẳng',     '💫', 600000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 471, 'Uốn & Duỗi'),
+('Ép tóc Keratin',               '💫', 700000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 472, 'Uốn & Duỗi'),
+('Ủ phục hồi tóc hư tổn',       '🌿', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 480, 'Chăm sóc tóc'),
+('Gội đầu dưỡng + massage đầu', '💆', 100000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 490, 'Gội đầu & Massage'),
+('Tạo kiểu đi tiệc / sự kiện',  '✨', 300000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 500, 'Tạo kiểu & Combo'),
+('Combo cắt + nhuộm tóc',       '💈', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 501, 'Tạo kiểu & Combo')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── LASH_PMU_STUDIO product suggestions ──────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Nối mi cơ bản',               '👁', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 510, 'Nối mi'),
+('Nối mi volume',               '👁', 350000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 511, 'Nối mi'),
+('Nối mi mega volume',          '👁', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 512, 'Nối mi'),
+('Xăm mày tán bột / ombre',    '✏', 2000000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 520, 'Xăm mày'),
+('Xăm mày giả lông',           '✏', 2500000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 521, 'Xăm mày'),
+('Xăm môi bóng / ombre',       '💋', 3000000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 530, 'Xăm môi'),
+('Xăm mí mắt trên',            '👁', 1500000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 540, 'Xăm mí mắt'),
+('Tháo mi',                    '✂', 100000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 550, 'Chăm sóc & Tháo'),
+('Điều chỉnh / fill mi',       '👁', 150000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 551, 'Chăm sóc & Tháo'),
+('Dưỡng phục hồi sau xăm',     '🌿', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 552, 'Chăm sóc & Tháo'),
+('Combo nối mi + fill mi',     '✨', 450000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 560, 'Combo'),
+('Combo mày + môi trọn gói',   '✨', 5000000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 561, 'Combo')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── MASSAGE_SHOP product suggestions ─────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Massage thư giãn toàn thân 60p', '💆', 200000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 570, 'Massage toàn thân'),
+('Massage toàn thân 90p',          '💆', 280000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 571, 'Massage toàn thân'),
+('Massage toàn thân 120p',         '💆', 350000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 572, 'Massage toàn thân'),
+('Massage chân phản xạ 30p',       '🦶', 100000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 580, 'Massage chân phản xạ'),
+('Massage chân phản xạ 60p',       '🦶', 180000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 581, 'Massage chân phản xạ'),
+('Massage đầu vai gáy 30p',        '💆', 100000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 590, 'Massage đầu & vai gáy'),
+('Massage lưng & cổ 30p',          '💆', 150000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 600, 'Massage lưng & cổ'),
+('Xông hơi ướt',                   '🌊', 100000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 610, 'Xông hơi & Ngâm'),
+('Ngâm chân thảo dược',            '🌿', 80000,  'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 611, 'Xông hơi & Ngâm'),
+('Combo massage + ngâm chân',      '✨', 250000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 620, 'Combo'),
+('Combo toàn thân + xông hơi',     '✨', 400000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 621, 'Combo')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── BEAUTY_CLINIC product suggestions ────────────────────────
+UPDATE product_suggestions
+SET shop_types = array_append(shop_types, 'BEAUTY_CLINIC')
+WHERE name IN (
+    'Chăm sóc da mặt cơ bản',
+    'Chăm sóc da mặt chuyên sâu',
+    'Đắp mặt nạ dưỡng ẩm',
+    'Tẩy tế bào chết toàn thân',
+    'Ủ trắng toàn thân',
+    'Wax lông nách',
+    'Wax lông chân',
+    'Trị nám, tàn nhang'
+)
+  AND NOT ('BEAUTY_CLINIC' = ANY(shop_types));
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Nặn mụn an toàn tại thẩm mỹ viện', '🫧', 300000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 630, 'Trị mụn & Nám'),
+('Trị mụn bằng laser',               '💡', 600000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 631, 'Trị mụn & Nám'),
+('Laser trẻ hóa da',                 '💡', 1200000, 'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 640, 'Công nghệ thẩm mỹ'),
+('RF nâng cơ / căng da',             '⚡', 1500000, 'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 641, 'Công nghệ thẩm mỹ'),
+('HIFU nâng cơ không phẫu thuật',    '💡', 2000000, 'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 642, 'Công nghệ thẩm mỹ'),
+('Triệt lông laser (1 vùng)',        '💡', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 650, 'Waxing & Triệt lông'),
+('Combo liệu trình da 5 buổi',       '📋', 1500000, 'Gói', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 660, 'Combo & Liệu trình')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── MAKEUP_STUDIO product suggestions ────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Trang điểm nhẹ nhàng hàng ngày', '💄', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 670, 'Trang điểm ngày thường'),
+('Trang điểm Hàn Quốc (K-makeup)', '💄', 300000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 671, 'Trang điểm ngày thường'),
+('Trang điểm đi tiệc ban ngày',    '💄', 400000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 680, 'Trang điểm đi tiệc'),
+('Trang điểm dự tiệc tối / event', '💄', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 681, 'Trang điểm đi tiệc'),
+('Trang điểm tốt nghiệp',          '🎓', 350000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 682, 'Trang điểm đi tiệc'),
+('Trang điểm chụp ảnh',            '📸', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 683, 'Trang điểm đi tiệc'),
+('Trang điểm cô dâu thử (trial)',  '👰', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 690, 'Trang điểm cô dâu'),
+('Trang điểm cô dâu ngày cưới',   '👰', 1500000, 'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 691, 'Trang điểm cô dâu'),
+('Trang điểm phụ dâu / phù rể',   '💍', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 692, 'Trang điểm cô dâu'),
+('Búi tóc đơn giản',               '💇', 150000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 700, 'Làm tóc & Phụ kiện'),
+('Tạo kiểu tóc đi tiệc / sự kiện','✨', 300000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 701, 'Làm tóc & Phụ kiện'),
+('Combo trang điểm + tóc tiệc',   '✨', 700000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 710, 'Combo & Gói cưới'),
+('Gói cưới cô dâu cơ bản',        '👰', 2500000, 'Gói', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 711, 'Combo & Gói cưới')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── Beauty shop expense suggestions ──────────────────────────
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Vật tư cắt tóc (tông đơ, dao, kéo)',  '💈', 'SUPPLIES',    '{BARBER_SHOP_MEN}', 1),
+  ('Dầu cạo râu / kem cạo râu',           '🪒', 'SUPPLIES',    '{BARBER_SHOP_MEN}', 2),
+  ('Khăn bông / khăn lạnh phục vụ',       '🧴', 'CLEANING',    '{BARBER_SHOP_MEN}', 3),
+  ('Bảo trì ghế cắt / thiết bị salon',   '💺', 'MAINTENANCE', '{BARBER_SHOP_MEN}', 4)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Thuốc nhuộm / thuốc uốn / hóa chất tóc', '🎨', 'SUPPLIES',    '{HAIR_SALON}', 1),
+  ('Dầu gội / dầu xả chuyên nghiệp',          '🧴', 'SUPPLIES',    '{HAIR_SALON}', 2),
+  ('Khăn bông / áo choàng khách',             '🧺', 'CLEANING',    '{HAIR_SALON}', 3),
+  ('Bảo trì máy sấy / máy uốn / máy duỗi',   '🔧', 'MAINTENANCE', '{HAIR_SALON}', 4)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Chỉ mi / keo mi / dung môi tháo keo',  '👁', 'SUPPLIES',    '{LASH_PMU_STUDIO}', 1),
+  ('Mực xăm / kim xăm tiêu hao',           '✏', 'SUPPLIES',    '{LASH_PMU_STUDIO}', 2),
+  ('Khăn vô trùng / vật tư tiệt khuẩn',   '🧤', 'CLEANING',    '{LASH_PMU_STUDIO}', 3),
+  ('Bảo trì giường / ghế kỹ thuật viên',  '🛋', 'MAINTENANCE', '{LASH_PMU_STUDIO}', 4)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Tinh dầu / dầu massage chuyên dụng',  '🌿', 'SUPPLIES',    '{MASSAGE_SHOP}', 1),
+  ('Khăn bông / đồ vải massage',          '🛁', 'CLEANING',    '{MASSAGE_SHOP}', 2),
+  ('Bảo trì giường massage',              '🛏', 'MAINTENANCE', '{MASSAGE_SHOP}', 3),
+  ('Đá bazan / thiết bị nhiệt massage',   '🪨', 'EQUIPMENT',   '{MASSAGE_SHOP}', 4)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Hóa chất / serum / ampoule điều trị', '🧪', 'SUPPLIES',    '{BEAUTY_CLINIC}', 1),
+  ('Kim vi kim / đầu mũi khoan tiêu hao', '💉', 'SUPPLIES',    '{BEAUTY_CLINIC}', 2),
+  ('Khăn vô trùng / vật tư y tế 1 lần',  '🧤', 'CLEANING',    '{BEAUTY_CLINIC}', 3),
+  ('Bảo trì thiết bị laser / RF / HIFU',  '🔧', 'MAINTENANCE', '{BEAUTY_CLINIC}', 4),
+  ('Phí kiểm định thiết bị thẩm mỹ',     '📋', 'TAX',         '{BEAUTY_CLINIC}', 5)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO expense_suggestions (name, emoji, category_code, shop_types, display_order) VALUES
+  ('Mỹ phẩm / son / phấn / kem nền',    '💄', 'SUPPLIES',  '{MAKEUP_STUDIO}', 1),
+  ('Cọ makeup / dụng cụ trang điểm',   '🖌', 'SUPPLIES',  '{MAKEUP_STUDIO}', 2),
+  ('Đèn ring light / ghế trang điểm',  '💡', 'EQUIPMENT', '{MAKEUP_STUDIO}', 3),
+  ('Áo choàng / khăn phục vụ khách',   '🧺', 'CLEANING',  '{MAKEUP_STUDIO}', 4)
+ON CONFLICT (name) DO NOTHING;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V008__suggestions_name_en.sql
+-- (name_en columns already added to CREATE TABLE definitions above)
+-- ════════════════════════════════════════════════════════════
+
+-- ── product_suggestions: English translations ─────────────────
+-- Shared beverages
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Nước suối'               THEN 'Mineral Water'
+    WHEN 'Coca Cola'               THEN 'Coca Cola'
+    WHEN 'Pepsi'                   THEN 'Pepsi'
+    WHEN 'Bia Saigon'              THEN 'Saigon Beer'
+    WHEN 'Bia Tiger'               THEN 'Tiger Beer'
+    WHEN 'Trứng gà'                THEN 'Eggs'
+    WHEN 'Bánh mì'                 THEN 'Bread'
+    ELSE name_en END
+WHERE name IN ('Nước suối','Coca Cola','Pepsi','Bia Saigon','Bia Tiger','Trứng gà','Bánh mì');
+
+-- CONVENIENCE_STORE
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Mì tôm Hảo Hảo'         THEN 'Instant Noodles'
+    WHEN 'Sữa tươi Vinamilk'       THEN 'Fresh Milk'
+    WHEN 'Dầu ăn'                  THEN 'Cooking Oil'
+    WHEN 'Gạo'                     THEN 'Rice'
+    WHEN 'Nước mắm'                THEN 'Fish Sauce'
+    WHEN 'Đường cát'               THEN 'Sugar'
+    WHEN 'Bột giặt'                THEN 'Laundry Detergent'
+    WHEN 'Dầu gội đầu'             THEN 'Shampoo'
+    WHEN 'Xà phòng'                THEN 'Soap'
+    WHEN 'Khăn giấy'               THEN 'Tissue Paper'
+    WHEN 'Thuốc lá'                THEN 'Cigarettes'
+    WHEN 'Pin AA'                  THEN 'AA Batteries'
+    WHEN 'Sạc điện thoại'          THEN 'Phone Charger'
+    WHEN 'Cáp USB'                 THEN 'USB Cable'
+    WHEN 'Nước tăng lực Redbull'   THEN 'Red Bull Energy Drink'
+    WHEN 'Snack khoai tây'         THEN 'Potato Chips'
+    WHEN 'Kẹo cao su'              THEN 'Chewing Gum'
+    ELSE name_en END
+WHERE name IN ('Mì tôm Hảo Hảo','Sữa tươi Vinamilk','Dầu ăn','Gạo','Nước mắm','Đường cát',
+               'Bột giặt','Dầu gội đầu','Xà phòng','Khăn giấy','Thuốc lá','Pin AA',
+               'Sạc điện thoại','Cáp USB','Nước tăng lực Redbull','Snack khoai tây','Kẹo cao su');
+
+-- FOOD_BEVERAGE
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Rau cải xanh'            THEN 'Green Vegetables'
+    WHEN 'Thịt heo'                THEN 'Pork'
+    WHEN 'Thịt bò'                 THEN 'Beef'
+    WHEN 'Cá tươi'                 THEN 'Fresh Fish'
+    WHEN 'Đậu hũ'                  THEN 'Tofu'
+    WHEN 'Cà chua'                 THEN 'Tomatoes'
+    WHEN 'Hành tây'                THEN 'Onions'
+    WHEN 'Tỏi'                     THEN 'Garlic'
+    WHEN 'Cà rốt'                  THEN 'Carrots'
+    WHEN 'Dầu hào'                 THEN 'Oyster Sauce'
+    ELSE name_en END
+WHERE name IN ('Rau cải xanh','Thịt heo','Thịt bò','Cá tươi','Đậu hũ',
+               'Cà chua','Hành tây','Tỏi','Cà rốt','Dầu hào');
+
+-- RESTAURANT
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Phở bò'                  THEN 'Beef Pho'
+    WHEN 'Cơm tấm sườn'            THEN 'Broken Rice with Grilled Pork'
+    WHEN 'Bún bò Huế'              THEN 'Hue Spicy Beef Noodle'
+    WHEN 'Bánh mì thịt'            THEN 'Banh Mi Sandwich'
+    WHEN 'Gỏi cuốn'                THEN 'Fresh Spring Rolls'
+    WHEN 'Chả giò'                 THEN 'Fried Spring Rolls'
+    WHEN 'Cơm chiên dương châu'    THEN 'Yang Chow Fried Rice'
+    WHEN 'Lẩu thái hải sản'        THEN 'Thai Seafood Hot Pot'
+    WHEN 'Bún riêu cua'            THEN 'Crab Noodle Soup'
+    WHEN 'Hủ tiếu Nam Vang'        THEN 'Nam Vang Noodle Soup'
+    ELSE name_en END
+WHERE name IN ('Phở bò','Cơm tấm sườn','Bún bò Huế','Bánh mì thịt','Gỏi cuốn',
+               'Chả giò','Cơm chiên dương châu','Lẩu thái hải sản','Bún riêu cua','Hủ tiếu Nam Vang');
+
+-- COFFEE_SHOP
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Cà phê sữa đá'           THEN 'Iced Milk Coffee'
+    WHEN 'Bạc xỉu'                 THEN 'Vietnamese White Coffee'
+    WHEN 'Cà phê đen đá'           THEN 'Iced Black Coffee'
+    WHEN 'Trà sữa trân châu'       THEN 'Bubble Tea'
+    WHEN 'Americano'               THEN 'Americano'
+    WHEN 'Latte'                   THEN 'Latte'
+    WHEN 'Cappuccino'              THEN 'Cappuccino'
+    WHEN 'Nước ép cam'             THEN 'Orange Juice'
+    WHEN 'Sinh tố bơ'              THEN 'Avocado Smoothie'
+    WHEN 'Nước ép dứa'             THEN 'Pineapple Juice'
+    WHEN 'Bánh croissant'          THEN 'Croissant'
+    WHEN 'Sandwich'                THEN 'Sandwich'
+    WHEN 'Bánh tiramisu'           THEN 'Tiramisu Cake'
+    ELSE name_en END
+WHERE name IN ('Cà phê sữa đá','Bạc xỉu','Cà phê đen đá','Trà sữa trân châu','Americano',
+               'Latte','Cappuccino','Nước ép cam','Sinh tố bơ','Nước ép dứa',
+               'Bánh croissant','Sandwich','Bánh tiramisu');
+
+-- FASHION
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Áo thun basic'           THEN 'Basic T-Shirt'
+    WHEN 'Quần jean'               THEN 'Jeans'
+    WHEN 'Áo sơ mi'                THEN 'Dress Shirt'
+    WHEN 'Đầm nữ'                  THEN 'Women''s Dress'
+    WHEN 'Áo khoác'                THEN 'Jacket'
+    WHEN 'Quần short'              THEN 'Shorts'
+    WHEN 'Áo dài'                  THEN 'Ao Dai (Traditional Dress)'
+    WHEN 'Áo len'                  THEN 'Sweater'
+    WHEN 'Giày sneaker'            THEN 'Sneakers'
+    WHEN 'Dép lê'                  THEN 'Flip-flops'
+    WHEN 'Túi xách'                THEN 'Handbag'
+    WHEN 'Mũ lưỡi trai'           THEN 'Baseball Cap'
+    WHEN 'Tất vớ'                  THEN 'Socks'
+    WHEN 'Thắt lưng'               THEN 'Belt'
+    WHEN 'Kính mắt thời trang'     THEN 'Fashion Sunglasses'
+    ELSE name_en END
+WHERE name IN ('Áo thun basic','Quần jean','Áo sơ mi','Đầm nữ','Áo khoác','Quần short',
+               'Áo dài','Áo len','Giày sneaker','Dép lê','Túi xách','Mũ lưỡi trai',
+               'Tất vớ','Thắt lưng','Kính mắt thời trang');
+
+-- ELECTRONICS
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Điện thoại smartphone'   THEN 'Smartphone'
+    WHEN 'Laptop'                  THEN 'Laptop'
+    WHEN 'Máy tính bảng'           THEN 'Tablet'
+    WHEN 'Tai nghe bluetooth'      THEN 'Bluetooth Headphones'
+    WHEN 'Loa bluetooth'           THEN 'Bluetooth Speaker'
+    WHEN 'Đồng hồ thông minh'      THEN 'Smartwatch'
+    WHEN 'Pin sạc dự phòng'        THEN 'Power Bank'
+    WHEN 'Ốp lưng điện thoại'      THEN 'Phone Case'
+    WHEN 'Bàn phím không dây'      THEN 'Wireless Keyboard'
+    WHEN 'Chuột máy tính'          THEN 'Computer Mouse'
+    WHEN 'Màn hình máy tính'       THEN 'Computer Monitor'
+    WHEN 'Camera giám sát'         THEN 'Security Camera'
+    ELSE name_en END
+WHERE name IN ('Điện thoại smartphone','Laptop','Máy tính bảng','Tai nghe bluetooth',
+               'Loa bluetooth','Đồng hồ thông minh','Pin sạc dự phòng','Ốp lưng điện thoại',
+               'Bàn phím không dây','Chuột máy tính','Màn hình máy tính','Camera giám sát');
+
+-- BARBER_SHOP
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Cắt tóc nam'             THEN 'Men''s Haircut'
+    WHEN 'Cắt tóc nữ'              THEN 'Women''s Haircut'
+    WHEN 'Cắt tóc trẻ em'          THEN 'Children''s Haircut'
+    WHEN 'Nhuộm tóc'               THEN 'Hair Coloring'
+    WHEN 'Uốn tóc'                 THEN 'Hair Perm'
+    WHEN 'Duỗi tóc'                THEN 'Hair Straightening'
+    WHEN 'Gội đầu'                 THEN 'Hair Wash'
+    WHEN 'Cạo râu'                 THEN 'Shave'
+    WHEN 'Massage đầu'             THEN 'Head Massage'
+    WHEN 'Phục hồi tóc'            THEN 'Hair Treatment'
+    WHEN 'Tạo kiểu tóc'            THEN 'Hair Styling'
+    ELSE name_en END
+WHERE name IN ('Cắt tóc nam','Cắt tóc nữ','Cắt tóc trẻ em','Nhuộm tóc','Uốn tóc',
+               'Duỗi tóc','Gội đầu','Cạo râu','Massage đầu','Phục hồi tóc','Tạo kiểu tóc');
+
+-- PHARMACY
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Paracetamol 500mg'       THEN 'Paracetamol 500mg'
+    WHEN 'Vitamin C 1000mg'        THEN 'Vitamin C 1000mg'
+    WHEN 'Vitamin tổng hợp'        THEN 'Multivitamin'
+    WHEN 'Khẩu trang y tế'         THEN 'Medical Face Mask'
+    WHEN 'Nước muối sinh lý 0.9%'  THEN 'Saline Solution 0.9%'
+    WHEN 'Thuốc ho bổ phế'         THEN 'Cough Medicine'
+    WHEN 'Băng y tế'               THEN 'Medical Bandage'
+    WHEN 'Băng dán vết thương'     THEN 'Adhesive Bandage'
+    WHEN 'Dầu xoa nóng'            THEN 'Heating Rub'
+    WHEN 'Dầu khuynh diệp'         THEN 'Eucalyptus Oil'
+    WHEN 'Nhiệt kế điện tử'        THEN 'Digital Thermometer'
+    WHEN 'Máy đo huyết áp'         THEN 'Blood Pressure Monitor'
+    WHEN 'Bông y tế'               THEN 'Medical Cotton'
+    WHEN 'Cồn y tế 90°'            THEN 'Rubbing Alcohol 90°'
+    WHEN 'Thuốc nhỏ mắt'           THEN 'Eye Drops'
+    ELSE name_en END
+WHERE name IN ('Paracetamol 500mg','Vitamin C 1000mg','Vitamin tổng hợp','Khẩu trang y tế',
+               'Nước muối sinh lý 0.9%','Thuốc ho bổ phế','Băng y tế','Băng dán vết thương',
+               'Dầu xoa nóng','Dầu khuynh diệp','Nhiệt kế điện tử','Máy đo huyết áp',
+               'Bông y tế','Cồn y tế 90°','Thuốc nhỏ mắt');
+
+-- JEWELRY
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Nhẫn vàng 18K'           THEN '18K Gold Ring'
+    WHEN 'Nhẫn vàng 24K'           THEN '24K Gold Ring'
+    WHEN 'Nhẫn cưới vàng 18K'      THEN '18K Gold Wedding Ring'
+    WHEN 'Dây chuyền vàng 18K'     THEN '18K Gold Necklace'
+    WHEN 'Dây chuyền vàng 24K'     THEN '24K Gold Necklace'
+    WHEN 'Lắc tay vàng 18K'        THEN '18K Gold Bracelet'
+    WHEN 'Lắc chân vàng 18K'       THEN '18K Gold Anklet'
+    WHEN 'Bông tai vàng 18K'       THEN '18K Gold Earrings'
+    WHEN 'Mặt dây chuyền vàng'     THEN 'Gold Necklace Pendant'
+    WHEN 'Nhẫn bạc'                THEN 'Silver Ring'
+    WHEN 'Dây chuyền bạc'          THEN 'Silver Necklace'
+    ELSE name_en END
+WHERE name IN ('Nhẫn vàng 18K','Nhẫn vàng 24K','Nhẫn cưới vàng 18K','Dây chuyền vàng 18K',
+               'Dây chuyền vàng 24K','Lắc tay vàng 18K','Lắc chân vàng 18K','Bông tai vàng 18K',
+               'Mặt dây chuyền vàng','Nhẫn bạc','Dây chuyền bạc');
+
+-- PAWN_SHOP
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Điện thoại (cầm)'        THEN 'Smartphone (Pawn)'
+    WHEN 'Laptop (cầm)'            THEN 'Laptop (Pawn)'
+    WHEN 'Máy tính bảng (cầm)'     THEN 'Tablet (Pawn)'
+    WHEN 'Đồng hồ (cầm)'           THEN 'Watch (Pawn)'
+    WHEN 'Trang sức vàng (cầm)'    THEN 'Gold Jewelry (Pawn)'
+    WHEN 'Xe máy (cầm)'            THEN 'Motorbike (Pawn)'
+    WHEN 'Camera / Máy ảnh (cầm)'  THEN 'Camera (Pawn)'
+    WHEN 'Tivi (cầm)'              THEN 'Television (Pawn)'
+    WHEN 'Đồ gia dụng (cầm)'       THEN 'Home Appliance (Pawn)'
+    ELSE name_en END
+WHERE name IN ('Điện thoại (cầm)','Laptop (cầm)','Máy tính bảng (cầm)','Đồng hồ (cầm)',
+               'Trang sức vàng (cầm)','Xe máy (cầm)','Camera / Máy ảnh (cầm)',
+               'Tivi (cầm)','Đồ gia dụng (cầm)');
+
+-- OTHER
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Sản phẩm'                THEN 'Product'
+    WHEN 'Dịch vụ'                 THEN 'Service'
+    ELSE name_en END
+WHERE name IN ('Sản phẩm','Dịch vụ');
+
+-- NAIL_SHOP (V003 rows)
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Sơn màu thường (tay)'    THEN 'Regular Polish (Hands)'
+    WHEN 'Sơn màu thường (chân)'   THEN 'Regular Polish (Feet)'
+    WHEN 'Sơn French'              THEN 'French Polish'
+    WHEN 'Sơn gel (tay)'           THEN 'Gel Polish (Hands)'
+    WHEN 'Sơn gel (chân)'          THEN 'Gel Polish (Feet)'
+    WHEN 'Đắp bột acrylic'         THEN 'Acrylic Extensions'
+    WHEN 'Đắp gel builder'         THEN 'Gel Builder Extensions'
+    WHEN 'Tháo gel / Tháo bột'     THEN 'Gel / Acrylic Removal'
+    WHEN 'Vẽ nail'                 THEN 'Nail Art Design'
+    WHEN 'Nail art'                THEN 'Nail Art'
+    WHEN 'Đính đá nail'            THEN 'Nail Rhinestones'
+    WHEN 'Nail ombre'              THEN 'Ombre Nails'
+    WHEN 'Manicure'                THEN 'Manicure'
+    WHEN 'Dưỡng ẩm tay'           THEN 'Hand Moisturiser Treatment'
+    WHEN 'Pedicure'                THEN 'Pedicure'
+    WHEN 'Tẩy da chết chân'        THEN 'Foot Exfoliation'
+    WHEN 'Combo tay + chân'        THEN 'Hands + Feet Combo'
+    WHEN 'Combo gel tay + chân'    THEN 'Gel Hands + Feet Combo'
+    ELSE name_en END
+WHERE name IN ('Sơn màu thường (tay)','Sơn màu thường (chân)','Sơn French','Sơn gel (tay)',
+               'Sơn gel (chân)','Đắp bột acrylic','Đắp gel builder','Tháo gel / Tháo bột',
+               'Vẽ nail','Nail art','Đính đá nail','Nail ombre','Manicure','Dưỡng ẩm tay',
+               'Pedicure','Tẩy da chết chân','Combo tay + chân','Combo gel tay + chân');
+
+-- SPA_SHOP (V003 rows)
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Massage thư giãn 60p'         THEN 'Relaxation Massage 60min'
+    WHEN 'Massage thư giãn 90p'         THEN 'Relaxation Massage 90min'
+    WHEN 'Massage đầu & cổ'             THEN 'Head & Neck Massage'
+    WHEN 'Massage bàn chân'             THEN 'Foot Massage'
+    WHEN 'Massage đá nóng'              THEN 'Hot Stone Massage'
+    WHEN 'Massage tinh dầu'             THEN 'Aromatherapy Massage'
+    WHEN 'Chăm sóc da mặt cơ bản'      THEN 'Basic Facial'
+    WHEN 'Chăm sóc da mặt chuyên sâu'  THEN 'Advanced Facial'
+    WHEN 'Nặn mụn'                      THEN 'Acne Extraction'
+    WHEN 'Đắp mặt nạ dưỡng ẩm'         THEN 'Hydrating Face Mask'
+    WHEN 'Tẩy tế bào chết toàn thân'   THEN 'Full Body Exfoliation'
+    WHEN 'Ủ trắng toàn thân'           THEN 'Full Body Whitening Treatment'
+    WHEN 'Wax lông nách'               THEN 'Underarm Waxing'
+    WHEN 'Wax lông chân'               THEN 'Leg Waxing'
+    WHEN 'Wax bikini'                  THEN 'Bikini Waxing'
+    WHEN 'Trị nám, tàn nhang'          THEN 'Pigmentation & Freckle Treatment'
+    WHEN 'Trị mụn lưng'                THEN 'Back Acne Treatment'
+    WHEN 'Combo mặt + massage'         THEN 'Facial + Massage Combo'
+    WHEN 'Liệu trình 5 buổi'           THEN '5-Session Treatment Package'
+    ELSE name_en END
+WHERE name IN ('Massage thư giãn 60p','Massage thư giãn 90p','Massage đầu & cổ','Massage bàn chân',
+               'Massage đá nóng','Massage tinh dầu','Chăm sóc da mặt cơ bản','Chăm sóc da mặt chuyên sâu',
+               'Nặn mụn','Đắp mặt nạ dưỡng ẩm','Tẩy tế bào chết toàn thân','Ủ trắng toàn thân',
+               'Wax lông nách','Wax lông chân','Wax bikini','Trị nám, tàn nhang','Trị mụn lưng',
+               'Combo mặt + massage','Liệu trình 5 buổi');
+
+-- BARBER_SHOP_MEN (V007 rows)
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Cắt tóc thường (nam)'          THEN 'Regular Haircut (Men)'
+    WHEN 'Cắt Fade'                       THEN 'Fade Haircut'
+    WHEN 'Cắt Undercut'                   THEN 'Undercut'
+    WHEN 'Cắt tóc trẻ em (nam)'           THEN 'Boy''s Haircut'
+    WHEN 'Cạo râu thường'                 THEN 'Standard Shave'
+    WHEN 'Cạo râu + định hình râu'        THEN 'Shave + Beard Shaping'
+    WHEN 'Trim & tỉa râu'                 THEN 'Beard Trim & Tidy'
+    WHEN 'Gội đầu + massage đầu (nam)'    THEN 'Hair Wash + Head Massage (Men)'
+    WHEN 'Massage đầu cổ vai 20p'         THEN 'Head, Neck & Shoulder Massage 20min'
+    WHEN 'Tạo kiểu sáp / wax tóc'         THEN 'Hair Wax Styling'
+    WHEN 'Nhuộm tóc nam'                  THEN 'Men''s Hair Coloring'
+    WHEN 'Combo cắt + cạo râu'            THEN 'Haircut + Shave Combo'
+    WHEN 'Combo cắt + gội + massage đầu'  THEN 'Haircut + Wash + Head Massage Combo'
+    ELSE name_en END
+WHERE name IN ('Cắt tóc thường (nam)','Cắt Fade','Cắt Undercut','Cắt tóc trẻ em (nam)',
+               'Cạo râu thường','Cạo râu + định hình râu','Trim & tỉa râu',
+               'Gội đầu + massage đầu (nam)','Massage đầu cổ vai 20p','Tạo kiểu sáp / wax tóc',
+               'Nhuộm tóc nam','Combo cắt + cạo râu','Combo cắt + gội + massage đầu');
+
+-- HAIR_SALON (V007 rows)
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Cắt tóc nữ ngắn'               THEN 'Women''s Short Haircut'
+    WHEN 'Cắt tóc nữ dài'                THEN 'Women''s Long Haircut'
+    WHEN 'Cắt tỉa layer'                  THEN 'Layer Cut'
+    WHEN 'Nhuộm màu thời trang'           THEN 'Fashion Hair Coloring'
+    WHEN 'Nhuộm highlight / ombre'        THEN 'Highlight / Ombre Coloring'
+    WHEN 'Nhuộm phủ bạc'                  THEN 'Grey Coverage Coloring'
+    WHEN 'Uốn xoăn Hàn Quốc'             THEN 'Korean-style Perm'
+    WHEN 'Duỗi phồng / duỗi thẳng'       THEN 'Volume / Straightening Treatment'
+    WHEN 'Ép tóc Keratin'                 THEN 'Keratin Treatment'
+    WHEN 'Ủ phục hồi tóc hư tổn'          THEN 'Damaged Hair Repair Mask'
+    WHEN 'Gội đầu dưỡng + massage đầu'    THEN 'Nourishing Hair Wash + Head Massage'
+    WHEN 'Tạo kiểu đi tiệc / sự kiện'    THEN 'Event / Party Hairstyling'
+    WHEN 'Combo cắt + nhuộm tóc'          THEN 'Cut + Color Combo'
+    ELSE name_en END
+WHERE name IN ('Cắt tóc nữ ngắn','Cắt tóc nữ dài','Cắt tỉa layer','Nhuộm màu thời trang',
+               'Nhuộm highlight / ombre','Nhuộm phủ bạc','Uốn xoăn Hàn Quốc',
+               'Duỗi phồng / duỗi thẳng','Ép tóc Keratin','Ủ phục hồi tóc hư tổn',
+               'Gội đầu dưỡng + massage đầu','Tạo kiểu đi tiệc / sự kiện','Combo cắt + nhuộm tóc');
+
+-- LASH_PMU_STUDIO (V007 rows)
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Nối mi cơ bản'               THEN 'Classic Lash Extensions'
+    WHEN 'Nối mi volume'               THEN 'Volume Lash Extensions'
+    WHEN 'Nối mi mega volume'          THEN 'Mega Volume Lash Extensions'
+    WHEN 'Xăm mày tán bột / ombre'    THEN 'Powder Brow / Ombre Tattoo'
+    WHEN 'Xăm mày giả lông'           THEN 'Hair-stroke Brow Tattoo'
+    WHEN 'Xăm môi bóng / ombre'       THEN 'Glossy / Ombre Lip Tattoo'
+    WHEN 'Xăm mí mắt trên'            THEN 'Upper Eyeliner Tattoo'
+    WHEN 'Tháo mi'                    THEN 'Lash Removal'
+    WHEN 'Điều chỉnh / fill mi'       THEN 'Lash Fill / Adjustment'
+    WHEN 'Dưỡng phục hồi sau xăm'     THEN 'Post-Tattoo Recovery Care'
+    WHEN 'Combo nối mi + fill mi'     THEN 'Lash Extension + Fill Combo'
+    WHEN 'Combo mày + môi trọn gói'   THEN 'Brow + Lip Package'
+    ELSE name_en END
+WHERE name IN ('Nối mi cơ bản','Nối mi volume','Nối mi mega volume','Xăm mày tán bột / ombre',
+               'Xăm mày giả lông','Xăm môi bóng / ombre','Xăm mí mắt trên','Tháo mi',
+               'Điều chỉnh / fill mi','Dưỡng phục hồi sau xăm','Combo nối mi + fill mi',
+               'Combo mày + môi trọn gói');
+
+-- MASSAGE_SHOP (V007 rows)
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Massage thư giãn toàn thân 60p' THEN 'Full Body Relaxation Massage 60min'
+    WHEN 'Massage toàn thân 90p'           THEN 'Full Body Massage 90min'
+    WHEN 'Massage toàn thân 120p'          THEN 'Full Body Massage 120min'
+    WHEN 'Massage chân phản xạ 30p'        THEN 'Foot Reflexology 30min'
+    WHEN 'Massage chân phản xạ 60p'        THEN 'Foot Reflexology 60min'
+    WHEN 'Massage đầu vai gáy 30p'         THEN 'Head, Neck & Shoulder Massage 30min'
+    WHEN 'Massage lưng & cổ 30p'           THEN 'Back & Neck Massage 30min'
+    WHEN 'Xông hơi ướt'                   THEN 'Steam Bath'
+    WHEN 'Ngâm chân thảo dược'            THEN 'Herbal Foot Soak'
+    WHEN 'Combo massage + ngâm chân'      THEN 'Massage + Foot Soak Combo'
+    WHEN 'Combo toàn thân + xông hơi'     THEN 'Full Body Massage + Steam Combo'
+    ELSE name_en END
+WHERE name IN ('Massage thư giãn toàn thân 60p','Massage toàn thân 90p','Massage toàn thân 120p',
+               'Massage chân phản xạ 30p','Massage chân phản xạ 60p','Massage đầu vai gáy 30p',
+               'Massage lưng & cổ 30p','Xông hơi ướt','Ngâm chân thảo dược',
+               'Combo massage + ngâm chân','Combo toàn thân + xông hơi');
+
+-- BEAUTY_CLINIC (V007 rows)
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Nặn mụn an toàn tại thẩm mỹ viện' THEN 'Professional Acne Extraction'
+    WHEN 'Trị mụn bằng laser'                THEN 'Laser Acne Treatment'
+    WHEN 'Laser trẻ hóa da'                  THEN 'Laser Skin Rejuvenation'
+    WHEN 'RF nâng cơ / căng da'              THEN 'RF Skin Tightening / Lifting'
+    WHEN 'HIFU nâng cơ không phẫu thuật'     THEN 'HIFU Non-surgical Facelift'
+    WHEN 'Triệt lông laser (1 vùng)'         THEN 'Laser Hair Removal (1 area)'
+    WHEN 'Combo liệu trình da 5 buổi'        THEN '5-Session Skin Treatment Package'
+    ELSE name_en END
+WHERE name IN ('Nặn mụn an toàn tại thẩm mỹ viện','Trị mụn bằng laser','Laser trẻ hóa da',
+               'RF nâng cơ / căng da','HIFU nâng cơ không phẫu thuật',
+               'Triệt lông laser (1 vùng)','Combo liệu trình da 5 buổi');
+
+-- MAKEUP_STUDIO (V007 rows)
+UPDATE product_suggestions SET name_en = CASE name
+    WHEN 'Trang điểm nhẹ nhàng hàng ngày' THEN 'Everyday Natural Makeup'
+    WHEN 'Trang điểm Hàn Quốc (K-makeup)' THEN 'K-Beauty Makeup'
+    WHEN 'Trang điểm đi tiệc ban ngày'    THEN 'Daytime Party Makeup'
+    WHEN 'Trang điểm dự tiệc tối / event' THEN 'Evening / Event Makeup'
+    WHEN 'Trang điểm tốt nghiệp'          THEN 'Graduation Makeup'
+    WHEN 'Trang điểm chụp ảnh'            THEN 'Photo Shoot Makeup'
+    WHEN 'Trang điểm cô dâu thử (trial)'  THEN 'Bridal Trial Makeup'
+    WHEN 'Trang điểm cô dâu ngày cưới'   THEN 'Wedding Day Bridal Makeup'
+    WHEN 'Trang điểm phụ dâu / phù rể'   THEN 'Bridesmaid / Groomsman Makeup'
+    WHEN 'Búi tóc đơn giản'               THEN 'Simple Hair Updo'
+    WHEN 'Tạo kiểu tóc đi tiệc / sự kiện' THEN 'Event / Party Hairstyling'
+    WHEN 'Combo trang điểm + tóc tiệc'   THEN 'Party Makeup + Hair Combo'
+    WHEN 'Gói cưới cô dâu cơ bản'        THEN 'Basic Bridal Wedding Package'
+    ELSE name_en END
+WHERE name IN ('Trang điểm nhẹ nhàng hàng ngày','Trang điểm Hàn Quốc (K-makeup)',
+               'Trang điểm đi tiệc ban ngày','Trang điểm dự tiệc tối / event',
+               'Trang điểm tốt nghiệp','Trang điểm chụp ảnh','Trang điểm cô dâu thử (trial)',
+               'Trang điểm cô dâu ngày cưới','Trang điểm phụ dâu / phù rể','Búi tóc đơn giản',
+               'Tạo kiểu tóc đi tiệc / sự kiện','Combo trang điểm + tóc tiệc','Gói cưới cô dâu cơ bản');
+
+-- expense_suggestions: English translations
+UPDATE expense_suggestions SET name_en = CASE name
+    WHEN 'Tiền thuê mặt bằng'            THEN 'Rent'
+    WHEN 'Tiền điện'                      THEN 'Electricity'
+    WHEN 'Tiền nước'                      THEN 'Water'
+    WHEN 'Internet / WiFi'               THEN 'Internet / WiFi'
+    WHEN 'Tiền điện thoại'               THEN 'Phone Bill'
+    WHEN 'Lương nhân viên'               THEN 'Staff Wages'
+    WHEN 'Vệ sinh cửa hàng'              THEN 'Shop Cleaning'
+    WHEN 'Sửa chữa / bảo trì'           THEN 'Repair / Maintenance'
+    WHEN 'Phí phần mềm quản lý'          THEN 'Management Software Fee'
+    WHEN 'Chi phí quảng cáo / fanpage'   THEN 'Advertising / Social Media'
+    WHEN 'Phí ngân hàng / chuyển khoản'  THEN 'Bank / Transfer Fees'
+    WHEN 'Bảo hiểm cửa hàng'             THEN 'Shop Insurance'
+    WHEN 'Thuế môn bài / phí kinh doanh' THEN 'Business License Tax'
+    WHEN 'Camera / thiết bị an ninh'     THEN 'Security Camera / Equipment'
+    WHEN 'In ấn / văn phòng phẩm'        THEN 'Printing / Stationery'
+    WHEN 'Trang trí / nội thất cửa hàng' THEN 'Shop Decoration / Furniture'
+    WHEN 'Đồng phục nhân viên'           THEN 'Staff Uniforms'
+    WHEN 'Ăn uống nhân viên'             THEN 'Staff Meals'
+    WHEN 'Chi phí giao hàng'             THEN 'Delivery Costs'
+    WHEN 'Bao bì / túi đựng'             THEN 'Packaging / Bags'
+    ELSE name_en END
+WHERE name IN ('Tiền thuê mặt bằng','Tiền điện','Tiền nước','Internet / WiFi','Tiền điện thoại',
+               'Lương nhân viên','Vệ sinh cửa hàng','Sửa chữa / bảo trì','Phí phần mềm quản lý',
+               'Chi phí quảng cáo / fanpage','Phí ngân hàng / chuyển khoản','Bảo hiểm cửa hàng',
+               'Thuế môn bài / phí kinh doanh','Camera / thiết bị an ninh','In ấn / văn phòng phẩm',
+               'Trang trí / nội thất cửa hàng','Đồng phục nhân viên','Ăn uống nhân viên',
+               'Chi phí giao hàng','Bao bì / túi đựng');
+
+UPDATE expense_suggestions SET name_en = CASE name
+    WHEN 'Nguyên liệu / thực phẩm'                  THEN 'Ingredients / Food Supplies'
+    WHEN 'Gas / nhiên liệu nấu ăn'                   THEN 'Gas / Cooking Fuel'
+    WHEN 'Dụng cụ bếp / nhà hàng'                   THEN 'Kitchen Equipment'
+    WHEN 'Nguyên liệu cà phê / trà'                  THEN 'Coffee / Tea Ingredients'
+    WHEN 'Ly / cốc / đồ pha chế'                    THEN 'Cups / Glasses / Barware'
+    WHEN 'Phí hoa hồng ứng dụng giao đồ ăn'         THEN 'Food Delivery App Commission'
+    WHEN 'Tủ lạnh bảo quản thuốc'                   THEN 'Medicine Refrigerator'
+    WHEN 'Phí kiểm định / giấy phép dược phẩm'      THEN 'Pharmacy License / Inspection Fee'
+    WHEN 'Bao bì đóng gói thuốc'                    THEN 'Medicine Packaging'
+    WHEN 'Phí sàn thương mại điện tử'               THEN 'E-commerce Platform Fee'
+    WHEN 'Móc treo / giá trưng bày'                 THEN 'Display Racks / Hangers'
+    WHEN 'Bao bì / túi thời trang'                  THEN 'Fashion Bags / Packaging'
+    WHEN 'Linh kiện / phụ kiện thay thế'            THEN 'Replacement Parts / Accessories'
+    WHEN 'Chi phí bảo hành / dịch vụ sau bán'       THEN 'Warranty / After-sales Service Cost'
+    WHEN 'Chi phí giám định hàng hóa'               THEN 'Product Authentication Cost'
+    WHEN 'Két sắt / thiết bị bảo mật'               THEN 'Safe / Security Equipment'
+    WHEN 'Phí bảo hiểm hàng quý giá'                THEN 'Valuable Goods Insurance'
+    WHEN 'Vật tư dịch vụ (dao, kéo, hóa chất)'     THEN 'Service Supplies (razors, scissors, chemicals)'
+    WHEN 'Khăn / đồ vệ sinh cá nhân'                THEN 'Towels / Personal Hygiene Supplies'
+    WHEN 'Bảo trì / thuê ghế cắt tóc'               THEN 'Barber Chair Maintenance / Rental'
+    WHEN 'Phí kiểm kho / kiểm đếm hàng'             THEN 'Stock Count / Inventory Fee'
+    WHEN 'Túi nilon / bao bì siêu thị'              THEN 'Plastic Bags / Supermarket Packaging'
+    WHEN 'Sơn / gel / bột nail'                     THEN 'Nail Polish / Gel / Powder'
+    WHEN 'Đèn UV / máy khoan nail'                  THEN 'UV Lamp / Nail Drill'
+    WHEN 'Khăn / bông tẩy trang / phụ kiện'         THEN 'Towels / Cotton Pads / Accessories'
+    WHEN 'Dầu massage / tinh dầu aromatherapy'       THEN 'Massage Oil / Aromatherapy Essential Oil'
+    WHEN 'Kem dưỡng / mặt nạ / vật tư spa'          THEN 'Moisturiser / Mask / Spa Supplies'
+    WHEN 'Khăn / đồ vải spa'                        THEN 'Towels / Spa Linen'
+    WHEN 'Máy massage / thiết bị spa'                THEN 'Massage Machine / Spa Equipment'
+    WHEN 'Vật tư cắt tóc (tông đơ, dao, kéo)'       THEN 'Barbering Supplies (clippers, razors, scissors)'
+    WHEN 'Dầu cạo râu / kem cạo râu'                THEN 'Shaving Oil / Shaving Cream'
+    WHEN 'Khăn bông / khăn lạnh phục vụ'            THEN 'Cotton Towels / Cold Towels'
+    WHEN 'Bảo trì ghế cắt / thiết bị salon'         THEN 'Barber Chair / Equipment Maintenance'
+    WHEN 'Thuốc nhuộm / thuốc uốn / hóa chất tóc'  THEN 'Hair Dye / Perm / Hair Chemicals'
+    WHEN 'Dầu gội / dầu xả chuyên nghiệp'           THEN 'Professional Shampoo / Conditioner'
+    WHEN 'Khăn bông / áo choàng khách'              THEN 'Cotton Towels / Client Gowns'
+    WHEN 'Bảo trì máy sấy / máy uốn / máy duỗi'    THEN 'Hair Dryer / Curler / Straightener Maintenance'
+    WHEN 'Chỉ mi / keo mi / dung môi tháo keo'      THEN 'Lash Thread / Adhesive / Remover'
+    WHEN 'Mực xăm / kim xăm tiêu hao'               THEN 'PMU Ink / Needles'
+    WHEN 'Khăn vô trùng / vật tư tiệt khuẩn'        THEN 'Sterile Towels / Sterilisation Supplies'
+    WHEN 'Bảo trì giường / ghế kỹ thuật viên'       THEN 'Technician Bed / Chair Maintenance'
+    WHEN 'Tinh dầu / dầu massage chuyên dụng'       THEN 'Essential Oil / Professional Massage Oil'
+    WHEN 'Khăn bông / đồ vải massage'               THEN 'Cotton Towels / Massage Linen'
+    WHEN 'Bảo trì giường massage'                   THEN 'Massage Bed Maintenance'
+    WHEN 'Đá bazan / thiết bị nhiệt massage'        THEN 'Basalt Stones / Thermal Massage Equipment'
+    WHEN 'Hóa chất / serum / ampoule điều trị'      THEN 'Treatment Chemicals / Serum / Ampoule'
+    WHEN 'Kim vi kim / đầu mũi khoan tiêu hao'      THEN 'Microneedles / Drill Tips'
+    WHEN 'Khăn vô trùng / vật tư y tế 1 lần'        THEN 'Sterile Towels / Single-use Medical Supplies'
+    WHEN 'Bảo trì thiết bị laser / RF / HIFU'       THEN 'Laser / RF / HIFU Equipment Maintenance'
+    WHEN 'Phí kiểm định thiết bị thẩm mỹ'           THEN 'Aesthetic Equipment Inspection Fee'
+    WHEN 'Mỹ phẩm / son / phấn / kem nền'           THEN 'Cosmetics / Lipstick / Powder / Foundation'
+    WHEN 'Cọ makeup / dụng cụ trang điểm'           THEN 'Makeup Brushes / Tools'
+    WHEN 'Đèn ring light / ghế trang điểm'          THEN 'Ring Light / Makeup Chair'
+    WHEN 'Áo choàng / khăn phục vụ khách'           THEN 'Client Gown / Towels'
+    ELSE name_en END
+WHERE name_en IS NULL;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V009__add_table_service.sql
+-- ════════════════════════════════════════════════════════════
+
+-- TABLE_SERVICE feature (id=202601039)
+INSERT INTO features (id, name, display_name, description, active, deleted)
+VALUES (202601039, 'TABLE_SERVICE', 'Quản Lý Bàn', 'Theo dõi trạng thái bàn và gọi món theo bàn cho quán ăn / quán nhậu', TRUE, FALSE)
+ON CONFLICT (id) DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('features', 'id'), 202601039, true);
+
+CREATE TABLE IF NOT EXISTS shop_table (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    tenant_id        VARCHAR(50)  NOT NULL,
+    table_number     VARCHAR(20)  NOT NULL,
+    capacity         INT          NOT NULL DEFAULT 4,
+    status           VARCHAR(20)  NOT NULL DEFAULT 'AVAILABLE',
+    current_order_id BIGINT       REFERENCES orders(id) ON DELETE SET NULL,
+    location         VARCHAR(50),
+    display_order    INT          NOT NULL DEFAULT 0,
+    deleted          BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at       TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE shop_table ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shop_table FORCE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'shop_table' AND policyname = 'shop_table_rls'
+    ) THEN
+        CREATE POLICY shop_table_rls ON shop_table
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_shop_table_tenant
+    ON shop_table (tenant_id, display_order);
+
+CREATE INDEX IF NOT EXISTS idx_shop_table_order
+    ON shop_table (current_order_id)
+    WHERE current_order_id IS NOT NULL;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V010__add_pub_product_suggestions.sql
+-- ════════════════════════════════════════════════════════════
+
+INSERT INTO product_suggestions
+    (name, name_en, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, category_name, display_order)
+VALUES
+-- ── Shared pub beverages ──────────────────────────────────────────────────
+('Bia Saigon Special',   'Saigon Special Beer',    '🍺', 20000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Bia & Rượu',        1),
+('Bia Tiger Crystal',    'Tiger Crystal Beer',     '🍺', 22000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Bia & Rượu',        2),
+('Bia Heineken',         'Heineken Beer',          '🍺', 25000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Bia & Rượu',        3),
+('Bia 333',              '333 Beer',               '🍺', 18000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Bia & Rượu',        4),
+('Két bia Saigon',       'Case of Saigon Beer',    '🍺', 400000, 'Két',  'BEVERAGE', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Bia & Rượu',        5),
+('Rượu đế / rượu gạo',  'Rice Wine',              '🥃', 50000,  'Chai', 'BEVERAGE', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Bia & Rượu',        6),
+('Nước ngọt (lon)',      'Soft Drink (can)',       '🥤', 12000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Bia & Rượu',        7),
+('Nước suối',            'Water',                  '💧', 5000,   'Chai', 'BEVERAGE', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Bia & Rượu',        8),
+
+-- ── General pub snacks / mồi ─────────────────────────────────────────────
+('Đậu phộng rang muối',  'Salted Roasted Peanuts', '🥜', 30000,  'Đĩa', 'FOOD', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Đồ nhậu',            9),
+('Khô mực nướng',        'Grilled Dried Squid',    '🦑', 80000,  'Đĩa', 'FOOD', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Đồ nhậu',            10),
+('Hột vịt lộn',          'Balut Eggs',             '🥚', 15000,  'Trứng','FOOD', FALSE, ARRAY['PUB','PUB_SEAFOOD','PUB_GOAT','PUB_BEEF'], 'Đồ nhậu',            11),
+('Gà nướng muối ớt',     'Salt & Chili Grilled Chicken', '🍗', 180000, 'Con', 'FOOD', FALSE, ARRAY['PUB'], 'Đồ nhậu',             12),
+
+-- ── PUB_SEAFOOD — hải sản ────────────────────────────────────────────────
+('Tôm sú nướng muối ớt', 'Grilled Tiger Prawns',   '🦐', 250000, 'Kg',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Hải sản tươi sống',  1),
+('Cua rang muối',         'Salt & Pepper Crab',     '🦀', 350000, 'Con', 'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Hải sản tươi sống',  2),
+('Mực chiên giòn',        'Crispy Fried Squid',     '🦑', 180000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Hải sản tươi sống',  3),
+('Nghêu hấp sả',          'Steamed Clams with Lemongrass', '🐚', 120000, 'Kg', 'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Hải sản tươi sống', 4),
+('Bạch tuộc nướng',       'Grilled Octopus',        '🐙', 220000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Hải sản tươi sống',  5),
+('Cá lóc nướng trui',     'Grilled Snakehead Fish', '🐟', 200000, 'Con', 'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Hải sản tươi sống',  6),
+('Ghẹ hấp bia',           'Beer-steamed Blue Crab', '🦀', 280000, 'Con', 'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Hải sản tươi sống',  7),
+('Lẩu hải sản thập cẩm',  'Mixed Seafood Hot Pot',  '🫕', 350000, 'Nồi', 'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Lẩu hải sản',        8),
+('Lẩu tôm cua',           'Prawn & Crab Hot Pot',   '🫕', 420000, 'Nồi', 'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 'Lẩu hải sản',        9),
+
+-- ── PUB_GOAT — thịt dê ───────────────────────────────────────────────────
+('Thịt dê xào lăn',      'Sautéed Goat with Lemongrass', '🐐', 200000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_GOAT'], 'Thịt dê',           1),
+('Dê nướng nguyên con',  'Whole Roasted Goat',     '🐐', 1500000,'Con', 'FOOD', FALSE, ARRAY['PUB_GOAT'], 'Thịt dê',              2),
+('Dê nướng bếp than',    'Charcoal Grilled Goat',  '🔥', 250000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_GOAT'], 'Thịt dê',              3),
+('Lẩu dê',               'Goat Hot Pot',           '🫕', 350000, 'Nồi', 'FOOD', FALSE, ARRAY['PUB_GOAT'], 'Thịt dê',              4),
+('Tiết canh dê',         'Goat Blood Pudding',     '🍲', 80000,  'Bát', 'FOOD', FALSE, ARRAY['PUB_GOAT'], 'Thịt dê',              5),
+('Dê hấp gừng',          'Steamed Goat with Ginger','🐐', 220000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_GOAT'], 'Thịt dê',             6),
+('Dồi dê nướng',         'Grilled Goat Sausage',   '🌭', 150000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_GOAT'], 'Thịt dê',              7),
+('Dê sốt vang',          'Goat in Red Wine Sauce', '🍷', 200000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_GOAT'], 'Thịt dê',              8),
+
+-- ── PUB_BEEF — thịt bò ───────────────────────────────────────────────────
+('Bò nhúng dấm',         'Beef Dipped in Vinegar', '🥢', 280000, 'Phần','FOOD', FALSE, ARRAY['PUB_BEEF'], 'Thịt bò',              1),
+('Bò nướng ngũ vị',      'Five-Spice Grilled Beef','🔥', 250000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_BEEF'], 'Thịt bò',              2),
+('Lẩu bò',               'Beef Hot Pot',           '🫕', 320000, 'Nồi', 'FOOD', FALSE, ARRAY['PUB_BEEF'], 'Thịt bò',              3),
+('Bắp bò kho gừng',      'Braised Beef with Ginger','🍲', 180000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_BEEF'], 'Thịt bò',             4),
+('Gân bò hầm',           'Braised Beef Tendon',    '🍖', 150000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_BEEF'], 'Thịt bò',              5),
+('Bò tái chanh',         'Rare Beef with Lime',    '🍋', 170000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_BEEF'], 'Thịt bò',              6),
+('Bò nướng lá lốt',      'Beef Wrapped in Betel Leaf','🌿', 180000, 'Đĩa', 'FOOD', FALSE, ARRAY['PUB_BEEF'], 'Thịt bò',            7),
+('Bò kho bánh mì',       'Beef Stew with Bread',   '🥖', 120000, 'Bát', 'FOOD', FALSE, ARRAY['PUB_BEEF'], 'Thịt bò',              8)
+ON CONFLICT (name) DO NOTHING;
+
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V002: Add soft delete columns to salary tables
+-- ══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE salary
+    ADD COLUMN IF NOT EXISTS deleted    BOOLEAN   NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL;
+
+ALTER TABLE salary_advance
+    ADD COLUMN IF NOT EXISTS deleted    BOOLEAN   NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V003: Add description and logo_url to shop_info
+-- ══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE shop_info
+    ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS logo_url    VARCHAR(500) DEFAULT NULL;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V004: Add walk_in flag to customers
+-- ══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS walk_in BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V005: Create default_expense table
+-- ══════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS default_expense (
+    id            BIGSERIAL      PRIMARY KEY,
+    tenant_id     VARCHAR(100)   NOT NULL,
+    description   VARCHAR(500)   NOT NULL,
+    amount        DECIMAL(20,0)  NOT NULL DEFAULT 0,
+    category      VARCHAR(30)    NOT NULL DEFAULT 'OTHER',
+    payment_day   SMALLINT       DEFAULT NULL CHECK (payment_day BETWEEN 1 AND 31),
+    display_order INT            NOT NULL DEFAULT 0,
+    created_at    TIMESTAMP      NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMP      DEFAULT NOW(),
+    deleted       BOOLEAN        NOT NULL DEFAULT FALSE,
+    deleted_at    TIMESTAMP      DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_default_expense_tenant ON default_expense (tenant_id);
+
+ALTER TABLE default_expense ENABLE ROW LEVEL SECURITY;
+ALTER TABLE default_expense FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON default_expense
+    USING (tenant_id = current_setting('app.current_tenant', TRUE));
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V006: Add nick_name to employees, make position nullable
+-- ══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE employees
+    ADD COLUMN IF NOT EXISTS nick_name VARCHAR(100);
+
+ALTER TABLE employees
+    ALTER COLUMN position DROP NOT NULL;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V007: Trim nickname length to VARCHAR(20)
+-- ══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE users
+    ALTER COLUMN nickname TYPE VARCHAR(20);
+
+ALTER TABLE employees
+    ALTER COLUMN nick_name TYPE VARCHAR(20);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V009: Add monthly order limit to tenants
+-- ══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS max_orders_per_month INT DEFAULT NULL;
+
+UPDATE tenants SET max_orders_per_month = 1000
+WHERE subscription_type IN ('TRIAL', 'STARTER') OR subscription_type IS NULL;
+
+UPDATE tenants SET max_orders_per_month = 5000
+WHERE subscription_type = 'BASIC';
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V010: Make expiration_date NOT NULL with default 1 year
+-- ══════════════════════════════════════════════════════════════════════════════
+UPDATE tenants SET expiration_date = CURRENT_DATE + INTERVAL '1 year' WHERE expiration_date IS NULL;
+
+ALTER TABLE tenants ALTER COLUMN expiration_date SET NOT NULL;
+ALTER TABLE tenants ALTER COLUMN expiration_date SET DEFAULT (CURRENT_DATE + INTERVAL '1 year');
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Merged from V008: Expand product_suggestions table
+-- ══════════════════════════════════════════════════════════════════════════════
+-- ============================================================
+-- V008: Expand product_suggestions table
+-- - Add duration_minutes column
+-- - Fix BARBER_SHOP entries (prices + duration + product_type_code)
+-- - Insert missing BARBER_SHOP products
+-- - Insert all products from every tenant DML file
+-- ============================================================
+
+-- ── Step A: Add duration_minutes column ──────────────────────
+ALTER TABLE product_suggestions ADD COLUMN IF NOT EXISTS duration_minutes INT NOT NULL DEFAULT 0;
+
+-- ── Step B: Fix existing BARBER_SHOP entries ─────────────────
+-- Update product_type_code from 'BEAUTY' to 'SERVICE' and fix prices + duration
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 80000,
+    duration_minutes  = 30
+WHERE name = 'Cắt tóc nam'    AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 120000,
+    duration_minutes  = 45
+WHERE name = 'Cắt tóc nữ'    AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 60000,
+    duration_minutes  = 20
+WHERE name = 'Cắt tóc trẻ em' AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 400000,
+    duration_minutes  = 90
+WHERE name = 'Nhuộm tóc'      AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 500000,
+    duration_minutes  = 120
+WHERE name = 'Uốn tóc'        AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 500000,
+    duration_minutes  = 120
+WHERE name = 'Duỗi tóc'       AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 80000,
+    duration_minutes  = 30
+WHERE name = 'Gội đầu'        AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 50000,
+    duration_minutes  = 15
+WHERE name = 'Cạo râu'        AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 100000,
+    duration_minutes  = 30
+WHERE name = 'Massage đầu'    AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 200000,
+    duration_minutes  = 60
+WHERE name = 'Phục hồi tóc'   AND 'BARBER_SHOP' = ANY(shop_types);
+
+UPDATE product_suggestions SET
+    product_type_code = 'SERVICE',
+    default_price     = 100000,
+    duration_minutes  = 30
+WHERE name = 'Tạo kiểu tóc'   AND 'BARBER_SHOP' = ANY(shop_types);
+
+-- ── Step C: Insert missing BARBER_SHOP products ───────────────
+-- (entries not already in product_suggestions from barber_shop.sql)
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Cắt + gội đầu nam',            '💇', 100000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 121, 'Cắt tóc nam',       45),
+('Cắt Fade / Undercut',           '💇', 150000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 122, 'Cắt tóc nam',       60),
+('Cắt + gội đầu nữ',             '💇', 150000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 123, 'Cắt tóc nữ',        60),
+('Cắt layer / Cắt tỉa nữ',       '💇', 150000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 124, 'Cắt tóc nữ',        60),
+('Nhuộm highlight',               '💈', 600000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 125, 'Nhuộm & Uốn',      120),
+('Ép tóc Keratin',                '💈', 800000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 126, 'Nhuộm & Uốn',      180),
+('Tỉa râu + tạo hình',           '🪒', 80000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 127, 'Chăm sóc râu',      30),
+('Cạo râu nóng truyền thống',     '🪒', 70000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 128, 'Chăm sóc râu',      20),
+('Gội + massage đầu',             '💆', 130000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 129, 'Gội đầu & Massage', 45),
+('Hấp dầu phục hồi tóc',         '💇', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 130, 'Gội đầu & Massage', 60),
+('Tạo kiểu đặc biệt',            '💇', 250000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 131, 'Tạo kiểu & Combo',  60),
+('Combo cắt + cạo râu (barber)',  '💈', 120000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 132, 'Tạo kiểu & Combo',  45),
+('Combo đầy đủ (barber)',         '💈', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 133, 'Tạo kiểu & Combo',  90),
+('Gói chăm sóc tóc (barber)',    '💈', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 134, 'Tạo kiểu & Combo', 150),
+('Combo trẻ em (barber)',         '👦', 80000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP'], 135, 'Tạo kiểu & Combo',  30)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ── Step D: All other shop types ──────────────────────────────
+
+-- ─ BARBER_SHOP_MEN: update existing + add new entries (display_order 400+) ─
+-- Existing entries from V007 already have 400-441; update their duration
+UPDATE product_suggestions SET duration_minutes = 25 WHERE name = 'Cắt tóc thường (nam)';
+UPDATE product_suggestions SET duration_minutes = 45 WHERE name = 'Cắt Fade';
+UPDATE product_suggestions SET duration_minutes = 45 WHERE name = 'Cắt Undercut';
+UPDATE product_suggestions SET duration_minutes = 20 WHERE name = 'Cắt tóc trẻ em (nam)';
+UPDATE product_suggestions SET duration_minutes = 15 WHERE name = 'Cạo râu thường';
+UPDATE product_suggestions SET duration_minutes = 25 WHERE name = 'Cạo râu + định hình râu';
+UPDATE product_suggestions SET duration_minutes = 20 WHERE name = 'Trim & tỉa râu';
+UPDATE product_suggestions SET duration_minutes = 25 WHERE name = 'Gội đầu + massage đầu (nam)';
+UPDATE product_suggestions SET duration_minutes = 20 WHERE name = 'Massage đầu cổ vai 20p';
+UPDATE product_suggestions SET duration_minutes = 15 WHERE name = 'Tạo kiểu sáp / wax tóc';
+UPDATE product_suggestions SET duration_minutes = 60 WHERE name = 'Nhuộm tóc nam';
+UPDATE product_suggestions SET duration_minutes = 40 WHERE name = 'Combo cắt + cạo râu';
+UPDATE product_suggestions SET duration_minutes = 60 WHERE name = 'Combo cắt + gội + massage đầu';
+
+-- Missing barber_shop_men entries
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Cắt Buzz Cut',                          '💇', 70000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 404, 'Cắt tóc',              20),
+('Cắt kỹ thuật cao (Textured/Taper)',      '💇', 180000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 405, 'Cắt tóc',              60),
+('Cạo râu nóng truyền thống (men)',        '🪒', 80000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 413, 'Cạo & Chăm sóc râu',  25),
+('Chăm sóc râu cao cấp',                  '🪒', 120000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 414, 'Cạo & Chăm sóc râu',  40),
+('Gội đầu dưỡng tóc (nam)',               '💆', 70000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 422, 'Gội đầu & Massage',    25),
+('Combo Full Barber',                      '💈', 280000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 442, 'Combo',                90)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ HAIR_SALON: update durations for existing + add missing entries ─
+UPDATE product_suggestions SET duration_minutes = 45 WHERE name = 'Cắt tóc nữ ngắn';
+UPDATE product_suggestions SET duration_minutes = 60 WHERE name = 'Cắt tóc nữ dài';
+UPDATE product_suggestions SET duration_minutes = 60 WHERE name = 'Cắt tỉa layer';
+UPDATE product_suggestions SET duration_minutes = 90 WHERE name = 'Nhuộm màu thời trang';
+UPDATE product_suggestions SET duration_minutes = 150 WHERE name = 'Nhuộm highlight / ombre';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Nhuộm phủ bạc';
+UPDATE product_suggestions SET duration_minutes = 120 WHERE name = 'Uốn xoăn Hàn Quốc';
+UPDATE product_suggestions SET duration_minutes = 150 WHERE name = 'Duỗi phồng / duỗi thẳng';
+UPDATE product_suggestions SET duration_minutes = 180 WHERE name = 'Ép tóc Keratin';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Ủ phục hồi tóc hư tổn';
+UPDATE product_suggestions SET duration_minutes = 40  WHERE name = 'Gội đầu dưỡng + massage đầu';
+UPDATE product_suggestions SET duration_minutes = 45  WHERE name = 'Tạo kiểu đi tiệc / sự kiện';
+UPDATE product_suggestions SET duration_minutes = 90  WHERE name = 'Combo cắt + nhuộm tóc';
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Cắt tóc nam / unisex',              '✂️', 80000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 453, 'Cắt tóc',           30),
+('Tỉa tóc & chỉnh đuôi',             '✂️', 80000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 454, 'Cắt tóc',           30),
+('Nhuộm màu toàn bộ (tóc dài)',       '🎨', 600000, 'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 463, 'Nhuộm tóc',        120),
+('Tẩy tóc',                           '🎨', 400000, 'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 464, 'Nhuộm tóc',         60),
+('Uốn xoăn tóc dài',                  '💫', 600000, 'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 473, 'Uốn & Duỗi',       150),
+('Uốn phồng chân tóc',                '💫', 500000, 'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 474, 'Uốn & Duỗi',       120),
+('Hấp dầu Collagen',                  '🌿', 300000, 'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 481, 'Chăm sóc tóc',      75),
+('Cắt tỉa tóc hư tơi',               '✂️', 80000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 482, 'Chăm sóc tóc',      20),
+('Gội đầu đơn (salon)',               '💆', 60000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 491, 'Gội đầu & Massage', 25),
+('Gội đầu + xả dưỡng',               '💆', 80000,  'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 492, 'Gội đầu & Massage', 35),
+('Combo Cắt + Gội + Sấy',             '💈', 200000, 'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 502, 'Tạo kiểu & Combo',  75),
+('Combo Cắt + Hấp dầu (salon)',       '💈', 300000, 'Lần', 'SERVICE', FALSE, ARRAY['HAIR_SALON'], 503, 'Tạo kiểu & Combo',  90)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ LASH_PMU_STUDIO: update durations for existing + add missing ─
+UPDATE product_suggestions SET duration_minutes = 90  WHERE name = 'Nối mi cơ bản';
+UPDATE product_suggestions SET duration_minutes = 120 WHERE name = 'Nối mi volume';
+UPDATE product_suggestions SET duration_minutes = 150 WHERE name = 'Nối mi mega volume';
+UPDATE product_suggestions SET duration_minutes = 120 WHERE name = 'Xăm mày tán bột / ombre';
+UPDATE product_suggestions SET duration_minutes = 150 WHERE name = 'Xăm mày giả lông';
+UPDATE product_suggestions SET duration_minutes = 150 WHERE name = 'Xăm môi bóng / ombre';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Xăm mí mắt trên';
+UPDATE product_suggestions SET duration_minutes = 30  WHERE name = 'Tháo mi';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Điều chỉnh / fill mi';
+UPDATE product_suggestions SET duration_minutes = 30  WHERE name = 'Dưỡng phục hồi sau xăm';
+UPDATE product_suggestions SET duration_minutes = 120 WHERE name = 'Combo nối mi + fill mi';
+UPDATE product_suggestions SET duration_minutes = 240 WHERE name = 'Combo mày + môi trọn gói';
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Nối mi Hybrid',                     '👁', 600000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 513, 'Nối mi',          120),
+('Nối mi Wispy',                      '👁', 650000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 514, 'Nối mi',          130),
+('Nối mi Cat-eye',                    '👁', 550000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 515, 'Nối mi',          110),
+('Xăm mày ngang cơ bản',             '✏', 800000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 522, 'Xăm mày',          90),
+('Xăm mày lông tơ Nano',             '✏', 2000000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 523, 'Xăm mày',         150),
+('Điều chỉnh / Sửa màu mày',        '✏', 600000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 524, 'Xăm mày',          60),
+('Xăm môi tán viền',                 '💋', 1300000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 531, 'Xăm môi',         120),
+('Điều chỉnh / Sửa màu môi',        '💋', 800000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 532, 'Xăm môi',          60),
+('Xăm mí trên (liner đậm)',          '👁', 1000000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 541, 'Xăm mí mắt',       75),
+('Điền mi (fill-in)',                 '👁', 250000,  'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 553, 'Chăm sóc & Tháo',  60),
+('Combo Nối mi + Xăm mày',          '✨', 1400000, 'Lần', 'SERVICE', FALSE, ARRAY['LASH_PMU_STUDIO'], 562, 'Combo',            180)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ MASSAGE_SHOP: update durations for existing + add missing ─
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Massage thư giãn toàn thân 60p';
+UPDATE product_suggestions SET duration_minutes = 90  WHERE name = 'Massage toàn thân 90p';
+UPDATE product_suggestions SET duration_minutes = 120 WHERE name = 'Massage toàn thân 120p';
+UPDATE product_suggestions SET duration_minutes = 30  WHERE name = 'Massage chân phản xạ 30p';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Massage chân phản xạ 60p';
+UPDATE product_suggestions SET duration_minutes = 30  WHERE name = 'Massage đầu vai gáy 30p';
+UPDATE product_suggestions SET duration_minutes = 45  WHERE name = 'Massage lưng & cổ 30p';
+UPDATE product_suggestions SET duration_minutes = 30  WHERE name = 'Xông hơi ướt';
+UPDATE product_suggestions SET duration_minutes = 45  WHERE name = 'Ngâm chân thảo dược';
+UPDATE product_suggestions SET duration_minutes = 75  WHERE name = 'Combo massage + ngâm chân';
+UPDATE product_suggestions SET duration_minutes = 120 WHERE name = 'Combo toàn thân + xông hơi';
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Massage aroma toàn thân',           '🌿', 350000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 573, 'Massage toàn thân',     60),
+('Massage đá nóng toàn thân',         '🪨', 450000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 574, 'Massage toàn thân',     75),
+('Massage dầu nóng toàn thân',        '🌿', 300000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 575, 'Massage toàn thân',     60),
+('Massage chân phản xạ 45p',          '🦶', 150000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 582, 'Massage chân phản xạ',  45),
+('Ngâm chân + massage chân',         '🌿', 180000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 583, 'Massage chân phản xạ',  45),
+('Massage đầu 20p',                   '💆', 80000,  'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 591, 'Massage đầu & vai gáy', 20),
+('Massage đầu & vai gáy 45p',         '💆', 150000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 592, 'Massage đầu & vai gáy', 45),
+('Massage lưng & cổ 45p',             '💆', 150000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 601, 'Massage lưng & cổ',     45),
+('Bấm huyệt lưng trị liệu',           '💆', 200000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 602, 'Massage lưng & cổ',     45),
+('Xông hơi khô',                      '🌊', 80000,  'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 612, 'Xông hơi & Ngâm',       30),
+('Ngâm bồn thảo dược',                '🌿', 150000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 613, 'Xông hơi & Ngâm',       30),
+('Combo Full Relax (xông + massage)', '✨', 550000, 'Lần', 'SERVICE', FALSE, ARRAY['MASSAGE_SHOP'], 622, 'Combo',                 120)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ BEAUTY_CLINIC: update durations for shared entries + add missing ─
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Chăm sóc da mặt cơ bản';
+UPDATE product_suggestions SET duration_minutes = 90  WHERE name = 'Chăm sóc da mặt chuyên sâu';
+UPDATE product_suggestions SET duration_minutes = 30  WHERE name = 'Đắp mặt nạ dưỡng ẩm';
+UPDATE product_suggestions SET duration_minutes = 45  WHERE name = 'Tẩy tế bào chết toàn thân';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Ủ trắng toàn thân';
+UPDATE product_suggestions SET duration_minutes = 15  WHERE name = 'Wax lông nách';
+UPDATE product_suggestions SET duration_minutes = 45  WHERE name = 'Wax lông chân';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Trị nám, tàn nhang';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Nặn mụn an toàn tại thẩm mỹ viện';
+UPDATE product_suggestions SET duration_minutes = 90  WHERE name = 'Trị mụn bằng laser';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Laser trẻ hóa da';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'RF nâng cơ / căng da';
+UPDATE product_suggestions SET duration_minutes = 90  WHERE name = 'HIFU nâng cơ không phẫu thuật';
+UPDATE product_suggestions SET duration_minutes = 30  WHERE name = 'Triệt lông laser (1 vùng)';
+UPDATE product_suggestions SET duration_minutes = 300 WHERE name = 'Combo liệu trình da 5 buổi';
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Lột da hóa học (Chemical Peel)',    '✨', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 632, 'Chăm sóc da mặt',      60),
+('Nặn mụn chuyên nghiệp (clinic)',   '🫧', 350000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 633, 'Chăm sóc da mặt',      60),
+('Trị nám laser',                     '💡', 1500000, 'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 634, 'Trị mụn & Nám',        45),
+('Trị thâm sau mụn',                 '✨', 500000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 635, 'Trị mụn & Nám',        60),
+('Microneedling tái tạo da',          '💉', 800000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 643, 'Công nghệ thẩm mỹ',    60),
+('IPL trị sắc tố',                   '💡', 1000000, 'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 644, 'Công nghệ thẩm mỹ',    45),
+('LED Therapy ánh sáng sinh học',     '💡', 400000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 645, 'Công nghệ thẩm mỹ',    30),
+('Ủ dưỡng thể trắng da (clinic)',    '🧖', 450000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 651, 'Điều trị cơ thể',      60),
+('Điều trị rạn da',                  '💉', 800000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 652, 'Điều trị cơ thể',      60),
+('Triệt lông laser (vùng lớn)',       '💡', 1500000, 'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 653, 'Waxing & Triệt lông',  60),
+('Combo Trị mụn + Chăm sóc da',     '✨', 800000,  'Lần', 'SERVICE', FALSE, ARRAY['BEAUTY_CLINIC'], 661, 'Combo & Liệu trình',  120)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ MAKEUP_STUDIO: update durations for existing + add missing ─
+UPDATE product_suggestions SET duration_minutes = 45  WHERE name = 'Trang điểm nhẹ nhàng hàng ngày';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Trang điểm Hàn Quốc (K-makeup)';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Trang điểm đi tiệc ban ngày';
+UPDATE product_suggestions SET duration_minutes = 75  WHERE name = 'Trang điểm dự tiệc tối / event';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Trang điểm tốt nghiệp';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Trang điểm chụp ảnh';
+UPDATE product_suggestions SET duration_minutes = 90  WHERE name = 'Trang điểm cô dâu thử (trial)';
+UPDATE product_suggestions SET duration_minutes = 120 WHERE name = 'Trang điểm cô dâu ngày cưới';
+UPDATE product_suggestions SET duration_minutes = 60  WHERE name = 'Trang điểm phụ dâu / phù rể';
+UPDATE product_suggestions SET duration_minutes = 30  WHERE name = 'Búi tóc đơn giản';
+UPDATE product_suggestions SET duration_minutes = 45  WHERE name = 'Tạo kiểu tóc đi tiệc / sự kiện';
+UPDATE product_suggestions SET duration_minutes = 120 WHERE name = 'Combo trang điểm + tóc tiệc';
+UPDATE product_suggestions SET duration_minutes = 360 WHERE name = 'Gói cưới cô dâu cơ bản';
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Trang điểm retouching (chỉnh sửa)','💄', 100000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 672, 'Trang điểm ngày thường',  20),
+('Trang điểm Halloween / cosplay',   '🎭', 600000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 684, 'Trang điểm đi tiệc',      90),
+('Trang điểm cô dâu cao cấp',        '👰', 2500000, 'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 693, 'Trang điểm cô dâu',      150),
+('Trang điểm mẹ cô dâu / chú rể',   '💍', 600000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 694, 'Trang điểm cô dâu',       75),
+('Tạo kiểu tóc cô dâu',              '💇', 800000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 702, 'Làm tóc & Phụ kiện',      90),
+('Đặt vương miện / phụ kiện tóc',   '👑', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 703, 'Làm tóc & Phụ kiện',      20),
+('Gói cưới cô dâu cao cấp',          '👰', 4500000, 'Gói', 'SERVICE', FALSE, ARRAY['MAKEUP_STUDIO'], 712, 'Combo & Gói cưới',       480)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ NAIL_SHOP: fix product_type_code + add duration_minutes ───
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 30 WHERE name = 'Sơn màu thường (tay)';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 25 WHERE name = 'Sơn màu thường (chân)';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 35 WHERE name = 'Sơn French';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 50 WHERE name = 'Sơn gel (tay)';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 40 WHERE name = 'Sơn gel (chân)';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 90 WHERE name = 'Đắp bột acrylic';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 80 WHERE name = 'Đắp gel builder';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 30 WHERE name = 'Tháo gel / Tháo bột';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 30 WHERE name = 'Vẽ nail';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 90 WHERE name = 'Nail art';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 20 WHERE name = 'Đính đá nail';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 70 WHERE name = 'Nail ombre';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 40 WHERE name = 'Manicure';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 25 WHERE name = 'Dưỡng ẩm tay';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 50 WHERE name = 'Pedicure';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 35 WHERE name = 'Tẩy da chết chân';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 50 WHERE name = 'Combo tay + chân';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 80 WHERE name = 'Combo gel tay + chân';
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Sơn màu Pháp (French nail)',        '💅', 100000, 'Lần', 'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 203, 'Sơn móng thường',     35),
+('Đắp bột Dip Powder',               '💅', 250000, 'Lần', 'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 215, 'Gel & Acrylic',        75),
+('Vẽ nail đơn giản (mỗi ngón)',      '🎨', 20000,  'Lần', 'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 224, 'Vẽ nail & Nghệ thuật', 10),
+('Vẽ nail phức tạp (mỗi ngón)',      '🎨', 40000,  'Lần', 'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 225, 'Vẽ nail & Nghệ thuật', 20),
+('Nail art full set (tay)',           '🎨', 350000, 'Lần', 'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 226, 'Vẽ nail & Nghệ thuật', 90),
+('Đính đá / Phụ kiện (mỗi ngón)',   '💎', 25000,  'Lần', 'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 227, 'Vẽ nail & Nghệ thuật', 10),
+('Manicure + Sơn gel',               '✋', 220000, 'Lần', 'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 232, 'Chăm sóc bàn tay',    70),
+('Pedicure + Sơn gel',               '🦶', 230000, 'Lần', 'SERVICE', FALSE, ARRAY['NAIL_SHOP'], 242, 'Chăm sóc bàn chân',   75)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ SPA_SHOP: fix product_type_code + update durations + add missing ─
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 60  WHERE name = 'Massage thư giãn 60p';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 90  WHERE name = 'Massage thư giãn 90p';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 45  WHERE name = 'Massage đầu & cổ';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 45  WHERE name = 'Massage bàn chân';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 75  WHERE name = 'Massage đá nóng';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 60  WHERE name = 'Massage tinh dầu';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 60  WHERE name = 'Chăm sóc da mặt cơ bản';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 90  WHERE name = 'Chăm sóc da mặt chuyên sâu';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 60  WHERE name = 'Nặn mụn';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 30  WHERE name = 'Đắp mặt nạ dưỡng ẩm';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 45  WHERE name = 'Tẩy tế bào chết toàn thân';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 60  WHERE name = 'Ủ trắng toàn thân';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 15  WHERE name = 'Wax lông nách';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 45  WHERE name = 'Wax lông chân';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 30  WHERE name = 'Wax bikini';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 60  WHERE name = 'Trị nám, tàn nhang';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 60  WHERE name = 'Trị mụn lưng';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 90  WHERE name = 'Combo mặt + massage';
+UPDATE product_suggestions SET product_type_code = 'SERVICE', duration_minutes = 300 WHERE name = 'Liệu trình 5 buổi';
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Lột da hóa học (Peel) spa',         '✨', 350000, 'Lần', 'SERVICE', FALSE, ARRAY['SPA_SHOP'], 314, 'Chăm sóc da mặt',    45),
+('Dưỡng ẩm tay chân (spa)',          '🧴', 200000, 'Lần', 'SERVICE', FALSE, ARRAY['SPA_SHOP'], 322, 'Chăm sóc cơ thể',    40),
+('Quấn nóng giảm eo',                 '🧖', 500000, 'Lần', 'SERVICE', FALSE, ARRAY['SPA_SHOP'], 323, 'Chăm sóc cơ thể',    60),
+('Wax lông chân (toàn chân)',         '✂️', 250000, 'Lần', 'SERVICE', FALSE, ARRAY['SPA_SHOP'], 333, 'Waxing & Triệt lông', 45),
+('Wax mặt (môi, mày)',               '✂️', 60000,  'Lần', 'SERVICE', FALSE, ARRAY['SPA_SHOP'], 334, 'Waxing & Triệt lông', 15),
+('Trị mụn lưng chuyên sâu (spa)',    '🫧', 350000, 'Lần', 'SERVICE', FALSE, ARRAY['SPA_SHOP'], 342, 'Điều trị đặc biệt',  60)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ PUB (display_order 1000+) ──────────────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Bia Saigon Special lon',            '🍺', 20000,  'Lon',    'BEVERAGE', FALSE, ARRAY['PUB'], 1000, 'Bia lon & Bia chai', 0),
+('Bia Tiger Crystal lon',             '🍺', 22000,  'Lon',    'BEVERAGE', FALSE, ARRAY['PUB'], 1001, 'Bia lon & Bia chai', 0),
+('Bia Heineken lon',                  '🍺', 25000,  'Lon',    'BEVERAGE', FALSE, ARRAY['PUB'], 1002, 'Bia lon & Bia chai', 0),
+('Bia 333 lon',                       '🍺', 18000,  'Lon',    'BEVERAGE', FALSE, ARRAY['PUB'], 1003, 'Bia lon & Bia chai', 0),
+('Bia Saigon Đỏ lon',                 '🍺', 15000,  'Lon',    'BEVERAGE', FALSE, ARRAY['PUB'], 1004, 'Bia lon & Bia chai', 0),
+('Két bia Saigon (24 lon)',            '🍺', 400000, 'Két',    'BEVERAGE', FALSE, ARRAY['PUB'], 1005, 'Két bia',            0),
+('Két bia Tiger (24 lon)',             '🍺', 440000, 'Két',    'BEVERAGE', FALSE, ARRAY['PUB'], 1006, 'Két bia',            0),
+('Rượu đế / Rượu gạo',               '🍶', 50000,  'Chai',   'BEVERAGE', FALSE, ARRAY['PUB'], 1007, 'Rượu mạnh',          0),
+('Rượu Vodka Nếp Mới',               '🍶', 65000,  'Chai',   'BEVERAGE', FALSE, ARRAY['PUB'], 1008, 'Rượu mạnh',          0),
+('Nước ngọt Coca-Cola (pub)',         '🥤', 12000,  'Lon',    'BEVERAGE', FALSE, ARRAY['PUB'], 1009, 'Nước ngọt',          0),
+('Nước ngọt Sprite',                  '🥤', 12000,  'Lon',    'BEVERAGE', FALSE, ARRAY['PUB'], 1010, 'Nước ngọt',          0),
+('Nước suối chai (pub)',              '💧', 5000,   'Chai',   'BEVERAGE', FALSE, ARRAY['PUB'], 1011, 'Nước suối',          0),
+('Đậu phộng rang muối',              '🥜', 30000,  'Đĩa',   'FOOD',     FALSE, ARRAY['PUB'], 1020, 'Mồi khô',            0),
+('Khô mực nướng',                    '🦑', 80000,  'Đĩa',   'FOOD',     FALSE, ARRAY['PUB'], 1021, 'Mồi khô',            0),
+('Hột vịt lộn',                       '🥚', 15000,  'Trứng',  'FOOD',     FALSE, ARRAY['PUB'], 1022, 'Trứng & Đặc sản',   0),
+('Gà nướng muối ớt',                  '🍗', 180000, 'Con',    'FOOD',     FALSE, ARRAY['PUB'], 1023, 'Mồi tươi & nướng',  0),
+('Xúc xích nướng',                    '🌭', 60000,  'Đĩa',   'FOOD',     FALSE, ARRAY['PUB'], 1024, 'Mồi tươi & nướng',  0),
+('Nem nướng',                         '🥢', 70000,  'Đĩa',   'FOOD',     FALSE, ARRAY['PUB'], 1025, 'Mồi tươi & nướng',  0),
+('Thịt heo nướng sả',                '🥩', 90000,  'Đĩa',   'FOOD',     FALSE, ARRAY['PUB'], 1026, 'Mồi tươi & nướng',  0),
+('Canh chua cá (pub)',               '🍲', 75000,  'Tô',     'FOOD',     FALSE, ARRAY['PUB'], 1027, 'Canh & Lẩu',        0),
+('Lẩu gà lá giang',                  '🍲', 180000, 'Nồi',   'FOOD',     FALSE, ARRAY['PUB'], 1028, 'Canh & Lẩu',        0),
+('Cơm trắng (pub)',                  '🍚', 10000,  'Chén',   'FOOD',     FALSE, ARRAY['PUB'], 1029, 'Cơm & Bún',         0)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ PUB_SEAFOOD (display_order 1100+) ─────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Tôm sú nướng muối ớt',             '🦐', 250000, 'Kg',    'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1100, 'Tôm & Cua',       0),
+('Tôm hùm hấp bia',                  '🦞', 800000, 'Kg',    'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1101, 'Tôm & Cua',       0),
+('Cua rang muối',                    '🦀', 350000, 'Con',   'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1102, 'Tôm & Cua',       0),
+('Cua hấp bia',                      '🦀', 320000, 'Con',   'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1103, 'Tôm & Cua',       0),
+('Ghẹ hấp sả gừng',                 '🦀', 280000, 'Con',   'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1104, 'Tôm & Cua',       0),
+('Mực chiên giòn',                   '🦑', 180000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1110, 'Mực & Bạch tuộc', 0),
+('Mực nướng sa tế',                  '🦑', 200000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1111, 'Mực & Bạch tuộc', 0),
+('Bạch tuộc nướng',                  '🐙', 220000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1112, 'Mực & Bạch tuộc', 0),
+('Nghêu hấp sả',                     '🐚', 120000, 'Kg',   'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1120, 'Nghêu & Ốc',      0),
+('Sò điệp nướng mỡ hành',           '🐚', 200000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1121, 'Nghêu & Ốc',      0),
+('Cá lóc nướng trui',                '🐟', 200000, 'Con',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1130, 'Cá tươi',         0),
+('Cá hồi sashimi',                   '🐟', 350000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1131, 'Cá tươi',         0),
+('Cá mú hấp xì dầu',                '🐟', 400000, 'Con',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1132, 'Cá tươi',         0),
+('Lẩu hải sản thập cẩm',            '🍲', 350000, 'Nồi',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1140, 'Lẩu thập cẩm',    0),
+('Lẩu tôm cua',                      '🍲', 420000, 'Nồi',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1141, 'Lẩu đặc sản',     0),
+('Lẩu mắm hải sản',                 '🍲', 380000, 'Nồi',  'FOOD', FALSE, ARRAY['PUB_SEAFOOD'], 1142, 'Lẩu thập cẩm',    0),
+('Bia Saigon Special (seafood)',     '🍺', 20000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB_SEAFOOD'], 1150, 'Bia lon & Bia chai', 0),
+('Bia Heineken (seafood)',           '🍺', 25000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB_SEAFOOD'], 1151, 'Bia lon & Bia chai', 0),
+('Rượu đế (seafood)',               '🍶', 50000,  'Chai', 'BEVERAGE', FALSE, ARRAY['PUB_SEAFOOD'], 1152, 'Rượu mạnh',         0)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ PUB_GOAT (display_order 1200+) ────────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Thịt dê xào lăn',                  '🐐', 200000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1200, 'Dê xào & hấp',     0),
+('Dê nướng bếp than (phần)',         '🔥', 250000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1201, 'Dê nướng',         0),
+('Dê hấp gừng',                      '🐐', 220000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1202, 'Dê xào & hấp',     0),
+('Dê sốt vang',                      '🍷', 200000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1203, 'Dê đặc sản',       0),
+('Dồi dê nướng',                     '🐐', 150000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1204, 'Dê đặc sản',       0),
+('Tiết canh dê',                     '🐐', 80000,  'Bát',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1205, 'Dê đặc sản',       0),
+('Cháo dê hầm',                      '🍲', 100000, 'Tô',   'FOOD', FALSE, ARRAY['PUB_GOAT'], 1206, 'Dê đặc sản',       0),
+('Dê tái chanh',                     '🐐', 180000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1207, 'Dê xào & hấp',     0),
+('Lẩu dê',                           '🍲', 350000, 'Nồi',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1210, 'Lẩu dê thường',    0),
+('Lẩu dê sốt vang',                  '🍷', 450000, 'Nồi',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1211, 'Lẩu dê đặc biệt',  0),
+('Khô mực nướng (goat)',             '🦑', 80000,  'Đĩa',  'FOOD', FALSE, ARRAY['PUB_GOAT'], 1220, 'Mồi khô',          0),
+('Bia Saigon Special (goat)',        '🍺', 20000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB_GOAT'], 1230, 'Bia lon & Bia chai', 0),
+('Bia Heineken (goat)',              '🍺', 25000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB_GOAT'], 1231, 'Bia lon & Bia chai', 0),
+('Rượu đế (goat)',                  '🍶', 50000,  'Chai', 'BEVERAGE', FALSE, ARRAY['PUB_GOAT'], 1232, 'Rượu mạnh',         0),
+('Rượu Vodka (goat)',               '🍶', 60000,  'Chai', 'BEVERAGE', FALSE, ARRAY['PUB_GOAT'], 1233, 'Rượu mạnh',         0)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ PUB_BEEF (display_order 1300+) ────────────────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Bò nhúng dấm',                     '🥩', 280000, 'Phần', 'FOOD', FALSE, ARRAY['PUB_BEEF'], 1300, 'Bò xào & nhúng',  0),
+('Bò nướng ngũ vị',                  '🔥', 250000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1301, 'Bò nướng',        0),
+('Bò nướng lá lốt',                  '🥩', 180000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1302, 'Bò nướng',        0),
+('Bò tái chanh',                     '🥩', 170000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1303, 'Bò đặc sản',      0),
+('Bò xào rau cải',                   '🥩', 160000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1304, 'Bò xào & nhúng',  0),
+('Bò xào sả ớt',                     '🥩', 170000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1305, 'Bò xào & nhúng',  0),
+('Bắp bò kho gừng',                  '🥩', 180000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1306, 'Bò hầm & kho',    0),
+('Gân bò hầm',                       '🥩', 150000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1307, 'Bò hầm & kho',    0),
+('Bò kho bánh mì',                   '🍲', 120000, 'Tô',   'FOOD', FALSE, ARRAY['PUB_BEEF'], 1308, 'Bò hầm & kho',    0),
+('Lẩu bò',                           '🍲', 320000, 'Nồi',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1310, 'Lẩu bò thường',   0),
+('Lẩu bò nhúng dấm',                 '🍲', 380000, 'Nồi',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1311, 'Lẩu bò đặc biệt', 0),
+('Khô bò gác bếp',                   '🥩', 120000, 'Đĩa',  'FOOD', FALSE, ARRAY['PUB_BEEF'], 1320, 'Mồi khô',         0),
+('Bia Saigon Special (beef)',        '🍺', 20000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB_BEEF'], 1330, 'Bia lon & Bia chai', 0),
+('Bia Heineken (beef)',              '🍺', 25000,  'Lon',  'BEVERAGE', FALSE, ARRAY['PUB_BEEF'], 1331, 'Bia lon & Bia chai', 0),
+('Rượu đế (beef)',                  '🍶', 50000,  'Chai', 'BEVERAGE', FALSE, ARRAY['PUB_BEEF'], 1332, 'Rượu mạnh',         0),
+('Rượu Whisky đá',                  '🥃', 80000,  'Ly',   'BEVERAGE', FALSE, ARRAY['PUB_BEEF'], 1333, 'Rượu mạnh',         0)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ RESTAURANT: add RESTAURANT to existing matching entries + new entries ─
+UPDATE product_suggestions SET
+    shop_types = (SELECT array_agg(DISTINCT t ORDER BY t) FROM unnest(shop_types || ARRAY['RESTAURANT']) t)
+WHERE name IN (
+    'Phở bò', 'Bún bò Huế', 'Hủ tiếu Nam Vang', 'Cơm chiên dương châu',
+    'Lẩu thái hải sản', 'Bánh mì thịt', 'Nước mắm'
+) AND NOT ('RESTAURANT' = ANY(shop_types));
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Phở bò viên',                      '🍜', 55000,  'Tô',     'FOOD', FALSE, ARRAY['RESTAURANT'], 1400, 'Phở & Bún bò',    0),
+('Cơm tấm sườn bì chả',              '🍚', 55000,  'Phần',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1401, 'Cơm phần',        0),
+('Cơm gà xé phay',                   '🍚', 50000,  'Phần',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1402, 'Cơm phần',        0),
+('Mì xào hải sản',                   '🍜', 65000,  'Phần',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1403, 'Mì & Hủ tiếu',    0),
+('Gà xào sả ớt',                     '🍗', 75000,  'Đĩa',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1404, 'Món xào',         0),
+('Bò xào rau muống',                 '🥩', 70000,  'Đĩa',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1405, 'Món xào',         0),
+('Canh chua cá lóc',                 '🍲', 65000,  'Tô',     'FOOD', FALSE, ARRAY['RESTAURANT'], 1406, 'Canh & Súp',      0),
+('Canh khổ qua hầm',                 '🍲', 45000,  'Tô',     'FOOD', FALSE, ARRAY['RESTAURANT'], 1407, 'Canh & Súp',      0),
+('Gỏi bắp cải tôm thịt',            '🥗', 55000,  'Đĩa',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1408, 'Gỏi & Salad',     0),
+('Nem cuốn tôm thịt',               '🫔', 45000,  'Đĩa',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1409, 'Khai vị',         0),
+('Lẩu bò nhúng dấm (restaurant)',   '🍲', 200000, 'Nồi',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1410, 'Lẩu',             0),
+('Cơm trắng (restaurant)',           '🍚', 10000,  'Chén',   'FOOD', FALSE, ARRAY['RESTAURANT'], 1411, 'Cơm phần',        0),
+('Trà đá (restaurant)',              '🍵', 5000,   'Ly',     'BEVERAGE', FALSE, ARRAY['RESTAURANT'], 1420, 'Trà & Cà phê',  0),
+('Bia Saigon (restaurant)',          '🍺', 20000,  'Lon',    'BEVERAGE', FALSE, ARRAY['RESTAURANT'], 1421, 'Bia & Rượu',    0),
+('Nước cam tươi (restaurant)',       '🍊', 25000,  'Ly',     'BEVERAGE', FALSE, ARRAY['RESTAURANT'], 1422, 'Đồ uống',       0)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ COFFEE_SHOP: add COFFEE_SHOP to existing matching entries + new entries ─
+UPDATE product_suggestions SET
+    shop_types = (SELECT array_agg(DISTINCT t ORDER BY t) FROM unnest(shop_types || ARRAY['COFFEE_SHOP']) t)
+WHERE name IN (
+    'Cà phê sữa đá', 'Bạc xỉu', 'Cà phê đen đá', 'Trà sữa trân châu',
+    'Americano', 'Latte', 'Cappuccino', 'Nước ép cam', 'Sinh tố bơ',
+    'Nước ép dứa', 'Bánh croissant', 'Sandwich', 'Bánh tiramisu'
+) AND NOT ('COFFEE_SHOP' = ANY(shop_types));
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Cà phê đen nóng',                  '☕', 25000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1500, 'Cà phê đen',          0),
+('Cà phê sữa nóng',                  '☕', 30000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1501, 'Cà phê sữa',          0),
+('Bạc xỉu nóng',                     '☕', 30000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1502, 'Cà phê sữa',          0),
+('Cà phê trứng',                     '☕', 40000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1503, 'Cà phê kem & đặc biệt',0),
+('Cold brew',                         '☕', 45000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1504, 'Cà phê đen',          0),
+('Cà phê dừa',                       '☕', 50000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1505, 'Cà phê kem & đặc biệt',0),
+('Cà phê muối',                      '☕', 50000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1506, 'Cà phê kem & đặc biệt',0),
+('Trà sữa trân châu trắng',          '🧋', 45000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1510, 'Trà sữa',             0),
+('Trà sữa matcha',                   '🍵', 48000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1511, 'Trà sữa',             0),
+('Trà đào cam sả đá',                '🍵', 45000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1512, 'Trà trái cây',        0),
+('Trà vải',                          '🍵', 40000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1513, 'Trà trái cây',        0),
+('Trà tắc mật ong',                  '🍵', 35000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1514, 'Trà thảo mộc',        0),
+('Trà hoa cúc',                      '🍵', 35000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1515, 'Trà thảo mộc',        0),
+('Sinh tố dâu',                      '🍓', 40000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1520, 'Sinh tố',             0),
+('Sinh tố xoài',                     '🥭', 38000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1521, 'Sinh tố',             0),
+('Nước ép táo',                      '🍏', 35000,  'Ly',    'BEVERAGE', FALSE, ARRAY['COFFEE_SHOP'], 1522, 'Nước ép trái cây',    0),
+('Bánh croissant bơ',                '🥐', 35000,  'Cái',   'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 1530, 'Bánh ngọt',           0),
+('Bánh cheesecake phô mai',          '🍰', 60000,  'Miếng', 'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 1531, 'Bánh ngọt',           0),
+('Bánh brownie socola',              '🍫', 45000,  'Miếng', 'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 1532, 'Bánh ngọt',           0),
+('Bánh mì sandwich trứng',           '🥪', 45000,  'Ổ',     'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 1533, 'Bánh mì & Sandwich',  0),
+('Bánh mì bơ tỏi',                  '🥖', 25000,  'Ổ',     'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 1534, 'Bánh mì & Sandwich',  0),
+('Khoai tây chiên',                  '🍟', 30000,  'Phần', 'FOOD',     FALSE, ARRAY['COFFEE_SHOP'], 1535, 'Bánh & Snack',        0)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );
+
+-- ─ CONVENIENCE_STORE: add/update entries (display_order 1600+) ─
+UPDATE product_suggestions SET
+    shop_types = (SELECT array_agg(DISTINCT t ORDER BY t) FROM unnest(shop_types || ARRAY['CONVENIENCE_STORE']) t),
+    default_price = 12000
+WHERE name = 'Coca Cola' AND NOT ('CONVENIENCE_STORE' = ANY(shop_types));
+
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name, duration_minutes)
+VALUES
+('Coca-Cola 330ml',                  '🥤', 12000,  'Lon',    'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1600, 'Nước giải khát',           0),
+('Pepsi 330ml',                      '🥤', 12000,  'Lon',    'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1601, 'Nước giải khát',           0),
+('7-Up 330ml',                       '🥤', 11000,  'Lon',    'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1602, 'Nước giải khát',           0),
+('Red Bull 250ml',                   '🔋', 13000,  'Lon',    'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1603, 'Nước tăng lực',            0),
+('Number One 330ml',                 '🔋', 10000,  'Lon',    'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1604, 'Nước tăng lực',            0),
+('Nước suối Aqua 500ml',             '💧', 6000,   'Chai',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1605, 'Nước suối / Nước tinh khiết',0),
+('Nước suối La Vie 500ml',           '💧', 7000,   'Chai',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1606, 'Nước suối / Nước tinh khiết',0),
+('Bia Tiger 330ml',                  '🍺', 18000,  'Lon',    'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1607, 'Bia & Nước có cồn',        0),
+('Bia Saigon Đỏ 330ml',             '🍺', 15000,  'Lon',    'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1608, 'Bia & Nước có cồn',        0),
+('Trà Olong Tea Plus 455ml',         '🍵', 12000,  'Chai',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1609, 'Trà & Cà phê đóng gói',   0),
+('Trà xanh 0 Độ 455ml',             '🍵', 12000,  'Chai',   'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1610, 'Trà & Cà phê đóng gói',   0),
+('Sting Dâu 330ml',                  '🔋', 10000,  'Lon',    'BEVERAGE', FALSE, ARRAY['CONVENIENCE_STORE'], 1611, 'Nước tăng lực',            0),
+('Mì Hảo Hảo Tôm Chua Cay 75g',     '🍜', 7000,   'Gói',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1620, 'Mì gói & Cháo gói',        0),
+('Mì 3 Miền Bò Hầm 65g',            '🍜', 6000,   'Gói',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1621, 'Mì gói & Cháo gói',        0),
+('Phở Bò Ăn Liền Vifon 65g',        '🍜', 8000,   'Gói',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1622, 'Mì gói & Cháo gói',        0),
+('Cháo Thịt Bằm Vifon 50g',         '🍲', 12000,  'Gói',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1623, 'Mì gói & Cháo gói',        0),
+('Sữa TH True Milk 180ml',           '🥛', 8000,   'Hộp',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1624, 'Sữa & Sản phẩm sữa',       0),
+('Sữa Vinamilk UHT 180ml',           '🥛', 7500,   'Hộp',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1625, 'Sữa & Sản phẩm sữa',       0),
+('Nước mắm Nam Ngư 500ml',           '🫙', 18000,  'Chai',  'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1626, 'Gia vị & Nước chấm',       0),
+('Dầu ăn Neptune 500ml',             '🫒', 42000,  'Chai',  'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1627, 'Gia vị & Nước chấm',       0),
+('Mì chính Ajinomoto 100g',          '🧂', 12000,  'Gói',   'FOOD',     FALSE, ARRAY['CONVENIENCE_STORE'], 1628, 'Gia vị & Nước chấm',       0),
+('Bánh Oreo 97g',                    '🍪', 18000,  'Gói',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 1630, 'Bánh quy & Bánh ngọt',  0),
+('Snack Poca Khoai Tây BBQ 68g',     '🍟', 12000,  'Gói',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 1631, 'Snack khoai tây',        0),
+('Kẹo Dừa Bến Tre 200g',            '🍬', 25000,  'Gói',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 1632, 'Kẹo & Socola',           0),
+('Bánh Kinh Đô Hương Vani',          '🍪', 22000,  'Hộp',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 1633, 'Bánh quy & Bánh ngọt',  0),
+('Kem đánh răng Colgate 150g',       '🪥', 35000,  'Tuýp',  'BEAUTY',  FALSE, ARRAY['CONVENIENCE_STORE'], 1640, 'Vệ sinh cá nhân',          0),
+('Dầu gội Clear Mát Lạnh 170ml',    '🧴', 45000,  'Chai',  'BEAUTY',  FALSE, ARRAY['CONVENIENCE_STORE'], 1641, 'Vệ sinh cá nhân',          0),
+('Xà phòng Lifebuoy 90g',           '🧼', 18000,  'Bánh', 'BEAUTY',  FALSE, ARRAY['CONVENIENCE_STORE'], 1642, 'Vệ sinh cá nhân',          0),
+('Bàn chải Oral-B Classic',          '🪥', 25000,  'Cái',   'BEAUTY',  FALSE, ARRAY['CONVENIENCE_STORE'], 1643, 'Vệ sinh cá nhân',          0),
+('Nước rửa chén Sunlight 500ml',    '🧹', 22000,  'Chai',  'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 1650, 'Đồ gia dụng',            0),
+('Bột giặt Omo Comfort 400g',       '🧺', 32000,  'Gói',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 1651, 'Đồ gia dụng',            0),
+('Thuốc lá Esse Menthol',           '🚬', 30000,  'Gói',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 1660, 'Thuốc lá',               0),
+('Thuốc lá 555 State Express',      '🚬', 35000,  'Gói',   'CONVENIENCE', FALSE, ARRAY['CONVENIENCE_STORE'], 1661, 'Thuốc lá',               0)
+ON CONFLICT (name) DO UPDATE SET
+    default_price    = EXCLUDED.default_price,
+    duration_minutes = EXCLUDED.duration_minutes,
+    product_type_code = EXCLUDED.product_type_code,
+    category_name    = COALESCE(EXCLUDED.category_name, product_suggestions.category_name),
+    shop_types       = (
+        SELECT array_agg(DISTINCT t ORDER BY t)
+        FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
+    );

@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 public class EmployeeDTO {
     private Long id;
     private String fullName;
+    private String nickName;
     private String phone;
     private String email;
     private String position;

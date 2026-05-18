@@ -38,4 +38,10 @@ public class ShopInfo extends TenantAwareEntity {
 
     @Column(length = 200)
     private String website;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "logo_url", length = 500)
+    private String logoUrl;
 }

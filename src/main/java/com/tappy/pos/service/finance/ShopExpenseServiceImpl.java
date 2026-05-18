@@ -24,6 +24,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static java.util.List.of;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -115,18 +117,35 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
                 .collect(Collectors.toList());
     }
 
+    private static final List<String> FIXED_CATEGORIES = of(
+            "RENT", "ELECTRICITY", "WATER", "INTERNET", "PHONE", "SOFTWARE", "INSURANCE");
+
     @Override
     @Transactional(readOnly = true)
     public java.util.Map<String, Object> getSummary(LocalDate from, LocalDate to) {
         BigDecimal total = expenseRepository.sumByDateRange(from, to);
         if (total == null) total = BigDecimal.ZERO;
-        return java.util.Map.of("total", total, "fixed", BigDecimal.ZERO, "variable", total, "netVsRevenue", BigDecimal.ZERO);
+        BigDecimal fixed = expenseRepository.sumByDateRangeAndCategories(from, to, FIXED_CATEGORIES);
+        if (fixed == null) fixed = BigDecimal.ZERO;
+        BigDecimal variable = total.subtract(fixed);
+        return java.util.Map.of("total", total, "fixed", fixed, "variable", variable, "netVsRevenue", BigDecimal.ZERO);
     }
 
     @Override
     @Transactional(readOnly = true)
     public java.util.List<java.util.Map<String, Object>> getChart(LocalDate from, LocalDate to) {
-        List<Object[]> rows = expenseRepository.getDailyChart(from, to);
+        return getChart(from, to, "day");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getChart(LocalDate from, LocalDate to, String granularity) {
+        List<Object[]> rows = switch (granularity == null ? "day" : granularity) {
+            case "week"  -> expenseRepository.getWeeklyChart(from, to);
+            case "month" -> expenseRepository.getMonthlyChart(from, to);
+            case "year"  -> expenseRepository.getYearlyChart(from, to);
+            default      -> expenseRepository.getDailyChart(from, to);
+        };
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Object[] row : rows) { result.add(java.util.Map.of("label", row[0].toString(), "value", row[1])); }
         return result;

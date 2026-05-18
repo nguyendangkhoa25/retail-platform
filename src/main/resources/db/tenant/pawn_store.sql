@@ -170,7 +170,8 @@ INSERT INTO shop_config (tenant_id, config_key, config_value, config_group, encr
     (current_setting('app.current_tenant', true), 'pawn_interest_type',        '30',    'PAWN', FALSE),
     (current_setting('app.current_tenant', true), 'pawn_due_date',             '30',    'PAWN', FALSE),
     (current_setting('app.current_tenant', true), 'pawn_exclude_visible_item', 'false', 'PAWN', FALSE),
-    (current_setting('app.current_tenant', true), 'pawn_denominations',        '500000,1000000,2000000,5000000,10000000', 'PAWN', FALSE)
+    (current_setting('app.current_tenant', true), 'pawn_denominations',        '500000,1000000,2000000,5000000,10000000', 'PAWN', FALSE),
+    (current_setting('app.current_tenant', true), 'pawn_accepted_types',       'GOLD,ELECTRONICS,MOTORBIKE,CAR,WATCH,REAL_ESTATE,GENERAL,OTHER', 'PAWN', FALSE)
 ON CONFLICT (config_key, tenant_id) DO NOTHING;
 
 -- ── 5. Print templates ────────────────────────────────────────

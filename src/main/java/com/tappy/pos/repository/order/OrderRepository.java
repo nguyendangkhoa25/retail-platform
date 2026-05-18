@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -18,6 +19,10 @@ import java.util.Optional;
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderNumber(String orderNumber);
+
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND status NOT IN ('CANCELLED','VOIDED') AND EXTRACT(YEAR FROM created_at) = :year AND EXTRACT(MONTH FROM created_at) = :month",
+           nativeQuery = true)
+    long countOrdersThisMonth(@Param("year") int year, @Param("month") int month);
 
     @Query("SELECT o FROM Order o WHERE o.customer.id = :customerId AND o.deleted = false ORDER BY o.createdAt DESC")
     Page<Order> findByCustomerId(@Param("customerId") Long customerId, Pageable pageable);
@@ -191,16 +196,232 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = :status AND o.createdAt >= :from AND o.createdAt <= :to")
     long countByDateRangeAndStatus(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, @Param("status") Order.OrderStatus status);
 
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('hour', completed_at), 'HH24:00') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getHourlyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('day', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
            "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
            nativeQuery = true)
     List<Object[]> getDailyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT oi.product_name, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.subtotal),0) as rev " +
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getWeeklyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('month', completed_at), 'YYYY-MM') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getMonthlyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('year', completed_at), 'YYYY') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getYearlyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT oi.product_name, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.amount),0) as rev " +
            "FROM order_items oi JOIN orders o ON oi.order_id = o.id " +
            "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_at >= :since " +
            "GROUP BY oi.product_name ORDER BY cnt DESC",
            nativeQuery = true)
     List<Object[]> getTopProductsSince(@Param("since") LocalDateTime since, org.springframework.data.domain.Pageable pageable);
+
+    @Query(value = "SELECT oi.product_name, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.amount),0) as rev " +
+           "FROM order_items oi JOIN orders o ON oi.order_id = o.id " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_at BETWEEN :from AND :to " +
+           "GROUP BY oi.product_name ORDER BY cnt DESC",
+           nativeQuery = true)
+    List<Object[]> getTopProductsByRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
+
+    @Query(value = "SELECT c.name, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as totalSpend, " +
+           "CAST(c.id AS VARCHAR) as customerId " +
+           "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.customer_id IS NOT NULL " +
+           "AND c.deleted = false AND c.phone != '0000000000' " +
+           "AND o.created_at BETWEEN :from AND :to " +
+           "GROUP BY c.id, c.name ORDER BY totalSpend DESC",
+           nativeQuery = true)
+    List<Object[]> getTopCustomersByRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
+
+    @Query(value = "SELECT o.created_by, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as revenue " +
+           "FROM orders o " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_by IS NOT NULL " +
+           "AND o.created_at BETWEEN :from AND :to " +
+           "GROUP BY o.created_by ORDER BY revenue DESC",
+           nativeQuery = true)
+    List<Object[]> getTopEmployeesByRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
+
+    // ── Customer-scoped analytics ──────────────────────────────────────────────
+
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders " +
+           "WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "AND completed_at BETWEEN :from AND :to", nativeQuery = true)
+    BigDecimal sumRevenueByCustomerAndDateRange(
+            @Param("customerId") Long customerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND customer_id = :customerId " +
+           "AND created_at BETWEEN :from AND :to", nativeQuery = true)
+    long countByCustomerAndDateRange(
+            @Param("customerId") Long customerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND customer_id = :customerId " +
+           "AND status = :status AND created_at BETWEEN :from AND :to", nativeQuery = true)
+    long countByCustomerAndDateRangeAndStatus(
+            @Param("customerId") Long customerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("status") String status);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('day', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label", nativeQuery = true)
+    List<Object[]> getDailyRevenueByCustomer(
+            @Param("customerId") Long customerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label", nativeQuery = true)
+    List<Object[]> getWeeklyRevenueByCustomer(
+            @Param("customerId") Long customerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('month', completed_at), 'YYYY-MM') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label", nativeQuery = true)
+    List<Object[]> getMonthlyRevenueByCustomer(
+            @Param("customerId") Long customerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('year', completed_at), 'YYYY') as label, COALESCE(SUM(total_amount),0) as value " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label", nativeQuery = true)
+    List<Object[]> getYearlyRevenueByCustomer(
+            @Param("customerId") Long customerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    // ── By createdBy (staff performance view) ─────────────────────────────────
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('day', completed_at), 'YYYY-MM-DD'), COALESCE(SUM(total_amount),0) " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY 1 ORDER BY 1", nativeQuery = true)
+    List<Object[]> getDailyRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', completed_at), 'YYYY-MM-DD'), COALESCE(SUM(total_amount),0) " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY 1 ORDER BY 1", nativeQuery = true)
+    List<Object[]> getWeeklyRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('month', completed_at), 'YYYY-MM'), COALESCE(SUM(total_amount),0) " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY 1 ORDER BY 1", nativeQuery = true)
+    List<Object[]> getMonthlyRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('year', completed_at), 'YYYY'), COALESCE(SUM(total_amount),0) " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy " +
+           "AND completed_at BETWEEN :from AND :to GROUP BY 1 ORDER BY 1", nativeQuery = true)
+    List<Object[]> getYearlyRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy AND completed_at BETWEEN :from AND :to", nativeQuery = true)
+    BigDecimal sumRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND created_by = :createdBy AND created_at BETWEEN :from AND :to", nativeQuery = true)
+    long countByCreatedByAndDateRange(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND created_by = :createdBy AND status = :status AND created_at BETWEEN :from AND :to", nativeQuery = true)
+    long countByCreatedByAndDateRangeAndStatus(@Param("createdBy") String createdBy, @Param("status") String status, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    // ── Filtered list (Report screen) ──────────────────────────────────────────
+
+    @Query(value = """
+            SELECT * FROM orders
+            WHERE deleted = FALSE
+            AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
+            AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
+            AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
+            AND (CAST(:to AS date)   IS NULL OR DATE(created_at) <= CAST(:to AS date))
+            ORDER BY created_at DESC
+            """,
+           countQuery = """
+            SELECT COUNT(*) FROM orders
+            WHERE deleted = FALSE
+            AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
+            AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
+            AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
+            AND (CAST(:to AS date)   IS NULL OR DATE(created_at) <= CAST(:to AS date))
+            """,
+           nativeQuery = true)
+    Page<Order> findAllFiltered(
+            @Param("status") String status,
+            @Param("paymentMethod") String paymentMethod,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            Pageable pageable);
+
+    @Query(value = """
+            SELECT * FROM orders
+            WHERE deleted = FALSE
+            AND created_by = :username
+            AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
+            AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
+            AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
+            AND (CAST(:to AS date)   IS NULL OR DATE(created_at) <= CAST(:to AS date))
+            ORDER BY created_at DESC
+            """,
+           countQuery = """
+            SELECT COUNT(*) FROM orders
+            WHERE deleted = FALSE
+            AND created_by = :username
+            AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
+            AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
+            AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
+            AND (CAST(:to AS date)   IS NULL OR DATE(created_at) <= CAST(:to AS date))
+            """,
+           nativeQuery = true)
+    Page<Order> findAllFilteredByUser(
+            @Param("username") String username,
+            @Param("status") String status,
+            @Param("paymentMethod") String paymentMethod,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            Pageable pageable);
+
+    // Staff performance list — always filters by createdBy, status optional
+    @Query(value = """
+            SELECT * FROM orders
+            WHERE deleted = FALSE AND created_by = :createdBy
+            AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
+            AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
+            AND (CAST(:to AS date)   IS NULL OR DATE(created_at) <= CAST(:to AS date))
+            ORDER BY created_at DESC
+            """,
+           countQuery = """
+            SELECT COUNT(*) FROM orders
+            WHERE deleted = FALSE AND created_by = :createdBy
+            AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
+            AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
+            AND (CAST(:to AS date)   IS NULL OR DATE(created_at) <= CAST(:to AS date))
+            """,
+           nativeQuery = true)
+    Page<Order> findAllByCreatedBy(
+            @Param("createdBy") String createdBy,
+            @Param("status") String status,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            Pageable pageable);
 }
